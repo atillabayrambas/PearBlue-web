@@ -1,0 +1,24 @@
+{
+  "summary": "Smoke test of PearBlue app: backend API (6 endpoints) and frontend flows (home, nav, language toggle, portfolio filters, contact form E2E, About/Services pages) all passed. Contact form UI submission successfully persisted to Mongo and appears in GET /api/contact.",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "GET /api/ -> 200 {message, resend_configured:false}",
+    "GET /api/health -> 200 {status:'ok'}",
+    "POST /api/contact valid payload -> 200, stored, email_sent=false",
+    "POST /api/contact invalid email -> 422 with pydantic email validation error",
+    "GET /api/contact -> 200 list sorted desc by created_at",
+    "POST /api/quote -> 200, QuoteRequest stored with id",
+    "Home page renders: page-home, hero-cta-primary, services-view-all, portfolio-view-all",
+    "Navbar links (nav-home/about/services/portfolio/contact) route to /, /over-ons, /diensten, /portfolio, /contact",
+    "Language toggle switches EN<->NL and persists to localStorage key 'pb_lang'",
+    "Portfolio filters (all=6, ecom=1, ai=1) filter items correctly",
+    "Contact form E2E: fill+submit shows contact-success and record appears in GET /api/contact (name='T1 UI Tester')",
+    "About (/over-ons) and Services (/diensten) pages render with h1"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Resend integration intentionally inactive (RESEND_API_KEY empty). Backend correctly returns email_sent=false without crashing. No overlay/interactivity issues from framer-motion or sticky nav observed."
+}
