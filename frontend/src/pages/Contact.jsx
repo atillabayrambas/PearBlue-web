@@ -60,6 +60,7 @@ export default function Contact() {
                 <p>{t("kvk.kvk")}: <span className="font-mono">87201607</span></p>
                 <p>{t("kvk.form")}: {t("kvk.form_val")} · {t("kvk.location")}</p>
                 <p>{t("kvk.loc_nr")}: <span className="font-mono">000053124294</span></p>
+                <p>{t("kvk.address")}: Boekweitkamp 7, 9932MA Delfzijl</p>
                 <p>{t("kvk.brand")}: PearBlue</p>
               </div>
             </div>
