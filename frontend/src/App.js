@@ -1,14 +1,16 @@
-import React, { useEffect } from "react";
+import React from "react";
+import { useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { LanguageProvider } from "@/i18n/LanguageContext";
+import { ThemeProvider } from "@/theme/ThemeContext";
 import { Toaster } from "@/components/ui/sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Services from "@/pages/Services";
-import Portfolio from "@/pages/Portfolio";
+import Projects from "@/pages/Projects";
 import Contact from "@/pages/Contact";
 
 const ScrollToTop = () => {
@@ -26,7 +28,8 @@ function Shell() {
           <Route path="/" element={<Home />} />
           <Route path="/over-ons" element={<About />} />
           <Route path="/diensten" element={<Services />} />
-          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/portfolio" element={<Projects />} />
+          <Route path="/projecten" element={<Projects />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="*" element={<Home />} />
         </Routes>
@@ -38,13 +41,15 @@ function Shell() {
 
 function App() {
   return (
-    <LanguageProvider>
-      <BrowserRouter>
-        <ScrollToTop />
-        <Shell />
-        <Toaster position="top-right" richColors />
-      </BrowserRouter>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <BrowserRouter>
+          <ScrollToTop />
+          <Shell />
+          <Toaster position="top-right" richColors />
+        </BrowserRouter>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }
 

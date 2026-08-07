@@ -23,10 +23,10 @@ export default function About() {
           <div className="lg:col-span-7">
             <p className="overline mb-4">{t("about.eyebrow")}</p>
             <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-              className="font-heading text-4xl sm:text-5xl lg:text-6xl font-light tracking-tighter text-pear-900 leading-[1.05]" data-testid="about-title">
+              className="font-heading text-4xl sm:text-5xl lg:text-6xl font-light tracking-tighter text-strong leading-[1.05]" data-testid="about-title">
               {t("about.title")}
             </motion.h1>
-            <div className="mt-8 space-y-5 text-lg text-pear-900/75 leading-relaxed max-w-2xl">
+            <div className="mt-8 space-y-5 text-lg text-muted-fg leading-relaxed max-w-2xl">
               <p>{t("about.p1")}</p>
               <p>{t("about.p2")}</p>
               <p>{t("about.p3")}</p>
@@ -49,17 +49,17 @@ export default function About() {
       </section>
 
       <section className="max-w-7xl mx-auto px-6 lg:px-10 py-16 lg:py-24">
-        <h2 className="font-heading text-3xl sm:text-4xl font-medium tracking-tight text-pear-900" data-testid="about-values-title">{t("about.values_title")}</h2>
+        <h2 className="font-heading text-3xl sm:text-4xl font-medium tracking-tight text-strong" data-testid="about-values-title">{t("about.values_title")}</h2>
         <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {values.map((v, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               transition={{ duration: 0.5, delay: i * 0.06 }}
-              className="p-7 rounded-2xl border border-slate-100 bg-white card-lift" data-testid={`value-card-${i}`}>
+              className="p-7 rounded-2xl border border-app surface card-lift" data-testid={`value-card-${i}`}>
               <div className="w-11 h-11 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center mb-4">
                 <v.icon className="h-5 w-5" />
               </div>
-              <h3 className="font-heading text-lg font-semibold text-pear-900 mb-2">{v.title}</h3>
-              <p className="text-sm text-pear-900/70 leading-relaxed">{v.desc}</p>
+              <h3 className="font-heading text-lg font-semibold text-strong mb-2">{v.title}</h3>
+              <p className="text-sm text-muted-fg leading-relaxed">{v.desc}</p>
             </motion.div>
           ))}
         </div>

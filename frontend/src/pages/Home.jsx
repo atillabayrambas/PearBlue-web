@@ -1,8 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, ShieldCheck, Cpu, Layers, Star, ChevronRight } from "lucide-react";
+import { ArrowRight, Sparkles, Star, ChevronRight } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
+import { PricingTables } from "../components/PricingTables";
 
 const IMAGES = {
   hero: "https://images.unsplash.com/photo-1585854467604-cf2080ccef31?crop=entropy&cs=srgb&fm=jpg&w=1400&q=85",
@@ -31,12 +32,12 @@ export default function Home() {
               <Sparkles className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />
               {t("hero.eyebrow")}
             </motion.p>
-            <motion.h1 variants={fadeUp} className="font-heading font-light text-5xl sm:text-6xl lg:text-7xl leading-[1.02] tracking-tighter text-pear-900" data-testid="hero-title">
+            <motion.h1 variants={fadeUp} className="font-heading font-light text-5xl sm:text-6xl lg:text-7xl leading-[1.02] tracking-tighter text-strong" data-testid="hero-title">
               {t("hero.title_1")}{" "}
               <span className="text-gradient-pear font-medium">{t("hero.title_accent")}</span>{" "}
               {t("hero.title_2")}
             </motion.h1>
-            <motion.p variants={fadeUp} className="mt-6 text-lg text-pear-900/70 max-w-2xl leading-relaxed" data-testid="hero-subtitle">
+            <motion.p variants={fadeUp} className="mt-6 text-lg text-muted-fg max-w-2xl leading-relaxed" data-testid="hero-subtitle">
               {t("hero.subtitle")}
             </motion.p>
             <motion.div variants={fadeUp} className="mt-9 flex flex-wrap gap-3">
@@ -50,8 +51,8 @@ export default function Home() {
             <motion.div variants={fadeUp} className="mt-12 grid grid-cols-3 gap-6 max-w-lg" data-testid="hero-stats">
               {[{ n: "80+", l: t("hero.stat_1") }, { n: "50+", l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
                 <div key={i} className="border-l-2 border-pear-500 pl-4">
-                  <div className="font-heading text-3xl font-medium text-pear-900">{s.n}</div>
-                  <div className="text-xs text-pear-900/60 mt-1">{s.l}</div>
+                  <div className="font-heading text-3xl font-medium text-strong">{s.n}</div>
+                  <div className="text-xs text-muted-fg mt-1">{s.l}</div>
                 </div>
               ))}
             </motion.div>
@@ -62,21 +63,21 @@ export default function Home() {
               <img src={IMAGES.hero} alt="Fluid abstract" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-tr from-pear-500/10 via-transparent to-transparent" />
             </div>
-            <div className="absolute -bottom-6 -left-6 bg-white rounded-2xl p-5 shadow-[0_20px_50px_rgba(10,25,47,0.08)] border border-slate-100 w-56 hidden sm:block">
+            <div className="absolute -bottom-6 -left-6 surface rounded-2xl p-5 shadow-[0_20px_50px_rgba(10,25,47,0.08)] border border-app w-56 hidden sm:block">
               <div className="flex items-center gap-1 text-pear-500 mb-2">
                 {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}
               </div>
-              <p className="text-xs text-pear-900/70 leading-relaxed">"Snel, professioneel en de site oogt fantastisch."</p>
-              <p className="text-xs font-semibold text-pear-900 mt-2">— Jeroen, Bakkerij De Peer</p>
+              <p className="text-xs text-muted-fg leading-relaxed">&ldquo;Snel, professioneel en de site oogt fantastisch.&rdquo;</p>
+              <p className="text-xs font-semibold text-strong mt-2">— Jeroen, Bakkerij De Peer</p>
             </div>
           </motion.div>
         </div>
       </section>
 
       {/* MARQUEE */}
-      <section className="border-y border-slate-100 bg-white py-6" data-testid="marquee-section">
+      <section className="border-y border-app surface py-6" data-testid="marquee-section">
         <div className="marquee">
-          <div className="marquee-track font-heading text-xl text-pear-900/40 whitespace-nowrap items-center">
+          <div className="marquee-track font-heading text-xl text-muted-fg/70 whitespace-nowrap items-center">
             {[...Array(2)].flatMap((_, k) => ["Innovatief", "Duurzaam", "Betaalbaar", "Persoonlijk", "Toekomstgericht", "Fris & Fruitig", "Kwaliteit"].map((w, i) => (
               <span key={`${k}-${i}`} className="flex items-center gap-12">
                 {w}<span className="text-pear-500">◆</span>
@@ -86,62 +87,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SERVICES BENTO */}
-      <section className="max-w-7xl mx-auto px-6 lg:px-10 py-24 lg:py-32" data-testid="services-preview">
-        <div className="max-w-3xl">
-          <p className="overline mb-4">{t("services.eyebrow")}</p>
-          <h2 className="font-heading font-medium text-4xl sm:text-5xl tracking-tight text-pear-900 leading-tight">
-            {t("services.title")}
-          </h2>
-          <p className="mt-5 text-lg text-pear-900/70 leading-relaxed">{t("services.subtitle")}</p>
-        </div>
-
-        <div className="mt-14 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {[
-            { icon: Layers, title: t("services.infra_title"), desc: t("services.infra_desc"), img: IMAGES.infra, tid: "svc-card-infra" },
-            { icon: Sparkles, title: t("services.media_title"), desc: t("services.media_desc"), img: IMAGES.fluid, tid: "svc-card-media" },
-            { icon: ShieldCheck, title: t("services.security_title"), desc: t("services.security_desc"), img: IMAGES.security, tid: "svc-card-security" },
-            { icon: Cpu, title: t("services.ai_title"), desc: t("services.ai_desc"), img: IMAGES.ai, tid: "svc-card-ai" },
-          ].map((s, i) => (
-            <motion.article
-              key={i}
-              initial={{ opacity: 0, y: 22 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ duration: 0.5, delay: i * 0.05 }}
-              className="card-lift group bg-white border border-slate-100 rounded-2xl overflow-hidden flex flex-col"
-              data-testid={s.tid}
-            >
-              <div className="h-40 overflow-hidden">
-                <img src={s.img} alt={s.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-              </div>
-              <div className="p-6 flex-1 flex flex-col">
-                <div className="w-11 h-11 rounded-full bg-pear-100 flex items-center justify-center text-pear-500 mb-4">
-                  <s.icon className="h-5 w-5" />
-                </div>
-                <h3 className="font-heading text-xl font-semibold text-pear-900 mb-2">{s.title}</h3>
-                <p className="text-sm text-pear-900/70 leading-relaxed flex-1">{s.desc}</p>
-              </div>
-            </motion.article>
-          ))}
-        </div>
-
-        <div className="mt-10">
-          <Link to="/diensten" className="inline-flex items-center gap-2 text-pear-500 font-semibold hover:gap-3 transition-all" data-testid="services-view-all">
-            {t("services.cta")} <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </section>
+      {/* PRICING TABLES (3 pakketten) */}
+      <PricingTables />
 
       {/* PORTFOLIO PREVIEW */}
-      <section className="max-w-7xl mx-auto px-6 lg:px-10 py-24" data-testid="portfolio-preview">
+      <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20" data-testid="portfolio-preview">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-12">
           <div className="max-w-2xl">
             <p className="overline mb-4">{t("portfolio.eyebrow")}</p>
-            <h2 className="font-heading font-medium text-4xl sm:text-5xl tracking-tight text-pear-900 leading-tight">{t("portfolio.title")}</h2>
-            <p className="mt-4 text-lg text-pear-900/70">{t("portfolio.subtitle")}</p>
+            <h2 className="font-heading font-medium text-4xl sm:text-5xl tracking-tight text-strong leading-tight">{t("portfolio.title")}</h2>
+            <p className="mt-4 text-lg text-muted-fg">{t("portfolio.subtitle")}</p>
           </div>
-          <Link to="/portfolio" className="btn-secondary self-start md:self-auto" data-testid="portfolio-view-all">
+          <Link to="/projecten" className="btn-secondary self-start md:self-auto" data-testid="portfolio-view-all">
             {t("portfolio.all")} <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -187,7 +144,7 @@ export default function Home() {
             </div>
             <div className="lg:justify-self-end">
               <Link to="/contact" className="btn-primary" data-testid="home-cta-button">
-                {t("cta.button")} <ArrowRight className="h-4 w-4" />
+                {t("cta.button")} <ChevronRight className="h-4 w-4" />
               </Link>
             </div>
           </div>

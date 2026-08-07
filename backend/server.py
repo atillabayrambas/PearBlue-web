@@ -84,6 +84,28 @@ class QuoteCreate(BaseModel):
     language: Optional[str] = "nl"
 
 
+class Project(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    category: str
+    tag: Optional[str] = None
+    description: Optional[str] = None
+    image_url: str
+    external_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ProjectCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=140)
+    category: str = Field(..., min_length=1, max_length=40)
+    tag: Optional[str] = Field(None, max_length=80)
+    description: Optional[str] = Field(None, max_length=2000)
+    image_url: str = Field(..., min_length=4)
+    external_url: Optional[str] = None
+
+
 # ---------- Helpers ----------
 def _build_contact_html(payload: ContactCreate) -> str:
     return f"""
@@ -172,6 +194,32 @@ async def create_quote(payload: QuoteCreate):
         )
         await _send_contact_email(contact_like)
     return q
+
+
+@api_router.get("/projects", response_model=List[Project])
+async def list_projects():
+    items = await db.projects.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    for i in items:
+        if isinstance(i.get('created_at'), str):
+            i['created_at'] = datetime.fromisoformat(i['created_at'])
+    return items
+
+
+@api_router.post("/projects", response_model=Project)
+async def create_project(payload: ProjectCreate):
+    p = Project(**payload.model_dump())
+    doc = p.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.projects.insert_one(doc)
+    return p
+
+
+@api_router.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    result = await db.projects.delete_one({"id": project_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "deleted", "id": project_id}
 
 
 app.include_router(api_router)
