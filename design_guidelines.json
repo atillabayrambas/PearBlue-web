@@ -1,0 +1,106 @@
+{
+  "theme": "light",
+  "archetype": "Soft Utility meets Swiss High-Contrast",
+  "vibe": "innovative, sustainable, modern, fresh, sleek, elegant and marketing-driven",
+  "target_audience": "business starters and older generation",
+  "colors": {
+    "primary": "#02C0FF",
+    "primary_hover": "#0099CC",
+    "background_base": "#FAFAFA",
+    "background_surface": "#FFFFFF",
+    "background_subtle": "#F0F5F9",
+    "text_main": "#0A192F",
+    "text_muted": "#4A5568",
+    "border": "#E2E8F0",
+    "accent_light": "#E6F8FF",
+    "accent_dark": "#01426A"
+  },
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Manrope",
+    "hierarchy": {
+      "h1": "text-5xl sm:text-6xl tracking-tighter font-light to font-medium",
+      "h2": "text-4xl sm:text-5xl tracking-tight font-medium",
+      "h3": "text-2xl sm:text-3xl tracking-tight font-medium",
+      "h4": "text-xl font-semibold",
+      "body": "text-base sm:text-lg leading-relaxed",
+      "overline": "text-xs tracking-[0.2em] uppercase font-bold text-[#02C0FF]"
+    },
+    "pairing_strategy": "Outfit for highly modern, sleek geometric headings that feel approachable ('fresh and fruity'). Manrope for exceptionally clean, readable body copy for the older demographic."
+  },
+  "visual_enhancers": {
+    "corners": "rounded-2xl for main containers, rounded-full for pills and primary buttons",
+    "shadows": "shadow-[0_8px_30px_rgb(0,0,0,0.04)] for cards, shadow-[0_20px_40px_rgb(2,192,255,0.15)] for primary hover states",
+    "borders": "1px solid border-gray-100, occasionally 1px solid border-[#02C0FF]/20 for active/highlighted cards",
+    "glassmorphism": "backdrop-blur-xl bg-white/80 border border-white/40 (used for sticky nav and floating cards)"
+  },
+  "layouts": {
+    "hero": "Asymmetric split or overlay. Large typography on the left, an abstract light blue fluid visual on the right. Clear CTA buttons.",
+    "services_grid": "Bento Grid (Grid Cols 1 md:grid-cols-2 lg:grid-cols-4). Each service gets a card with a subtle hover lift and cyan accent.",
+    "portfolio_grid": "Tetris-style masonry or asymmetric grid (col-span-8 and col-span-4 mix) to look highly creative and not rigid.",
+    "about": "Editorial layout. Text-heavy but broken up by large negative space and high-quality photography."
+  },
+  "motion": {
+    "transitions": "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease",
+    "hover_states": "Cards lift (-translate-y-1) and cast a slightly tinted cyan shadow. Buttons scale slightly (scale-105).",
+    "entrance": "Staggered fade-up (framer-motion) for lists and grids. Blur-in for hero text."
+  },
+  "components": {
+    "navigation": "Sticky top, crystal glassmorphism (bg-white/80 backdrop-blur-md). Must include logo, multilang toggle (NL/EN), main links, and 'Offerte' CTA.",
+    "buttons": "Primary: bg-[#02C0FF] text-white rounded-full px-8 py-3 hover:bg-[#0099CC] hover:shadow-lg transition-all. Secondary: bg-white text-[#0A192F] border border-gray-200 rounded-full hover:border-[#02C0FF].",
+    "cards": "White background, rounded-2xl, soft ambient shadow. Icon inside a pale cyan circle (bg-[#E6F8FF] text-[#02C0FF]).",
+    "forms": "Minimalist inputs, border-b only or very subtle rounded-lg with gray-100 bg. Focus state: ring-2 ring-[#02C0FF]/50."
+  },
+  "media": {
+    "logo_url": "https://customer-assets-lxgj4vgw.emergentagent.net/job_3b5c4d50-dd30-4d09-93b8-e113754c7368/artifacts/bxpfaweb_PearBlue-logo-04-scaled.webp",
+    "image_urls": {
+      "hero_abstract": "https://images.unsplash.com/photo-1585854467604-cf2080ccef31?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxsaWdodCUyMGJsdWUlMjBhYnN0cmFjdCUyMGNsZWFuJTIwZmx1aWQlMjB3aGl0ZXxlbnwwfHx8fDE3ODYwNzA3MTN8MA&ixlib=rb-4.1.0&q=85",
+      "services_ai": "https://images.unsplash.com/photo-1758073519996-6d3c63b4922c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwxfHxjeWJlcnNlY3VyaXR5JTIwYWJzdHJhY3QlMjBibHVlJTIwdGVjaG5vbG9neXxlbnwwfHx8fDE3ODYwNzA2OTh8MA&ixlib=rb-4.1.0&q=85",
+      "services_cybersecurity": "https://images.unsplash.com/photo-1728739529355-31dcaefd82b7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwzfHxjeWJlcnNlY3VyaXR5JTIwYWJzdHJhY3QlMjBibHVlJTIwdGVjaG5vbG9neXxlbnwwfHx8fDE3ODYwNzA2OTh8MA&ixlib=rb-4.1.0&q=85",
+      "services_infrastructure": "https://images.unsplash.com/photo-1680992046615-065f58bcb4d8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwyfHxzbGVlayUyMG1vZGVybiUyMHNlcnZlciUyMHJvb20lMjBjeWFuJTIwbGlnaHR8ZW58MHx8fHwxNzg2MDcwNjkzfDA&ixlib=rb-4.1.0&q=85",
+      "about_office": "https://images.unsplash.com/photo-1606836591695-4d58a73eba1e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxkdXRjaCUyMGJ1c2luZXNzJTIwcHJvZmVzc2lvbmFsJTIwbW9kZXJuJTIwb2ZmaWNlJTIwbWVldGluZ3xlbnwwfHx8fDE3ODYwNzA3MDJ8MA&ixlib=rb-4.1.0&q=85",
+      "about_professional": "https://images.unsplash.com/photo-1711558596331-900d9cb71f62?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwzfHxkdXRjaCUyMGJ1c2luZXNzJTIwcHJvZmVzc2lvbmFsJTIwbW9kZXJuJTIwb2ZmaWNlJTIwbWVldGluZ3xlbnwwfHx8fDE3ODYwNzA3MDJ8MA&ixlib=rb-4.1.0&q=85",
+      "abstract_nature": "https://images.unsplash.com/photo-1547468243-8839e59a7c54?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGZyZXNoJTIwbmF0dXJlJTIwbGVhdmVzJTIwd2F0ZXIlMjBtb2Rlcm58ZW58MHx8fHwxNzg2MDcwNjg4fDA&ixlib=rb-4.1.0&q=85",
+      "abstract_fluid_tech": "https://images.unsplash.com/photo-1727434032773-af3cd98375ba?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHw0fHxhYnN0cmFjdCUyMGJsdWUlMjBmbHVpZCUyMHRlY2hub2xvZ3l8ZW58MHx8fHwxNzg2MDcwNzA4fDA&ixlib=rb-4.1.0&q=85"
+    }
+  },
+  "libraries": {
+    "icons": "lucide-react (Default, clean and consistent)",
+    "motion": "framer-motion (For scroll reveals and micro-interactions)",
+    "carousel": "embla-carousel-react (For testimonials or portfolio sliders)"
+  },
+  "pages_structure": {
+    "Home": "Hero with strong Value Prop ('Your Complete Digital Partner') -> Services Bento Grid -> Social Proof/Testimonials -> Pricing/Offerte Teaser -> Footer.",
+    "Over ons (About Us)": "Brand story (Pear symbolism: fresh, growing, sustainable). Office imagery mixed with text.",
+    "Diensten (Services)": "Deep dive into the 4 core services. Alternating left/right image and text blocks.",
+    "Portfolio": "Masonry grid of case studies showing diverse digital solutions.",
+    "Contact": "Split layout: Left side contact info and map, Right side form (Name, email, phone, message)."
+  },
+  "accessibility": {
+    "contrast": "Ensure text over cyan backgrounds is deep navy or pure white depending on APCA ratio.",
+    "focus": "All interactive elements must have a visible focus ring (focus:ring-2 focus:ring-[#02C0FF] focus:outline-none).",
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute."
+  },
+  "instructions_to_main_agent": [
+    "Install required fonts from Google Fonts: 'Outfit' and 'Manrope'. Configure them in tailwind.config.js.",
+    "Use framer-motion for simple stagger animations on page load. Do NOT make animations overly slow or distracting.",
+    "Implement multi-language toggle (NL/EN) in the navigation bar using context or a simple state for the prototype.",
+    "Avoid the generic 'SaaS look'. Make it feel like a high-end creative agency by utilizing large padding (py-20, py-32), large thin/medium typography, and intentional asymmetry.",
+    "Do NOT use completely transparent backgrounds for the sticky header; use a glassmorphic effect so text remains readable.",
+    "Do NOT use placeholders for images. Use the provided Unsplash URLs and the PearBlue logo.",
+    "Ensure the '#02C0FF' cyan is used purposefully for primary actions and accents. Do not overwhelm the page with it. Use the white/off-white space to let the cyan pop.",
+    "Implement the 5 requested pages using React Router or similar.",
+    "Apply `data-testid` attributes to all buttons, links, form inputs, and major sections."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Do not converge toward generic 'AI slop' aesthetics. Avoid generic centered layouts and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "MUST NOT apply universal transition (`transition: all`). Target specific properties.",
+    "MUST NOT center align the app container in CSS.",
+    "Use modern pill-shaped or rounded-full buttons with interaction animations.",
+    "NEVER use emoji characters for icons.",
+    "Use generous spacing (2-3x typical).",
+    "All interactive and key informational elements MUST include a `data-testid` attribute."
+  ]
+}
