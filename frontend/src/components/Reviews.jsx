@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Star, Send, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { LocalCaptcha, ConsentText } from "./LocalCaptcha";
@@ -151,33 +151,78 @@ export const FeaturedReviews = () => {
     axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
   }, []);
   if (!reviews.length) return null;
+  // Duplicate the list so the CSS animation can seamlessly loop
+  const loop = [...reviews, ...reviews];
   return (
     <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20" data-testid="featured-reviews">
       <div className="max-w-2xl mb-10">
         <p className="overline mb-4">Klantverhalen</p>
         <h2 className="font-heading text-4xl sm:text-5xl font-medium tracking-tight text-strong">Wat onze klanten zeggen.</h2>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {reviews.slice(0, 6).map((r, i) => (
-          <motion.article
-            key={r.id}
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.5, delay: i * 0.05 }}
-            className="surface border border-app rounded-2xl p-6 card-lift"
-            data-testid={`review-card-${i}`}
-          >
-            <ReviewStars rating={r.rating} />
-            <p className="mt-4 text-strong/90 leading-relaxed">&ldquo;{r.quote}&rdquo;</p>
-            <div className="mt-5 pt-4 border-t border-app">
-              <p className="font-semibold text-strong text-sm">{r.name}</p>
-              {(r.company || r.project) && <p className="text-xs text-muted-fg">{[r.company, r.project].filter(Boolean).join(" · ")}</p>}
-            </div>
-          </motion.article>
-        ))}
+      <div
+        className="relative overflow-hidden group"
+        data-testid="reviews-scroller"
+        style={{ maskImage: "linear-gradient(to right, transparent, #000 6%, #000 94%, transparent)", WebkitMaskImage: "linear-gradient(to right, transparent, #000 6%, #000 94%, transparent)" }}
+      >
+        <div
+          className="flex gap-5 w-max animate-[pb-marquee_60s_linear_infinite] group-hover:[animation-play-state:paused]"
+          data-testid="reviews-marquee"
+        >
+          {loop.map((r, i) => (
+            <article
+              key={`${r.id}-${i}`}
+              className="surface border border-app rounded-2xl p-6 w-[320px] sm:w-[360px] shrink-0 card-lift"
+              data-testid={`review-card-${i}`}
+            >
+              <ReviewStars rating={r.rating} />
+              <p className="mt-4 text-strong/90 leading-relaxed">&ldquo;{r.quote}&rdquo;</p>
+              <div className="mt-5 pt-4 border-t border-app">
+                <p className="font-semibold text-strong text-sm">{r.name}</p>
+                {(r.company || r.project) && <p className="text-xs text-muted-fg">{[r.company, r.project].filter(Boolean).join(" · ")}</p>}
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
+      <style>{`@keyframes pb-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
     </section>
+  );
+};
+
+// Floating ticker for the homepage hero — fades one review in / out at a time.
+export const FloatingReviewTicker = () => {
+  const [reviews, setReviews] = useState([]);
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
+  }, []);
+  useEffect(() => {
+    if (reviews.length < 2) return;
+    const t = setInterval(() => setIdx((v) => (v + 1) % reviews.length), 6000);
+    return () => clearInterval(t);
+  }, [reviews.length]);
+  if (!reviews.length) return null;
+  const r = reviews[idx];
+  return (
+    <div className="pointer-events-none w-full flex justify-center pt-6 sm:pt-8" data-testid="floating-review-ticker">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={r.id}
+          initial={{ opacity: 0, y: -8, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, y: 6, filter: "blur(4px)" }}
+          transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1] }}
+          className="max-w-2xl mx-auto pointer-events-auto rounded-full backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border border-app/70 px-4 py-2 shadow-sm flex items-center gap-3"
+          data-testid="floating-review-card"
+        >
+          <ReviewStars rating={r.rating} size={3} />
+          <p className="text-xs sm:text-sm text-strong/90 truncate flex-1">&ldquo;{r.quote}&rdquo;</p>
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg shrink-0 hidden sm:inline">
+            — {r.name}
+          </span>
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 };
 

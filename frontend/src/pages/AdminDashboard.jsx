@@ -91,7 +91,7 @@ const AdminSidebar = () => {
         <LogOut className="h-4 w-4" /> Uitloggen
       </button>
       <div className="mt-6 pt-4 border-t border-app text-[10px] text-muted-fg text-center">
-        PearBlue CMS · v0.5.2-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
+        PearBlue CMS · v0.5.3-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
       </div>
     </aside>
   );
@@ -117,6 +117,30 @@ const Avatar = ({ name, email, profilePicture, size = 32 }) => {
 
 // Turn "chat_support" → "Chat support"; "super_admin" → "Super admin"
 const prettyRole = (r) => (r || "").split("_").map((w) => w ? w[0].toUpperCase() + w.slice(1) : "").join(" ").trim();
+
+// Preferred display label for an assignee row from /api/admin/assignees.
+// Falls back gracefully to display_name → email if names aren't set.
+const assigneeLabel = (a) => {
+  if (!a) return "—";
+  const full = [a.first_name, a.last_name].filter(Boolean).join(" ").trim();
+  return full || a.display_name || a.email;
+};
+
+// Small chip showing an assignee's avatar + name + role. Used in the CMS lists.
+const AssigneeChip = ({ email, assignees, size = 24 }) => {
+  if (!email) return <span className="text-[10px] text-muted-fg italic">Niet toegewezen</span>;
+  const a = (assignees || []).find((x) => x.email === email);
+  const name = assigneeLabel(a) || email;
+  return (
+    <span className="inline-flex items-center gap-1.5" data-testid={`assignee-chip-${email}`}>
+      <Avatar name={name} email={email} profilePicture={a?.profile_picture} size={size} />
+      <span className="text-[11px] leading-tight">
+        <span className="text-strong font-medium block truncate max-w-[140px]">{name}</span>
+        {a?.role && <span className="text-muted-fg text-[10px] block">{prettyRole(a.role)}</span>}
+      </span>
+    </span>
+  );
+};
 
 // Priority alert balloons stack (above the version bar). Uses localStorage for dismiss + hourly-reappear for P1.
 const PriorityAlerts = () => {
@@ -616,18 +640,25 @@ const MessagesAdmin = () => {
                   </div>
                   <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${pr.color}`}>{pr.label}</span>
                   <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${st.color}`}>{st.label}</span>
-                  {m.assigned_to && <span className="text-[10px] text-muted-fg">@ {m.assigned_to}</span>}
+                  {m.assigned_to && <AssigneeChip email={m.assigned_to} assignees={assignees} size={20} />}
                 </summary>
                 <div className="px-4 pb-4 pt-1 text-sm text-strong/90 space-y-3">
                   {m.phone && <p><strong className="text-muted-fg">Tel:</strong> {m.phone}</p>}
                   {m.company && <p><strong className="text-muted-fg">Bedrijf:</strong> {m.company}</p>}
                   <p className="whitespace-pre-wrap"><strong className="text-muted-fg block mb-1">Bericht:</strong>{m.message}</p>
+                  {(() => {
+                    const isDone = m.status === "done";
+                    const canOverride = user?.role === "super_admin" || user?.role === "admin";
+                    const disabled = isDone && !canOverride;
+                    return (
                   <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-app/40">
+                    {disabled && <span className="text-[10px] uppercase tracking-widest bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5" data-testid={`msg-locked-${m.id || i}`}>🔒 Vergrendeld — afgerond</span>}
                     <select
                       value={m.status || "new"}
                       onChange={(e) => patch(m.id, { status: e.target.value })}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
                       data-testid={`msg-status-${m.id || i}`}
+                      disabled={disabled}
                     >
                       {MSG_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                       <option value="archived">Gearchiveerd</option>
@@ -635,20 +666,22 @@ const MessagesAdmin = () => {
                     <select
                       value={m.priority || "P3"}
                       onChange={(e) => patch(m.id, { priority: e.target.value })}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
                       data-testid={`msg-priority-${m.id || i}`}
+                      disabled={disabled}
                     >
                       {MSG_PRIORITY.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                     </select>
                     <select
                       value={m.assigned_to || ""}
                       onChange={(e) => patch(m.id, { assigned_to: e.target.value || null })}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
                       data-testid={`msg-assignee-${m.id || i}`}
+                      disabled={disabled}
                     >
                       <option value="">— Niet toegewezen —</option>
                       {assignees.map((a) => (
-                        <option key={a.email} value={a.email}>{a.display_name || a.email} · {prettyRole(a.role)}</option>
+                        <option key={a.email} value={a.email}>{assigneeLabel(a)} · {prettyRole(a.role)}</option>
                       ))}
                       {user?.email && !assignees.find((a) => a.email === user.email) && (
                         <option value={user.email}>{user.email} · (mij)</option>
@@ -674,6 +707,8 @@ const MessagesAdmin = () => {
                       data-testid={`msg-reply-${m.id || i}`}
                     >Antwoord via e-mail</a>
                   </div>
+                    );
+                  })()}
                   {(m.notes || []).length > 0 && (
                     <div className="pt-2 border-t border-app/40 space-y-1">
                       <p className="text-[10px] uppercase tracking-widest text-muted-fg">Notities</p>
@@ -707,16 +742,20 @@ const STATUS_STYLE = {
 };
 
 const RegistrationsAdmin = () => {
-  const { authHeader } = useAuth();
+  const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
+  const [assignees, setAssignees] = useState([]);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
 
   const load = () => {
     setLoading(true);
-    axios.get(`${API}/portal/registrations`, { headers: authHeader() })
-      .then((r) => setItems(r.data || []))
+    Promise.all([
+      axios.get(`${API}/portal/registrations`, { headers: authHeader() }),
+      axios.get(`${API}/admin/assignees`, { headers: authHeader() }),
+    ])
+      .then(([r, a]) => { setItems(r.data || []); setAssignees(a.data || []); })
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
   };
@@ -732,6 +771,15 @@ const RegistrationsAdmin = () => {
       toast.success(status === "approved" ? "Goedgekeurd — e-mail verstuurd" : "Afgewezen — e-mail verstuurd");
       load();
     } catch { toast.error("Kon status niet bijwerken"); } finally { setBusy(null); }
+  };
+
+  const assign = async (id, email) => {
+    try {
+      const cur = items.find((x) => x.id === id);
+      await axios.patch(`${API}/portal/registrations/${id}`, { status: cur?.status || "pending", assigned_to: email || null }, { headers: authHeader() });
+      toast.success(email ? "Toegewezen" : "Toewijzing verwijderd");
+      load();
+    } catch { toast.error("Toewijzen mislukt"); }
   };
 
   const visible = filter === "all" ? items : items.filter((i) => i.status === filter);
@@ -777,9 +825,27 @@ const RegistrationsAdmin = () => {
                   </p>
                   {r.message && <p className="text-sm text-strong/80 mt-2 whitespace-pre-wrap">{r.message}</p>}
                   {r.admin_note && <p className="text-xs text-muted-fg italic mt-2">Notitie: {r.admin_note}</p>}
+                  {r.assigned_to && <div className="mt-2"><AssigneeChip email={r.assigned_to} assignees={assignees} size={22} /></div>}
                 </div>
-                {r.status === "pending" && (
-                  <div className="flex gap-2 shrink-0">
+                <div className="flex flex-col gap-2 shrink-0">
+                  {r.status === "pending" && (
+                    <select
+                      value={r.assigned_to || ""}
+                      onChange={(e) => assign(r.id, e.target.value || null)}
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      data-testid={`registration-assignee-${r.id}`}
+                    >
+                      <option value="">— Niet toegewezen —</option>
+                      {assignees.map((a) => (
+                        <option key={a.email} value={a.email}>{assigneeLabel(a)} · {prettyRole(a.role)}</option>
+                      ))}
+                      {user?.email && !assignees.find((a) => a.email === user.email) && (
+                        <option value={user.email}>{user.email} · (mij)</option>
+                      )}
+                    </select>
+                  )}
+                  {r.status === "pending" && (
+                  <div className="flex gap-2">
                     <button onClick={() => review(r.id, "approved")} disabled={busy === r.id}
                       className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-pear-500 text-white px-3 py-1.5 hover:bg-pear-600 disabled:opacity-50"
                       data-testid={`registration-approve-${r.id}`}>
@@ -792,6 +858,7 @@ const RegistrationsAdmin = () => {
                     </button>
                   </div>
                 )}
+                </div>
               </div>
             </div>
           ))}
@@ -811,8 +878,9 @@ const StarsRow = ({ n }) => (
 );
 
 const ReviewsAdmin = () => {
-  const { authHeader } = useAuth();
+  const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
+  const [assignees, setAssignees] = useState([]);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
@@ -828,6 +896,9 @@ const ReviewsAdmin = () => {
     axios.get(`${API}/admin/reviews/invite-log`, { headers: authHeader() })
       .then((r) => setInvLog(r.data || []))
       .catch(() => setInvLog([]));
+    axios.get(`${API}/admin/assignees`, { headers: authHeader() })
+      .then((r) => setAssignees(r.data || []))
+      .catch(() => setAssignees([]));
   };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -942,8 +1013,23 @@ const ReviewsAdmin = () => {
                     {[r.company, r.project].filter(Boolean).join(" · ")} · {new Date(r.created_at).toLocaleString("nl-NL")}
                   </p>
                   <p className="text-sm text-strong/90 mt-2 whitespace-pre-wrap">&ldquo;{r.quote}&rdquo;</p>
+                  {r.assigned_to && <div className="mt-2"><AssigneeChip email={r.assigned_to} assignees={assignees} size={22} /></div>}
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
+                  <select
+                    value={r.assigned_to || ""}
+                    onChange={(e) => patch(r.id, { assigned_to: e.target.value || null })}
+                    className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                    data-testid={`review-assignee-${r.id}`}
+                  >
+                    <option value="">— Niet toegewezen —</option>
+                    {assignees.map((a) => (
+                      <option key={a.email} value={a.email}>{assigneeLabel(a)} · {prettyRole(a.role)}</option>
+                    ))}
+                    {user?.email && !assignees.find((a) => a.email === user.email) && (
+                      <option value={user.email}>{user.email} · (mij)</option>
+                    )}
+                  </select>
                   <button onClick={() => patch(r.id, { approved: !r.approved })} disabled={busy === r.id}
                     className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-3 py-1.5 disabled:opacity-50 ${
                       r.approved ? "surface-2 text-strong border border-app" : "bg-pear-500 text-white hover:bg-pear-600"
@@ -981,8 +1067,17 @@ const ROLE_LABELS = {
   moderator: "Moderator",
   chat_support: "Chat support",
   financien: "Financiën",
+  crm: "CRM (Customer Relationship)",
   gebruiker: "Gebruiker",
   admin: "Beheerder (legacy)",
+};
+
+// Random pear-and-robot themed avatar generator using DiceBear (bots) with a pear-fresh palette.
+const RANDOM_AVATAR_PALETTES = ["02c0ff", "6ee7b7", "34d399", "10b981", "0891b2", "22d3ee", "34e0a1", "84cc16"];
+const generatePearAvatar = (seed) => {
+  const s = encodeURIComponent(seed || String(Math.random()).slice(2, 10));
+  const bg = RANDOM_AVATAR_PALETTES[Math.floor(Math.random() * RANDOM_AVATAR_PALETTES.length)];
+  return `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${s}&backgroundColor=${bg}&scale=90`;
 };
 
 const UsersAdmin = () => {
@@ -993,8 +1088,10 @@ const UsersAdmin = () => {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ email: "", role: "gebruiker", password: "", display_name: "" });
+  const [editingUser, setEditingUser] = useState(null); // email being edited
 
   const isSuperAdmin = (me?.role === "super_admin" || me?.role === "admin");
+  const isBeheerder = isSuperAdmin || me?.role === "beheerder";
 
   const load = () => {
     setLoading(true);
@@ -1112,12 +1209,21 @@ const UsersAdmin = () => {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {u.email !== me?.email && u.auth_source !== "zoho-only" && (
-                      <button onClick={() => remove(u.email)} data-testid={`user-delete-${u.email}`}
-                        className="inline-flex items-center gap-1 text-xs text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-full border border-red-200">
-                        <Trash2 className="h-3 w-3" />
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingUser(u.email)}
+                        data-testid={`user-edit-${u.email}`}
+                        className="inline-flex items-center gap-1 text-xs text-strong hover:bg-pear-50 px-2.5 py-1 rounded-full border border-app"
+                      >
+                        Bewerken
                       </button>
-                    )}
+                      {u.email !== me?.email && u.auth_source !== "zoho-only" && (
+                        <button onClick={() => remove(u.email)} data-testid={`user-delete-${u.email}`}
+                          className="inline-flex items-center gap-1 text-xs text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-full border border-red-200">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1157,11 +1263,172 @@ const UsersAdmin = () => {
           )}
         </div>
       </section>
+      {editingUser && (
+        <UserDetailsModal
+          email={editingUser}
+          onClose={() => { setEditingUser(null); load(); }}
+          canEditPassword={isBeheerder}
+        />
+      )}
     </div>
   );
 };
 
-// --- Custom scripts tab (super_admin only) ---
+// --- Extended user details editor modal ---
+const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
+  const { authHeader } = useAuth();
+  const [details, setDetails] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API}/admin/users/${encodeURIComponent(email)}/details`, { headers: authHeader() })
+      .then((r) => setDetails(r.data))
+      .catch(() => setDetails({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+
+  const save = async (e) => {
+    e?.preventDefault?.();
+    const required = ["first_name", "last_name", "address", "postal_code"];
+    for (const k of required) {
+      if (!details?.[k]) { toast.error(`Vul verplichte velden in: ${required.join(", ")}`); return; }
+    }
+    setSaving(true);
+    try {
+      const { role, email: _e, ...body } = details || {}; // eslint-disable-line no-unused-vars
+      await axios.put(`${API}/admin/users/${encodeURIComponent(email)}/details`, body, { headers: authHeader() });
+      // Notify user by email
+      try { await axios.post(`${API}/admin/users/${encodeURIComponent(email)}/notify-updated`, {}, { headers: authHeader() }); } catch { /* ignore */ }
+      toast.success("Opgeslagen — klant is via e-mail geïnformeerd. Zoho-sync: MOCKED.");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Opslaan mislukt");
+    } finally { setSaving(false); }
+  };
+
+  const sendReset = async () => {
+    try {
+      await axios.post(`${API}/admin/users/${encodeURIComponent(email)}/reset-password`, {}, { headers: authHeader() });
+      toast.success("Reset-mail verstuurd naar " + email);
+    } catch (err) { toast.error(err?.response?.data?.detail || "Reset mislukt"); }
+  };
+
+  const changePassword = async () => {
+    if (!newPassword || newPassword.length < 8) { toast.error("Minimaal 8 tekens"); return; }
+    if (!window.confirm(`Wachtwoord van ${email} nu direct wijzigen?`)) return;
+    try {
+      await axios.post(`${API}/admin/users/${encodeURIComponent(email)}/change-password`, { new_password: newPassword, send_notification: true }, { headers: authHeader() });
+      toast.success("Wachtwoord gewijzigd — klant is geïnformeerd");
+      setNewPassword("");
+    } catch (err) { toast.error(err?.response?.data?.detail || "Wachtwoord wijzigen mislukt"); }
+  };
+
+  const randomize = () => setDetails((d) => ({ ...(d || {}), profile_picture: generatePearAvatar(email) }));
+  const removeAvatar = () => setDetails((d) => ({ ...(d || {}), profile_picture: "" }));
+
+  const set = (k) => (e) => setDetails((d) => ({ ...(d || {}), [k]: e.target.value }));
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose} data-testid="user-details-modal">
+      <div className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto border border-app bg-white dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
+        <header className="px-6 py-4 border-b border-app flex items-center justify-between">
+          <div>
+            <div className="font-heading text-lg font-semibold text-strong">Gebruiker bewerken</div>
+            <p className="text-xs text-muted-fg">{email}</p>
+          </div>
+          <button onClick={onClose} className="text-muted-fg hover:text-strong text-2xl leading-none" data-testid="user-details-close">×</button>
+        </header>
+        {!details ? <p className="p-6 text-muted-fg">Laden…</p> : (
+          <form onSubmit={save} className="p-6 space-y-5">
+            {/* Avatar */}
+            <div className="flex items-center gap-4">
+              <Avatar name={`${details.first_name || ""} ${details.last_name || ""}`.trim() || email} email={email} profilePicture={details.profile_picture} size={64} />
+              <div className="flex flex-col gap-2">
+                <button type="button" onClick={randomize} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-pear-500" data-testid="user-details-avatar-random">Random pear-avatar</button>
+                <button type="button" onClick={removeAvatar} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-red-400" data-testid="user-details-avatar-remove">Terug naar initialen</button>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Voornaam *</span>
+                <input required value={details.first_name || ""} onChange={set("first_name")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-first-name" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Achternaam *</span>
+                <input required value={details.last_name || ""} onChange={set("last_name")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-last-name" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Adres *</span>
+                <input required value={details.address || ""} onChange={set("address")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-address" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Postcode *</span>
+                <input required value={details.postal_code || ""} onChange={set("postal_code")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-postal" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Plaats</span>
+                <input value={details.city || ""} onChange={set("city")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-city" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Land</span>
+                <input value={details.country || "Nederland"} onChange={set("country")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-country" />
+              </label>
+            </div>
+            <details className="rounded-xl border border-app p-3">
+              <summary className="text-xs uppercase tracking-widest text-muted-fg cursor-pointer">Zakelijke gegevens (optioneel)</summary>
+              <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                <label className="block">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-fg">Bedrijfsnaam</span>
+                  <input value={details.company || ""} onChange={set("company")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-company" />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-fg">KVK</span>
+                  <input value={details.kvk || ""} onChange={set("kvk")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-kvk" />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-fg">Belasting-ID / BTW</span>
+                  <input value={details.tax_id || ""} onChange={set("tax_id")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-tax-id" />
+                </label>
+              </div>
+            </details>
+
+            {/* Password actions */}
+            <div className="rounded-xl border border-app p-3 space-y-2" data-testid="user-details-password-block">
+              <p className="text-xs uppercase tracking-widest text-muted-fg">Wachtwoord</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={sendReset} className="btn-secondary" data-testid="user-details-send-reset">Reset-mail sturen</button>
+                {canEditPassword && (
+                  <>
+                    <input
+                      type={showPwd ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Nieuw wachtwoord (min 8)"
+                      className="flex-1 min-w-[160px] rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong"
+                      data-testid="user-details-new-password"
+                    />
+                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="text-xs px-3 py-1.5 rounded-full border border-app">{showPwd ? "Verberg" : "Toon"}</button>
+                    <button type="button" onClick={changePassword} className="btn-primary" data-testid="user-details-change-password">Direct wijzigen</button>
+                  </>
+                )}
+              </div>
+              {!canEditPassword && <p className="text-[11px] text-muted-fg">Alleen super_admin of beheerder mag wachtwoorden direct wijzigen.</p>}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onClose} className="text-xs px-4 py-2 rounded-full border border-app hover:border-slate-400" data-testid="user-details-cancel">Sluiten</button>
+              <button type="submit" disabled={saving} className="btn-primary" data-testid="user-details-save">
+                {saving ? "Opslaan…" : <><Save className="h-4 w-4" /> Opslaan</>}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-fg">Zoho 2-way sync: <strong>MOCKED</strong> — de synchronisatie wordt geactiveerd zodra Zoho Books org-ID is ingevuld.</p>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
 const ScriptsAdmin = () => {
   const { authHeader, user: me } = useAuth();
   const [header, setHeader] = useState("");
@@ -1256,18 +1523,21 @@ const CybersecurityAdmin = () => {
   const [captchaStats, setCaptchaStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [virusUnread, setVirusUnread] = useState(0);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [b, s, c] = await Promise.all([
+      const [b, s, c, v] = await Promise.all([
         axios.get(`${API}/admin/cybersecurity/blocks`, { headers: authHeader() }),
         axios.get(`${API}/admin/cybersecurity/stats`, { headers: authHeader() }),
         axios.get(`${API}/admin/cybersecurity/captcha-stats`, { headers: authHeader() }).catch(() => ({ data: null })),
+        axios.get(`${API}/admin/virus-scanner/unread`, { headers: authHeader() }).catch(() => ({ data: { count: 0 } })),
       ]);
       setBlocks(b.data || []);
       setStats(s.data || null);
       setCaptchaStats(c.data || null);
+      setVirusUnread(v.data?.count || 0);
     } catch (e) {
       toast.error("Kon cybersecurity-data niet laden");
     } finally { setLoading(false); }
@@ -1301,8 +1571,20 @@ const CybersecurityAdmin = () => {
           </h2>
           <p className="text-sm text-muted-fg mt-1">Verzoeken die door de rate-limiter, spam-filter of honeypot zijn geblokkeerd. Je kunt handmatig ont- of herblokkeren.</p>
         </div>
-        <Link to="/admin/virusscanner" className="btn-secondary" data-testid="cs-open-virus-scanner">
+        <Link
+          to="/admin/virusscanner"
+          onClick={async () => {
+            try { await axios.post(`${API}/admin/virus-scanner/acknowledge-all`, {}, { headers: authHeader() }); setVirusUnread(0); } catch { /* ignore */ }
+          }}
+          className="btn-secondary relative"
+          data-testid="cs-open-virus-scanner"
+        >
           <ShieldX className="h-4 w-4" /> Virusscanner openen
+          {virusUnread > 0 && (
+            <span className="absolute -top-2 -right-2 inline-flex items-center justify-center min-w-[22px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 shadow" data-testid="cs-virus-unread-badge">
+              {virusUnread > 99 ? "99+" : virusUnread}
+            </span>
+          )}
         </Link>
       </div>
 
@@ -1560,28 +1842,32 @@ const FeedbackAdmin = () => {
                             {f.email && <span className="text-[10px] text-muted-fg">· {f.email}</span>}
                           </div>
                           <p className="text-sm text-strong mt-1 whitespace-pre-wrap">{f.message}</p>
-                          {f.assigned_to && <p className="text-[10px] text-muted-fg mt-1">Toegewezen aan: {f.assigned_to}</p>}
+                          {f.assigned_to && (
+                            <div className="mt-1"><AssigneeChip email={f.assigned_to} assignees={assignees} size={22} /></div>
+                          )}
                         </div>
                     </div>
                         <div className="flex flex-col gap-1.5 shrink-0 min-w-[180px]">
                           <select
                             value={f.status || "new"}
                             onChange={(e) => setStatus(f.id, e.target.value)}
-                            className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                            className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
                             data-testid={`fb-status-${f.id}`}
+                            disabled={(f.status === "done") && !["super_admin","admin"].includes(user?.role)}
                           >
                             {FEEDBACK_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                           </select>
                           <select
                             value={f.assigned_to || ""}
                             onChange={(e) => assign(f.id, e.target.value || null)}
-                            className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                            className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
                             data-testid={`fb-assignee-${f.id}`}
+                            disabled={(f.status === "done") && !["super_admin","admin"].includes(user?.role)}
                           >
                             <option value="">— Niet toegewezen —</option>
                             {assignees.map((a) => (
                               <option key={a.email} value={a.email}>
-                                {a.display_name || a.email} · {prettyRole(a.role)}
+                                {assigneeLabel(a)} · {prettyRole(a.role)}
                               </option>
                             ))}
                             {user?.email && !assignees.find((a) => a.email === user.email) && (

@@ -121,7 +121,27 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **Changelog data**: minor version format Vx.x.x nu ondersteund (v0.7.1-Beta live).
 - **Versie sync**: footer + CMS sidebar tonen nu **v0.7.1-Beta**.
 
-### Feb 2026 — Iteration 16 (this session)
+### Feb 2026 — Iteration 17 (this session, v0.5.3-Beta)
+- **Nieuwe rol 'CRM'** met permissions `{users, chat, tickets, messages, feedback, reviews}`; kan reset-mails sturen voor klanten (naast super_admin/beheerder/admin).
+- **Extended user editor modal** in Gebruikers CMS — geen paginanavigatie, alle bewerkingen op één plek. Verplicht: voornaam, achternaam, adres, postcode. Optioneel: plaats, land, bedrijfsnaam, KVK, BTW. E-mail-notificatie naar klant via `/api/admin/users/{email}/notify-updated` (MOCKED Zoho 2-way sync).
+- **Random pear+robot avatar** generator (DiceBear bottts-neutral + PearBlue palet). Iedereen (moderator/beheerder/admin) kan random-avatar toewijzen of terugzetten op initialen.
+- **Direct password change** door super_admin/beheerder via `/api/admin/users/{email}/change-password` + auto-notificatie.
+- **Public password reset endpoints** — `GET /auth/reset-password/verify?token=` + `POST /auth/reset-password/apply` (frontend UI-pagina komt in batch B).
+- **Assignee-picker upgrade** — voornaam + achternaam + rol + profielfoto in alle Berichten/Feedback/Reviews/Portaal aanvragen. AssigneeChip component + `assigneeLabel()` helper.
+- **Auto-lock op afgeronde items** — Berichten en Feedback met status 'done' zijn read-only behalve voor super_admin/admin (badge 🔒 Vergrendeld).
+- **Reviews upgrade**:
+  - Home hero: `FloatingReviewTicker` — reviews vervagen 1-voor-1 in/uit (6s interval, framer-motion blur transition)
+  - Middenpagina: `FeaturedReviews` marquee met naadloze CSS animatie (60s loop, hover-pauze, gradient mask)
+- **Calculator UX**:
+  - "Anders" vrij-tekstveld met info-tooltip (uitleg over flexibele prijzen bij maatwerk)
+  - "Contact" knop verwijderd — offerte-flow gaat exclusief via QuoteFromCalculator modal
+  - `custom_request` veld doorgestuurd via `/api/quote` en meegestuurd in e-mail
+- **Cybersecurity unread badge** — Virusscanner-knop toont rood aantal met `/api/admin/virus-scanner/unread`; verdwijnt na open door `/api/admin/virus-scanner/acknowledge-all`. `counters.virus_scanner` toegevoegd aan `/admin/counters`.
+- **Lang + theme persistence** — LocalStorage + Cookie (365d) + user profile via `PATCH /auth/me/prefs`. Voorkeuren blijven behouden bij inloggen op elk apparaat.
+- **Parallax fix** — fullscreen `cover` watermark op alle pagina's + secondaire textuurlaag (multiply blend).
+- **Backend cleanup** — `RegistrationReview`, `Review`, `PortalRegistration`, `ReviewUpdate` uitgebreid met `assigned_to` en `status` velden.
+
+### Feb 2026 — Iteration 16 (v0.5.2-Beta)
 - **P0 fix — 'Financiën' rol** toegevoegd aan backend `ROLE_PERMS` + `ALL_ROLES` + frontend `ROLE_LABELS`; nieuwe permission `financials` toegewezen aan super_admin/admin/beheerder/financien.
 - **Fernet encryptie** — nieuwe helpers `enc_secret()` / `dec_secret()` op basis van `TOKEN_ENCRYPTION_KEY`. Brevo API-key + IMAP mailbox-wachtwoord worden nu versleuteld opgeslagen (prefix `enc:`).
 - **Mailbox dubbele-sync preventie** — POST `/admin/mailboxes` weigert nu een tweede mailbox met hetzelfde e-mailadres (409).

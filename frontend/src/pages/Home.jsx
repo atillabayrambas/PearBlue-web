@@ -7,7 +7,7 @@ import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
 import { usePageSeo } from "../hooks/usePageSeo";
-import { FeaturedReviewsCompact } from "../components/Reviews";
+import { FeaturedReviews, FeaturedReviewsCompact, FloatingReviewTicker } from "../components/Reviews";
 import { TrustStats } from "../components/TrustStats";
 import { TrustpilotWidget } from "../components/TrustpilotWidget";
 
@@ -38,6 +38,10 @@ export default function Home() {
       <section className="relative overflow-hidden">
         <div className="pear-blob bg-pear-200 w-[420px] h-[420px] top-[-100px] right-[-100px]" />
         <div className="pear-blob bg-pear-100 w-[520px] h-[520px] bottom-[-200px] left-[-140px]" />
+        {/* Floating rotating review pill at top of the hero */}
+        <div className="relative z-10">
+          <FloatingReviewTicker />
+        </div>
         <div className="max-w-7xl mx-auto px-6 lg:px-10 pt-20 pb-24 lg:pt-28 lg:pb-32 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative">
           <motion.div initial="hidden" animate="show" variants={stagger} className="lg:col-span-7">
             <motion.p variants={fadeUp} className="overline mb-5" data-testid="hero-eyebrow">
@@ -102,8 +106,9 @@ export default function Home() {
       {/* PRICING TABLES (3 pakketten) */}
       <PricingTables />
 
-      {/* TRUST STATS + compact reviews strip */}
+      {/* TRUST STATS + auto-scrolling reviews marquee (middle of page, infinite loop) */}
       <TrustStats />
+      <FeaturedReviews />
       <FeaturedReviewsCompact />
 
       {/* TRUSTPILOT WIDGET (optional, activates when BUSINESS_UNIT_ID is set) */}

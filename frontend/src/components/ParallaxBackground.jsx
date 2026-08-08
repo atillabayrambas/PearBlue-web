@@ -45,24 +45,27 @@ export const ParallaxBackground = () => {
       className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
       data-testid="parallax-bg"
     >
+      {/* Main stretched watermark — covers full viewport at low opacity */}
       <div
         ref={ref}
-        className="absolute inset-0 opacity-[0.055] will-change-transform select-none"
+        className="absolute inset-0 opacity-[0.06] will-change-transform select-none"
+        style={{
+          backgroundImage: `url("${LOGO_URL}")`,
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "cover",
+          backgroundPosition: "center center",
+          transformOrigin: "center center",
+        }}
+      />
+      {/* Secondary softer layer for texture depth */}
+      <div
+        className="absolute inset-0 opacity-[0.03] select-none"
         style={{
           backgroundImage: `url("${LOGO_URL}")`,
           backgroundRepeat: "no-repeat",
           backgroundSize: "auto 130vh",
-          backgroundPosition: "center 10%",
-          transformOrigin: "center 30%",
-        }}
-      />
-      <div
-        className="absolute -top-16 right-[-6%] w-[55vw] max-w-[600px] aspect-[3/4] opacity-[0.045] select-none"
-        style={{
-          backgroundImage: `url("${LOGO_URL}")`,
-          backgroundRepeat: "no-repeat",
-          backgroundSize: "contain",
-          backgroundPosition: "top right",
+          backgroundPosition: "center 20%",
+          mixBlendMode: "multiply",
         }}
       />
     </div>

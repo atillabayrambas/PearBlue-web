@@ -155,6 +155,9 @@ function CalculatorModal({ onClose }) {
   const [qty, setQty] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CALC_STORAGE) || "{}"); } catch { return {}; }
   });
+  const [customText, setCustomText] = useState(() => {
+    try { return localStorage.getItem(`${CALC_STORAGE}_anders`) || ""; } catch { return ""; }
+  });
   const setQ = (id, v) => setQty((p) => ({ ...p, [id]: v }));
 
   const totals = useMemo(() => {
@@ -330,6 +333,38 @@ function CalculatorModal({ onClose }) {
               </div>
             );
           })}
+
+          {/* "Anders" — free-text section for custom requests with info tooltip */}
+          <div className="mt-4" data-testid="pricing-calc-anders">
+            <div className="flex items-center gap-2 mb-2">
+              <h4 className="text-xs uppercase tracking-widest text-muted-fg m-0">
+                {lang === "en" ? "Other / custom request" : "Anders (op maat)"}
+              </h4>
+              <div className="relative group" data-testid="pricing-calc-anders-info-wrap">
+                <span
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-pear-100 text-pear-700 text-[10px] font-bold cursor-help"
+                  aria-label="info"
+                  data-testid="pricing-calc-anders-info"
+                >i</span>
+                <div className="absolute left-6 top-1/2 -translate-y-1/2 w-72 rounded-lg bg-slate-900 text-white text-[11px] p-2.5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-20">
+                  {lang === "en"
+                    ? "Describe any bespoke request here — this is not included in the price above because custom work is flexible. It usually increases the final quote depending on scope, complexity and delivery time."
+                    : "Beschrijf hier je maatwerk-wensen — dit staat niet in de bovenstaande prijs omdat maatwerk flexibel is. De uiteindelijke offerte wordt meestal hoger, afhankelijk van omvang, complexiteit en levertijd."}
+                </div>
+              </div>
+            </div>
+            <textarea
+              value={customText}
+              onChange={(e) => { setCustomText(e.target.value); try { localStorage.setItem(`${CALC_STORAGE}_anders`, e.target.value); } catch { /* ignore */ } }}
+              rows={3}
+              maxLength={3000}
+              placeholder={lang === "en"
+                ? "e.g. integrate my existing accounting API, custom 3D hero animation, migration from Squarespace, multilingual TR/AR content, …"
+                : "bijv. koppeling met mijn boekhoudingskoppeling, custom 3D hero-animatie, migratie vanaf Squarespace, meertalige TR/AR content, …"}
+              className="w-full rounded-lg border border-app bg-white dark:bg-slate-800 text-strong px-3 py-2 text-sm resize-y"
+              data-testid="pricing-calc-anders-text"
+            />
+          </div>
         </div>
 
         {/* Combined totals footer — 3 stacked blocks: One-off / Monthly / Hourly with BTW */}
@@ -380,9 +415,6 @@ function CalculatorModal({ onClose }) {
             <button type="button" onClick={shareLink} className="btn-secondary" data-testid="pricing-calc-share">
               <Share2 className="h-4 w-4" /> {lang === "en" ? "Share" : "Delen"}
             </button>
-            <Link to="/contact" className="btn-secondary hidden sm:inline-flex" data-testid="pricing-calc-plain-contact">
-              {lang === "en" ? "Contact" : "Contact"}
-            </Link>
             <button
               type="button"
               onClick={() => setOpenQuote(true)}
@@ -406,6 +438,7 @@ function CalculatorModal({ onClose }) {
           onClose={() => setOpenQuote(false)}
           totals={totals}
           lang={lang}
+          customText={customText}
         />
       )}
     </div>
@@ -415,7 +448,7 @@ function CalculatorModal({ onClose }) {
 // -----------------------------------------------------------------------------
 // Quote form modal — pre-fills wishlist + adds a "Sfeer & verhaal" story field
 // -----------------------------------------------------------------------------
-function QuoteFromCalculator({ onClose, totals, lang }) {
+function QuoteFromCalculator({ onClose, totals, lang, customText }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
@@ -440,6 +473,7 @@ function QuoteFromCalculator({ onClose, totals, lang }) {
         services: Array.from(new Set(totals.chosen.map((c) => SERVICE_OF_CAT[c.cat] || "web"))),
         description: story || (lang === "en" ? "Quote request from calculator" : "Offerte-aanvraag via calculator"),
         story,
+        custom_request: customText || undefined,
         wishlist_items: totals.chosen,
         wishlist_totals: {
           oneOff: Math.round(totals.combined.oneOff * 100) / 100,

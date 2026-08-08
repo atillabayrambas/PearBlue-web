@@ -139,6 +139,7 @@ class QuoteRequest(BaseModel):
     wishlist_items: Optional[List[Dict[str, Any]]] = None
     wishlist_totals: Optional[Dict[str, Any]] = None
     story: Optional[str] = None
+    custom_request: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -154,6 +155,7 @@ class QuoteCreate(BaseModel):
     wishlist_items: Optional[List[Dict[str, Any]]] = Field(None, description="[{id,label,qty,unit,price}]")
     wishlist_totals: Optional[Dict[str, Any]] = None
     story: Optional[str] = Field(None, max_length=5000)
+    custom_request: Optional[str] = Field(None, max_length=5000)
 
 
 class Project(BaseModel):
@@ -227,6 +229,7 @@ class PortalRegistration(BaseModel):
     language: Optional[str] = "nl"
     status: str = "pending"  # pending | approved | rejected
     admin_note: Optional[str] = None
+    assigned_to: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reviewed_at: Optional[datetime] = None
 
@@ -243,6 +246,7 @@ class PortalRegistrationCreate(BaseModel):
 class RegistrationReview(BaseModel):
     status: str = Field(..., pattern="^(approved|rejected|pending)$")
     admin_note: Optional[str] = Field(None, max_length=1000)
+    assigned_to: Optional[str] = None
 
 
 class Review(BaseModel):
@@ -256,6 +260,8 @@ class Review(BaseModel):
     quote: str
     approved: bool = False
     featured: bool = False
+    assigned_to: Optional[str] = None
+    status: Optional[str] = "new"  # new | in_progress | done
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -270,6 +276,8 @@ class ReviewCreate(BaseModel):
 class ReviewUpdate(BaseModel):
     approved: Optional[bool] = None
     featured: Optional[bool] = None
+    assigned_to: Optional[str] = None
+    status: Optional[str] = Field(None, pattern="^(new|in_progress|done)$")
 
 
 # ---------- Auth helpers ----------
@@ -316,10 +324,11 @@ ROLE_ANALIST = "analist"
 ROLE_MODERATOR = "moderator"
 ROLE_CHAT_SUPPORT = "chat_support"
 ROLE_FINANCIEN = "financien"
+ROLE_CRM = "crm"
 ROLE_GEBRUIKER = "gebruiker"
 
-ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_FINANCIEN, ROLE_GEBRUIKER]
-ROLES_WITH_CMS_ACCESS = {"admin", ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_FINANCIEN}
+ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_FINANCIEN, ROLE_CRM, ROLE_GEBRUIKER]
+ROLES_WITH_CMS_ACCESS = {"admin", ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_FINANCIEN, ROLE_CRM}
 
 ROLE_PERMS = {
     ROLE_SUPER_ADMIN: {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing", "financials"},
@@ -329,6 +338,7 @@ ROLE_PERMS = {
     ROLE_MODERATOR: {"content", "portfolio", "reviews", "messages", "feedback"},
     ROLE_CHAT_SUPPORT: {"chat", "tickets", "messages"},
     ROLE_FINANCIEN: {"financials", "analytics"},
+    ROLE_CRM: {"users", "chat", "tickets", "messages", "feedback", "reviews"},
     ROLE_GEBRUIKER: set(),
 }
 
@@ -547,6 +557,7 @@ async def create_quote(payload: QuoteCreate):
                 wishlist_lines.append(f"Eindtotaal (incl. 21% btw): €{t.get('grandTotal')}")
 
         story_block = f"\n\n--- Sfeer & verhaal van de website ---\n{payload.story}" if payload.story else ""
+        custom_block = f"\n\n--- Anders / maatwerk-verzoek ---\n{payload.custom_request}" if payload.custom_request else ""
 
         contact_like = ContactCreate(
             name=payload.name,
@@ -557,6 +568,7 @@ async def create_quote(payload: QuoteCreate):
                 f"Pagina's: {payload.pages}\nBudget: {payload.budget}\nDiensten: {', '.join(payload.services)}\n\n"
                 f"{payload.description or ''}"
                 f"{story_block}"
+                f"{custom_block}"
                 + ("\n" + "\n".join(wishlist_lines) if wishlist_lines else "")
             ),
             language=payload.language,
@@ -1071,6 +1083,8 @@ async def review_registration(reg_id: str, payload: RegistrationReview, current=
     updates = {"status": payload.status, "reviewed_at": now}
     if payload.admin_note is not None:
         updates["admin_note"] = payload.admin_note
+    if payload.assigned_to is not None:
+        updates["assigned_to"] = payload.assigned_to or None
     result = await db.portal_registrations.update_one({"id": reg_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Registration not found")
@@ -1554,6 +1568,7 @@ async def cms_counters(current=Depends(require_admin)):
         "feedback": feedback_new,
         "handoffs": handoffs_pending,
         "cybersecurity": cybersec_new_24h,
+        "virus_scanner": await db.virus_scans.count_documents({"acknowledged": {"$ne": True}}),
     }
 
 
@@ -1606,7 +1621,7 @@ async def delete_all_spam(current=Depends(require_permission("messages"))):
 
 
 # ---- Assignees (users assignable to items) ----
-_ASSIGNABLE_ROLES = {"super_admin", "admin", "beheerder", "moderator", "chat_support"}
+_ASSIGNABLE_ROLES = {"super_admin", "admin", "beheerder", "moderator", "chat_support", "crm"}
 
 
 @api_router.get("/admin/assignees")
@@ -1616,7 +1631,14 @@ async def list_assignees(current=Depends(require_admin)):
         {"_id": 0, "password_hash": 0},
     ).to_list(200)
     return sorted(
-        [{"email": a.get("email"), "display_name": a.get("display_name"), "role": a.get("role", "admin")} for a in admins if a.get("email")],
+        [{
+            "email": a.get("email"),
+            "display_name": a.get("display_name"),
+            "first_name": a.get("first_name") or "",
+            "last_name": a.get("last_name") or "",
+            "role": a.get("role", "admin"),
+            "profile_picture": a.get("profile_picture") or "",
+        } for a in admins if a.get("email")],
         key=lambda x: x["email"],
     )
 
@@ -1665,6 +1687,27 @@ async def public_changelog():
     v1.0 will be the official launch, dropping the -Beta suffix.
     """
     entries = [
+        {
+            "version": "0.5.3-Beta",
+            "date": "2026-02-08",
+            "type": "feature",
+            "highlights": [
+                "Nieuwe rol 'CRM' (Customer Relationship Manager) — mag klantgegevens bewerken + reset-mails sturen",
+                "Uitgebreide gebruiker-bewerken modal in CMS (voornaam, achternaam, adres, postcode, plaats, land, bedrijf, KVK, BTW)",
+                "Random pear+robot profielfoto generator (DiceBear bottts + PearBlue palet)",
+                "Direct wachtwoord wijzigen door super_admin/beheerder + notificatie-mail naar klant",
+                "Wachtwoord reset via publieke `/auth/reset-password/verify` + `/auth/reset-password/apply` endpoints",
+                "Assignee-picker met voornaam + achternaam + rol + profielfoto voor Berichten, Feedback, Klantreviews en Portaal aanvragen",
+                "Automatische lock op berichten/feedback zodra status 'afgerond' — behalve super_admin/admin",
+                "Homepage: nieuwe reviews vervagen 1-voor-1 in/uit als drijvende pil bovenaan de hero",
+                "Homepage: middelste reviews-sectie automatisch oneindig scrollend (marquee) met hover-pauze",
+                "Calculator: 'Anders' vrij-tekstveld met info-tooltip (uitleg over flexibele prijs)",
+                "Calculator: 'Contact' knop verwijderd — voer alles via het offerte-formulier",
+                "Cybersecurity: 'Virusscanner openen' knop met unread-badge (verdwijnt na openen)",
+                "Taal + thema-voorkeuren persistent in cookies + localStorage + user profile (`/auth/me/prefs`)",
+                "Parallax logo: fullscreen watermark op alle pagina's + secondaire textuurlaag",
+            ],
+        },
         {
             "version": "0.5.2-Beta",
             "date": "2026-02-08",
@@ -2035,8 +2078,8 @@ async def user_details(email: str, current=Depends(require_permission("users")))
 
 @api_router.put("/admin/users/{email}/details")
 async def update_user_details(email: str, payload: UserDetailsUpdate, current=Depends(require_permission("users"))):
-    # Only super_admin / admin / beheerder can edit
-    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+    # Only super_admin / admin / beheerder / CRM can edit user profile details
+    if current.get("role") not in {"super_admin", "admin", "beheerder", "crm"}:
         raise HTTPException(403, "Onvoldoende rechten")
     email_l = email.lower().strip()
     upd = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
@@ -2050,6 +2093,9 @@ async def update_user_details(email: str, payload: UserDetailsUpdate, current=De
 
 @api_router.post("/admin/users/{email}/reset-password")
 async def send_password_reset(email: str, current=Depends(require_admin)):
+    # CRM + super_admin + beheerder + admin can send reset emails
+    if current.get("role") not in {"super_admin", "admin", "beheerder", "crm"}:
+        raise HTTPException(403, "Onvoldoende rechten")
     email_l = email.lower().strip()
     doc = await db.admins.find_one({"email": email_l}, {"_id": 0})
     if not doc:
@@ -2060,8 +2106,8 @@ async def send_password_reset(email: str, current=Depends(require_admin)):
         os.environ.get("JWT_SECRET", "dev-secret"),
         algorithm="HS256",
     )
-    reset_url = f"https://pearblue.nl/admin/reset-password?token={token}"
-    # NOTE: MOCKED — email is queued via Resend but the /admin/reset-password page is not built yet.
+    frontend = os.environ.get("FRONTEND_URL", "https://pearblue.nl")
+    reset_url = f"{frontend}/admin/reset-password?token={token}"
     try:
         await _send_email(
             to=[email_l],
@@ -2070,7 +2116,153 @@ async def send_password_reset(email: str, current=Depends(require_admin)):
         )
     except Exception as e:
         logger.warning(f"Reset mail failed: {e}")
-    return {"status": "sent", "email": email_l, "note": "Reset URL page is MOCKED — token verifies correctly on backend"}
+    return {"status": "sent", "email": email_l, "reset_url": reset_url}
+
+
+# ---- Public: verify + apply a password reset token ----
+class PasswordResetApply(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
+@api_router.get("/auth/reset-password/verify")
+async def verify_reset_token(token: str):
+    try:
+        payload = jwt.decode(token, os.environ.get("JWT_SECRET", "dev-secret"), algorithms=["HS256"])
+        if payload.get("purpose") != "reset":
+            raise HTTPException(400, "Ongeldig token")
+        return {"valid": True, "email": payload.get("sub")}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(400, "Token verlopen")
+    except jwt.InvalidTokenError:
+        raise HTTPException(400, "Ongeldig token")
+
+
+@api_router.post("/auth/reset-password/apply")
+async def apply_reset_token(payload: PasswordResetApply):
+    try:
+        decoded = jwt.decode(payload.token, os.environ.get("JWT_SECRET", "dev-secret"), algorithms=["HS256"])
+        if decoded.get("purpose") != "reset":
+            raise HTTPException(400, "Ongeldig token")
+        email_l = decoded.get("sub")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(400, "Token verlopen")
+    except jwt.InvalidTokenError:
+        raise HTTPException(400, "Ongeldig token")
+    new_hash = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    res = await db.admins.update_one({"email": email_l}, {"$set": {"password_hash": new_hash, "password_updated_at": datetime.now(timezone.utc).isoformat()}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Gebruiker niet gevonden")
+    return {"status": "updated", "email": email_l}
+
+
+# ---- Admin: directly change a user's password (super_admin + beheerder only) ----
+class AdminChangePassword(BaseModel):
+    new_password: str = Field(..., min_length=8, max_length=200)
+    send_notification: bool = True
+
+
+@api_router.post("/admin/users/{email}/change-password")
+async def admin_change_password(email: str, payload: AdminChangePassword, current=Depends(require_admin)):
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen super_admin of beheerder mag wachtwoorden direct wijzigen")
+    email_l = email.lower().strip()
+    doc = await db.admins.find_one({"email": email_l})
+    if not doc:
+        raise HTTPException(404, "Gebruiker niet gevonden")
+    new_hash = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    await db.admins.update_one(
+        {"email": email_l},
+        {"$set": {"password_hash": new_hash, "password_updated_at": datetime.now(timezone.utc).isoformat(), "password_changed_by": current.get("email")}},
+    )
+    if payload.send_notification and RESEND_API_KEY:
+        try:
+            await _send_email(
+                to=[email_l],
+                subject="Je PearBlue wachtwoord is gewijzigd",
+                html=(
+                    f"<p>Beste,</p>"
+                    f"<p>Je PearBlue wachtwoord is zojuist gewijzigd door {current.get('email')}. "
+                    f"Log opnieuw in met je nieuwe wachtwoord.</p>"
+                    f"<p>Herken je deze actie niet? Neem direct contact op via <a href=\"mailto:info@pearblue.nl\">info@pearblue.nl</a>.</p>"
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"Password change notify failed: {e}")
+    return {"status": "updated", "email": email_l, "notified": bool(payload.send_notification and RESEND_API_KEY)}
+
+
+# ---- User self-preferences (lang + theme) ----
+class UserPrefs(BaseModel):
+    lang: Optional[str] = Field(None, pattern="^(nl|en)$")
+    theme_mode: Optional[str] = Field(None, pattern="^(light|dark|system)$")
+
+
+@api_router.patch("/auth/me/prefs")
+async def update_my_prefs(payload: UserPrefs, current=Depends(require_admin)):
+    email_l = (current.get("email") or "").lower().strip()
+    if not email_l:
+        raise HTTPException(400, "Geen e-mail in token")
+    upd = {}
+    if payload.lang: upd["pref_lang"] = payload.lang
+    if payload.theme_mode: upd["pref_theme"] = payload.theme_mode
+    if not upd:
+        return {"status": "noop"}
+    upd["prefs_updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.admins.update_one({"email": email_l}, {"$set": upd}, upsert=False)
+    return {"status": "saved", **upd}
+
+
+@api_router.get("/auth/me/prefs")
+async def get_my_prefs(current=Depends(require_admin)):
+    email_l = (current.get("email") or "").lower().strip()
+    doc = await db.admins.find_one({"email": email_l}, {"_id": 0, "pref_lang": 1, "pref_theme": 1}) or {}
+    return {"lang": doc.get("pref_lang"), "theme_mode": doc.get("pref_theme")}
+
+
+# ---- Notify user by email after their profile/details change ----
+@api_router.post("/admin/users/{email}/notify-updated")
+async def notify_user_updated(email: str, current=Depends(require_admin)):
+    if current.get("role") not in {"super_admin", "admin", "beheerder", "crm"}:
+        raise HTTPException(403, "Onvoldoende rechten")
+    email_l = email.lower().strip()
+    doc = await db.admins.find_one({"email": email_l})
+    if not doc:
+        raise HTTPException(404, "Gebruiker niet gevonden")
+    if RESEND_API_KEY:
+        try:
+            await _send_email(
+                to=[email_l],
+                subject="Je PearBlue accountgegevens zijn bijgewerkt",
+                html=(
+                    "<p>Beste,</p>"
+                    "<p>Je accountgegevens (naam, adres of bedrijfsinformatie) zijn zojuist bijgewerkt door PearBlue. "
+                    "Log in op je portaal om je bijgewerkte gegevens te bekijken.</p>"
+                    "<p>Herken je deze wijziging niet? Neem contact op via <a href=\"mailto:info@pearblue.nl\">info@pearblue.nl</a>.</p>"
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"Notify-updated mail failed: {e}")
+    return {"status": "sent", "email": email_l}
+
+
+# ---- Virus scanner: unread/quarantined counter for the sidebar badge ----
+@api_router.get("/admin/virus-scanner/unread")
+async def virus_unread(current=Depends(require_permission("cybersecurity"))):
+    """Count of virus events not yet acknowledged (whether quarantined or not)."""
+    count = await db.virus_scans.count_documents({"acknowledged": {"$ne": True}})
+    return {"count": count}
+
+
+@api_router.post("/admin/virus-scanner/acknowledge-all")
+async def virus_ack_all(current=Depends(require_permission("cybersecurity"))):
+    """Called when the user opens the virus scanner tab — clears the badge."""
+    res = await db.virus_scans.update_many(
+        {"acknowledged": {"$ne": True}},
+        {"$set": {"acknowledged": True, "acknowledged_at": datetime.now(timezone.utc).isoformat(), "acknowledged_by": current.get("email")}},
+    )
+    return {"acknowledged": res.modified_count}
+
 
 
 # ---------------------------------------------------------------------------

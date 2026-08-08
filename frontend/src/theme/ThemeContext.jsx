@@ -5,12 +5,25 @@ const ThemeContext = createContext({ mode: "system", resolved: "light", setMode:
 
 const getSystemPref = () => (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
+const readCookie = (name) => {
+  try {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch { return null; }
+};
+const writeCookie = (name, value, days = 365) => {
+  try {
+    const exp = new Date(Date.now() + days * 24 * 3600 * 1000).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${exp}; path=/; SameSite=Lax`;
+  } catch { /* ignore */ }
+};
+
 export const ThemeProvider = ({ children }) => {
   const [mode, setModeState] = useState("system");
   const [resolved, setResolved] = useState("light");
 
   useEffect(() => {
-    const stored = localStorage.getItem("pb_theme_mode");
+    const stored = localStorage.getItem("pb_theme_mode") || readCookie("pb_theme_mode");
     if (stored === "light" || stored === "dark" || stored === "system") setModeState(stored);
   }, []);
 
@@ -25,6 +38,17 @@ export const ThemeProvider = ({ children }) => {
     };
     apply();
     localStorage.setItem("pb_theme_mode", mode);
+    writeCookie("pb_theme_mode", mode);
+    // Sync to profile if logged in
+    const token = localStorage.getItem("pb_admin_token");
+    if (token) {
+      const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+      fetch(`${API}/auth/me/prefs`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ theme_mode: mode }),
+      }).catch(() => {});
+    }
 
     if (mode === "system" && window.matchMedia) {
       const mq = window.matchMedia("(prefers-color-scheme: dark)");
