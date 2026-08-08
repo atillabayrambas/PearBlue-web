@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 14 backend + frontend tests. All 9 pytest cases pass. All targeted UI flows (prijslijst 3-tabs, opaque calculator modal with wishlist/share/clear + VAT 21% math, parallax bg on public pages absent on /admin, /changelog with 7 entries incl. 0.7-Beta 'LATEST' badge, About /over-ons renders **bold** as <strong>, CMS Portfolio filter Actief/Gearchiveerd/Alles + Archiveer/Terugplaatsen, Messages sub-tabs Postvak IN/Spam/Archief/Alles with counts + sort Datum/Naam/Prioriteit + msg-select/priority/assignee/mark-spam per row + msg-bulk-delete + msg-delete-all-spam on Spam tab, Feedback assignee dropdown with all admins, Cybersecurity dual charts cs-daily-chart + cs-captcha-chart with OS/Browser/Device/Onbekend enrichment, CMS version alert bar with dismiss + view, sidebar Changelogs link, footer 'PearBlue CMS · v0.7-Beta · 2026 · Changelogs', wishlist localStorage 'pb_calc_wishlist' persists across full page reload) verified. Terms 5.4 still contains '5 revisierondes'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/contact", "issue": "response_model=List[ContactMessage] stripped the new fields (spam/priority/status/assigned_to/notes). Fixed by extending ContactMessage model with those optional fields — otherwise the entire Messages CMS (sub-tabs, priority sort, spam list, assignee) would appear empty. Verified fix live."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14.py",
+    "/app/test_reports/pytest/iter14.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Consider showing the version bar 'Nieuwste' badge also when UI language is EN (currently shows 'LATEST'). Not a bug — behavior follows i18n.",
+    "OPTIONAL: Only 2 assignable admins exist in seeded DB (super_admin admin@pearblue.nl and beheer@multibay.eu). If the product intent is 'roles [super_admin, admin, beheerder, moderator, chat_support]' being demoable, main agent may want to seed one user per role for CMS demo (dropdown will still show >1 user which satisfies the spec)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1764 lines — exceeds the 700-line threshold; consider splitting into modules (auth, contact, cybersec, projects, cms).",
+    "ContactMessage response_model omission was a foot-gun: any new field on the mongo doc that isn't declared on the Pydantic response model silently disappears from GET responses. Consider using dict-return or a wider ContactMessageAdmin model for admin endpoints.",
+    "_PUB_RATE is process-local; not cluster-safe. In tests it also means backend restart is required to reset. Non-blocking for MVP but noted."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (ContactMessage extended with status/priority/assigned_to/notes/spam/spam_reason)",
+    "/app/backend/tests/test_iteration14.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of targeted iteration-14 UI checks"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026!",
+  "seed_data_creation": "Test contacts created with X-Forwarded-For 203.0.113.* to avoid rate-limit collisions; cybersec_blocks entry with parsed UA (Windows/Chrome/Desktop) created and then unblocked at end of test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 14 backend endpoints (/api/changelog, /api/admin/assignees, /api/admin/projects/all, PATCH /api/projects/{id}, /api/telemetry/captcha-verified, /api/admin/cybersecurity/captcha-stats, /api/admin/contact/{id} with spam/priority/status, bulk-delete, delete-all-spam) all working. If retesting the Messages CMS, remember that `list_contacts` now returns the extended fields — thanks to ContactMessage extension. When running the contact-spam tests, always send unique X-Forwarded-For headers to isolate the in-memory rate limiter, or restart backend to clear _PUB_RATE.",
+  "rca_of_the_issue": "Bug: 'GET /api/contact does not expose priority/spam/status/assigned_to fields'. Repro: create contact -> PATCH priority=P1 -> GET /api/contact -> doc.priority is missing. Root cause: response_model=List[ContactMessage] filters out fields not declared on the model; new fields added in iteration 14 were only on the mongo doc, not on the Pydantic model. Mitigation applied: added status/priority/assigned_to/notes/spam/spam_reason as Optional fields on ContactMessage. Verified by rerunning pytest — all 9 tests pass."
+}

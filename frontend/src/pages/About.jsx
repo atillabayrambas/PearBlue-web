@@ -12,6 +12,8 @@ const IMG_NATURE = "https://images.unsplash.com/photo-1547468243-8839e59a7c54?cr
 export default function About() {
   const { t } = useLang();
   usePageSeo({ title: "Over ons", description: "Wij zijn PearBlue: innovatief, duurzaam en betaalbaar. Ontdek onze waarden en werkwijze.", path: "/over-ons" });
+  // Convert **word** → <strong>word</strong> for markdown-lite paragraphs
+  const bold = (s) => s.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-strong font-semibold">$1</strong>');
   const values = [
     { icon: Sparkles, title: t("about.v1_title"), desc: t("about.v1_desc") },
     { icon: Leaf, title: t("about.v2_title"), desc: t("about.v2_desc") },
@@ -29,9 +31,9 @@ export default function About() {
               {t("about.title")}
             </motion.h1>
             <div className="mt-8 space-y-5 text-lg text-muted-fg leading-relaxed max-w-2xl">
-              <p>{t("about.p1")}</p>
-              <p>{t("about.p2")}</p>
-              <p>{t("about.p3")}</p>
+              <p dangerouslySetInnerHTML={{ __html: bold(t("about.p1")) }} />
+              <p dangerouslySetInnerHTML={{ __html: bold(t("about.p2")) }} />
+              <p dangerouslySetInnerHTML={{ __html: bold(t("about.p3")) }} />
             </div>
           </div>
           <div className="lg:col-span-5 grid grid-cols-2 gap-4">

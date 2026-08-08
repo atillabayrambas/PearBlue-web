@@ -43,6 +43,7 @@ const AdminSidebar = () => {
     { to: "/admin/cybersecurity", label: "Cybersecurity", icon: ShieldAlert, testid: "cms-nav-cybersecurity", badge: counters.cybersecurity },
     { to: "/admin/users", label: "Gebruikers & rollen", icon: Users, testid: "cms-nav-users" },
     { to: "/admin/scripts", label: "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
+    { to: "/admin/changelog", label: "Changelogs", icon: Sparkles, testid: "cms-nav-changelog" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
   ];
   return (
@@ -85,9 +86,39 @@ const AdminSidebar = () => {
         <LogOut className="h-4 w-4" /> Uitloggen
       </button>
       <div className="mt-6 pt-4 border-t border-app text-[10px] text-muted-fg text-center">
-        PearBlue CMS · v1.2 · 2026
+        PearBlue CMS · v0.7-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
       </div>
     </aside>
+  );
+};
+
+// CMS-only alert bar when there's a fresh version. Dismissible; auto-hides after 31 days.
+const VersionAlertBar = ({ currentVersion }) => {
+  const key = `pb_cms_ack_${currentVersion}`;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!currentVersion) return;
+    const ack = localStorage.getItem(key);
+    if (!ack) { setShown(true); return; }
+    const dismissedAt = parseInt(ack, 10);
+    const days = (Date.now() - dismissedAt) / (1000 * 60 * 60 * 24);
+    if (days < 31 && ack !== "seen") setShown(false);
+    else setShown(false);
+  }, [currentVersion, key]);
+  const dismiss = () => { localStorage.setItem(key, String(Date.now())); setShown(false); };
+  const markSeen = () => { localStorage.setItem(key, "seen"); setShown(false); };
+  if (!shown || !currentVersion) return null;
+  return (
+    <div className="bg-pear-500 text-white text-sm font-medium mb-4 rounded-2xl flex items-center gap-3 px-4 py-2.5 shadow-lg" data-testid="cms-version-bar">
+      <Sparkles className="h-4 w-4 shrink-0" />
+      <span className="flex-1">Nieuwe versie <strong>v{currentVersion}</strong> is uitgerold — bekijk wat er is veranderd.</span>
+      <Link to="/admin/changelog" onClick={markSeen} className="bg-white/20 hover:bg-white/30 rounded-full px-3 py-1 text-xs" data-testid="cms-version-bar-view">
+        Bekijk changelog
+      </Link>
+      <button onClick={dismiss} className="text-white/80 hover:text-white" aria-label="Sluiten" data-testid="cms-version-bar-close">
+        <XCircle className="h-4 w-4" />
+      </button>
+    </div>
   );
 };
 
@@ -107,12 +138,14 @@ const ProjectsAdmin = () => {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState("active");  // active | archived | all
 
   const load = async () => {
-    const res = await axios.get(`${API}/projects`);
+    // Include archived so admin sees everything
+    const res = await axios.get(`${API}/admin/projects/all`, { headers: authHeader() });
     setItems(res.data || []);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []); // eslint-disable-line
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -128,7 +161,7 @@ const ProjectsAdmin = () => {
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Project verwijderen?")) return;
+    if (!window.confirm("Project definitief verwijderen? Archiveren is meestal veiliger.")) return;
     try {
       await axios.delete(`${API}/projects/${id}`, { headers: authHeader() });
       toast.success("Verwijderd");
@@ -136,11 +169,21 @@ const ProjectsAdmin = () => {
     } catch { toast.error("Verwijderen mislukt"); }
   };
 
+  const archive = async (id, archived) => {
+    try {
+      await axios.patch(`${API}/projects/${id}`, { archived }, { headers: authHeader() });
+      toast.success(archived ? "Gearchiveerd — niet meer zichtbaar op site" : "Terug op site geplaatst");
+      load();
+    } catch { toast.error("Actie mislukt"); }
+  };
+
+  const shown = filter === "all" ? items : filter === "archived" ? items.filter((p) => p.archived) : items.filter((p) => !p.archived);
+
   return (
     <div data-testid="cms-projects">
       <header className="mb-6">
         <h1 className="font-heading text-3xl font-medium text-strong">Portfolio beheren</h1>
-        <p className="text-sm text-muted-fg mt-1">Voeg nieuwe cases toe of verwijder bestaande. Wijzigingen zijn direct zichtbaar op de site.</p>
+        <p className="text-sm text-muted-fg mt-1">Voeg cases toe, archiveer (haalt van site) of verwijder permanent.</p>
       </header>
 
       <form onSubmit={save} className="surface border border-app rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" data-testid="cms-project-form">
@@ -183,20 +226,41 @@ const ProjectsAdmin = () => {
         </div>
       </form>
 
+      <div className="flex items-center gap-2 mb-3 text-sm">
+        {[
+          { key: "active", label: "Actief op site" },
+          { key: "archived", label: "Gearchiveerd" },
+          { key: "all", label: "Alles" },
+        ].map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            data-testid={`cms-project-filter-${f.key}`}
+            className={`px-3 py-1.5 rounded-full border text-xs font-medium ${filter === f.key ? "bg-pear-500 text-white border-pear-500" : "text-strong border-app hover:border-pear-500"}`}
+          >{f.label}</button>
+        ))}
+        <span className="ml-auto text-xs text-muted-fg">Totaal: {items.length} · Actief: {items.filter((p) => !p.archived).length}</span>
+      </div>
+
       <div className="surface border border-app rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-app font-heading font-semibold text-strong">Bestaande projecten ({items.length})</div>
-        {items.length === 0 ? (
-          <div className="p-8 text-center text-muted-fg text-sm">Nog geen projecten toegevoegd via het CMS.</div>
+        <div className="px-6 py-4 border-b border-app font-heading font-semibold text-strong">Projecten ({shown.length})</div>
+        {shown.length === 0 ? (
+          <div className="p-8 text-center text-muted-fg text-sm">Geen projecten in deze weergave.</div>
         ) : (
           <ul className="divide-y divide-app">
-            {items.map((p) => (
-              <li key={p.id} className="p-4 flex items-center gap-4" data-testid={`cms-project-row-${p.id}`}>
+            {shown.map((p) => (
+              <li key={p.id} className={`p-4 flex items-center gap-4 ${p.archived ? "opacity-60" : ""}`} data-testid={`cms-project-row-${p.id}`}>
                 <img src={p.image_url} alt={p.title} className="w-16 h-16 object-cover rounded-lg" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-strong truncate">{p.title}</p>
-                  <p className="text-xs text-muted-fg">{p.tag || p.category}</p>
+                  <p className="font-semibold text-strong truncate">{p.title} {p.archived && <span className="ml-2 text-[10px] uppercase tracking-widest text-amber-600">Gearchiveerd</span>}</p>
+                  <p className="text-xs text-muted-fg truncate">{p.tag || p.category}</p>
                 </div>
                 {p.external_url && <a href={p.external_url} target="_blank" rel="noreferrer" className="text-pear-500 text-sm"><ExternalLink className="h-4 w-4" /></a>}
+                <button
+                  onClick={() => archive(p.id, !p.archived)}
+                  className={`text-xs rounded-full px-3 py-1 border ${p.archived ? "border-emerald-300 text-emerald-600 hover:bg-emerald-50" : "border-amber-300 text-amber-600 hover:bg-amber-50"}`}
+                  data-testid={`cms-project-archive-${p.id}`}
+                >{p.archived ? "Terugplaatsen" : "Archiveren"}</button>
                 <button onClick={() => remove(p.id)} className="text-red-500 hover:text-red-600 p-2" data-testid={`cms-project-delete-${p.id}`}>
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -288,54 +352,176 @@ const MSG_STATUS = [
   { key: "on_hold", label: "Hold", color: "bg-slate-100 text-slate-600" },
   { key: "done", label: "Afgerond", color: "bg-emerald-100 text-emerald-700" },
 ];
+const MSG_PRIORITY = [
+  { key: "Major", label: "Major", color: "bg-red-600 text-white" },
+  { key: "P1", label: "P1", color: "bg-red-500 text-white" },
+  { key: "P2", label: "P2", color: "bg-amber-500 text-white" },
+  { key: "P3", label: "P3", color: "bg-slate-400 text-white" },
+  { key: "P4", label: "P4", color: "bg-slate-300 text-slate-700" },
+];
+const priorityRank = (p) => ({ Major: 0, P1: 1, P2: 2, P3: 3, P4: 4 }[p] ?? 3);
 
 const MessagesAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
+  const [assignees, setAssignees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("inbox");     // inbox | spam | archive | all
+  const [sort, setSort] = useState("date");    // date | name | priority
+  const [selected, setSelected] = useState(new Set());
+
   const load = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API}/contact`, { headers: authHeader() });
+      const [r, a] = await Promise.all([
+        axios.get(`${API}/contact`, { headers: authHeader() }),
+        axios.get(`${API}/admin/assignees`, { headers: authHeader() }),
+      ]);
       setItems(r.data || []);
+      setAssignees(a.data || []);
     } catch { /* ignore */ } finally { setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   const patch = async (id, upd) => {
-    try {
-      await axios.patch(`${API}/admin/contact/${id}`, upd, { headers: authHeader() });
-      load();
-    } catch { toast.error("Update mislukt"); }
+    try { await axios.patch(`${API}/admin/contact/${id}`, upd, { headers: authHeader() }); load(); }
+    catch { toast.error("Update mislukt"); }
   };
   const addNote = async (id, text) => {
     if (!text.trim()) return;
+    try { await axios.post(`${API}/admin/contact/${id}/notes`, { text }, { headers: authHeader() }); load(); toast.success("Notitie toegevoegd"); }
+    catch { toast.error("Notitie mislukt"); }
+  };
+  const bulkDelete = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (!window.confirm(`${ids.length} bericht(en) definitief verwijderen?`)) return;
     try {
-      await axios.post(`${API}/admin/contact/${id}/notes`, { text }, { headers: authHeader() });
+      await axios.post(`${API}/admin/contact/bulk-delete`, { ids }, { headers: authHeader() });
+      toast.success(`${ids.length} verwijderd`);
+      setSelected(new Set());
       load();
-      toast.success("Notitie toegevoegd");
-    } catch { toast.error("Notitie mislukt"); }
+    } catch { toast.error("Bulk-verwijderen mislukt"); }
+  };
+  const deleteAllSpam = async () => {
+    if (!window.confirm("ALLE als spam gemarkeerde berichten definitief verwijderen?")) return;
+    try {
+      const r = await axios.post(`${API}/admin/contact/delete-all-spam`, {}, { headers: authHeader() });
+      toast.success(`${r.data?.deleted || 0} spam-berichten verwijderd`);
+      setSelected(new Set());
+      load();
+    } catch { toast.error("Actie mislukt"); }
+  };
+  const toggleSel = (id) => setSelected((prev) => {
+    const s = new Set(prev);
+    if (s.has(id)) s.delete(id); else s.add(id);
+    return s;
+  });
+
+  // Sub-tab filtering
+  const inTab = (m) => {
+    if (tab === "spam") return m.spam === true;
+    if (tab === "archive") return m.status === "archived";
+    if (tab === "inbox") return !m.spam && m.status !== "archived";
+    return true; // all
+  };
+  const filtered = items.filter(inTab);
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === "name") return (a.name || "").localeCompare(b.name || "");
+    if (sort === "priority") return priorityRank(a.priority) - priorityRank(b.priority);
+    return (b.created_at || "").localeCompare(a.created_at || "");
+  });
+
+  const counts = {
+    inbox: items.filter((m) => !m.spam && m.status !== "archived").length,
+    spam: items.filter((m) => m.spam).length,
+    archive: items.filter((m) => m.status === "archived").length,
+    all: items.length,
   };
 
   return (
     <div data-testid="cms-messages">
-      <header className="mb-6">
-        <h1 className="font-heading text-3xl font-medium text-strong">Contact berichten</h1>
-        <p className="text-sm text-muted-fg mt-1">Beheer aanvragen — status, toewijzing en notities.</p>
+      <header className="mb-4">
+        <h1 className="font-heading text-3xl font-medium text-strong">Berichten</h1>
+        <p className="text-sm text-muted-fg mt-1">Beheer aanvragen — postvak, spam en archief.</p>
       </header>
-      {loading ? <p className="text-muted-fg">Laden…</p> : items.length === 0 ? (
-        <div className="surface border border-app rounded-2xl p-10 text-center text-muted-fg">Nog geen berichten ontvangen.</div>
+
+      {/* Sub-tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-app mb-4" data-testid="msg-subtabs">
+        {[
+          { key: "inbox", label: "Postvak IN" },
+          { key: "spam", label: "Spam" },
+          { key: "archive", label: "Archief" },
+          { key: "all", label: "Alles" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => { setTab(t.key); setSelected(new Set()); }}
+            data-testid={`msg-tab-${t.key}`}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-2 ${
+              tab === t.key ? "border-pear-500 text-pear-600" : "border-transparent text-muted-fg hover:text-strong"
+            }`}
+          >
+            {t.label}
+            <span className="text-[10px] rounded-full bg-app px-1.5 py-0.5">{counts[t.key]}</span>
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2 text-xs">
+          <span className="text-muted-fg">Sorteer op:</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="text-xs rounded-lg border border-app bg-app px-2 py-1" data-testid="msg-sort">
+            <option value="date">Datum</option>
+            <option value="name">Naam</option>
+            <option value="priority">Prioriteit</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Bulk toolbar */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <button
+          disabled={!selected.size}
+          onClick={bulkDelete}
+          className="text-xs px-3 py-1.5 rounded-full border border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          data-testid="msg-bulk-delete"
+        >Verwijder geselecteerde ({selected.size})</button>
+        {tab === "spam" && (
+          <button
+            onClick={deleteAllSpam}
+            className="text-xs px-3 py-1.5 rounded-full border border-red-300 text-red-500 hover:bg-red-50"
+            data-testid="msg-delete-all-spam"
+          >Verwijder alle spam</button>
+        )}
+        <button onClick={load} className="ml-auto text-xs text-muted-fg hover:text-pear-500" data-testid="msg-refresh">↻ Vernieuwen</button>
+      </div>
+
+      {loading ? <p className="text-muted-fg">Laden…</p> : sorted.length === 0 ? (
+        <div className="surface border border-app rounded-2xl p-10 text-center text-muted-fg">Geen berichten in deze weergave.</div>
       ) : (
         <div className="surface border border-app rounded-2xl divide-y divide-app">
-          {items.map((m, i) => {
+          {sorted.map((m, i) => {
             const st = MSG_STATUS.find((s) => s.key === (m.status || "new")) || MSG_STATUS[0];
+            const pr = MSG_PRIORITY.find((p) => p.key === (m.priority || "P3")) || MSG_PRIORITY[3];
+            const isSel = selected.has(m.id);
             return (
               <details key={m.id || i} className="group" data-testid={`cms-message-${i}`}>
-                <summary className="p-4 cursor-pointer flex items-center justify-between gap-4 flex-wrap">
+                <summary className="p-3 cursor-pointer flex items-start gap-3 flex-wrap">
+                  <input
+                    type="checkbox"
+                    onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
+                    checked={isSel}
+                    onChange={() => {}}
+                    className="mt-1 accent-pear-500 h-4 w-4"
+                    aria-label="Selecteer"
+                    data-testid={`msg-select-${m.id || i}`}
+                  />
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-strong truncate">{m.name} <span className="text-muted-fg font-normal">— {m.email}</span></p>
+                    <p className="font-semibold text-strong truncate">
+                      {m.name} <span className="text-muted-fg font-normal">— {m.email}</span>
+                      {m.spam && <span className="ml-2 text-[10px] uppercase text-red-500 bg-red-100 rounded-full px-2 py-0.5">Spam</span>}
+                    </p>
                     <p className="text-xs text-muted-fg truncate">{m.subject || "(geen onderwerp)"} · {new Date(m.created_at).toLocaleString("nl-NL")}</p>
                   </div>
+                  <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${pr.color}`}>{pr.label}</span>
                   <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${st.color}`}>{st.label}</span>
                   {m.assigned_to && <span className="text-[10px] text-muted-fg">@ {m.assigned_to}</span>}
                 </summary>
@@ -351,13 +537,44 @@ const MessagesAdmin = () => {
                       data-testid={`msg-status-${m.id || i}`}
                     >
                       {MSG_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                      <option value="archived">Gearchiveerd</option>
                     </select>
-                    <button
-                      type="button"
-                      onClick={() => patch(m.id, { assigned_to: m.assigned_to === user?.email ? null : user?.email })}
-                      className="text-xs rounded-full px-3 py-1 border border-app hover:border-pear-500"
-                      data-testid={`msg-assign-${m.id || i}`}
-                    >{m.assigned_to === user?.email ? "Loskoppelen" : "Wijs aan mij toe"}</button>
+                    <select
+                      value={m.priority || "P3"}
+                      onChange={(e) => patch(m.id, { priority: e.target.value })}
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      data-testid={`msg-priority-${m.id || i}`}
+                    >
+                      {MSG_PRIORITY.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                    </select>
+                    <select
+                      value={m.assigned_to || ""}
+                      onChange={(e) => patch(m.id, { assigned_to: e.target.value || null })}
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      data-testid={`msg-assignee-${m.id || i}`}
+                    >
+                      <option value="">— Niet toegewezen —</option>
+                      {assignees.map((a) => (
+                        <option key={a.email} value={a.email}>{a.display_name || a.email} · {a.role}</option>
+                      ))}
+                      {user?.email && !assignees.find((a) => a.email === user.email) && (
+                        <option value={user.email}>{user.email} · (mij)</option>
+                      )}
+                    </select>
+                    {!m.spam && (
+                      <button
+                        onClick={() => patch(m.id, { spam: true })}
+                        className="text-xs rounded-full px-3 py-1 border border-red-200 text-red-500 hover:bg-red-50"
+                        data-testid={`msg-mark-spam-${m.id || i}`}
+                      >Markeer als spam</button>
+                    )}
+                    {m.spam && (
+                      <button
+                        onClick={() => patch(m.id, { spam: false })}
+                        className="text-xs rounded-full px-3 py-1 border border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                        data-testid={`msg-unmark-spam-${m.id || i}`}
+                      >Geen spam</button>
+                    )}
                     <a
                       href={`mailto:${m.email}?subject=Re: ${encodeURIComponent(m.subject || 'PearBlue')}`}
                       className="text-xs rounded-full px-3 py-1 border border-pear-500 text-pear-500 hover:bg-pear-50"
@@ -942,18 +1159,21 @@ const CybersecurityAdmin = () => {
   const { authHeader } = useAuth();
   const [blocks, setBlocks] = useState([]);
   const [stats, setStats] = useState(null);
+  const [captchaStats, setCaptchaStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
 
   const load = async () => {
     setLoading(true);
     try {
-      const [b, s] = await Promise.all([
+      const [b, s, c] = await Promise.all([
         axios.get(`${API}/admin/cybersecurity/blocks`, { headers: authHeader() }),
         axios.get(`${API}/admin/cybersecurity/stats`, { headers: authHeader() }),
+        axios.get(`${API}/admin/cybersecurity/captcha-stats`, { headers: authHeader() }).catch(() => ({ data: null })),
       ]);
       setBlocks(b.data || []);
       setStats(s.data || null);
+      setCaptchaStats(c.data || null);
     } catch (e) {
       toast.error("Kon cybersecurity-data niet laden");
     } finally { setLoading(false); }
@@ -1033,6 +1253,27 @@ const CybersecurityAdmin = () => {
         </div>
       )}
 
+      {captchaStats?.daily?.length > 0 && (
+        <div className="rounded-2xl border border-app p-5 surface" data-testid="cs-captcha-chart">
+          <div className="text-xs uppercase tracking-widest text-muted-fg mb-1">Geverifieerde captchas (30 dagen)</div>
+          <div className="font-heading text-2xl font-medium text-strong mb-3" data-testid="cs-captcha-total">{captchaStats.total_30d}</div>
+          <div className="flex items-end gap-1.5 h-24">
+            {captchaStats.daily.map((d) => {
+              const max = captchaStats.daily.reduce((m, x) => Math.max(m, x.count), 1);
+              return (
+                <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="w-full bg-emerald-500 rounded-t"
+                    style={{ height: `${(d.count / max) * 100}%`, minHeight: d.count > 0 ? "2px" : "0" }}
+                    title={`${d.day}: ${d.count} captchas`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Filter */}
       <div className="flex items-center gap-2 text-sm">
         {[
@@ -1058,10 +1299,10 @@ const CybersecurityAdmin = () => {
           <table className="w-full text-sm">
             <thead className="bg-pear-50/50 dark:bg-pear-500/5 text-left">
               <tr>
-                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wie (IP)</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wie (IP · Land)</th>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wat</th>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Waar</th>
-                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Hoe</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Hoe (OS · Browser · Device)</th>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wanneer</th>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Status</th>
                 <th className="px-3 py-2" />
@@ -1074,13 +1315,18 @@ const CybersecurityAdmin = () => {
                 <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-fg">Geen geblokkeerde verzoeken.</td></tr>
               ) : shown.map((b) => (
                 <tr key={b.id} className="border-t border-app/50" data-testid={`cs-row-${b.id}`}>
-                  <td className="px-3 py-2 font-mono text-xs">
-                    {b.ip}
-                    {b.ip_manually_blocked && <span className="ml-1 inline-block px-1 py-0.5 text-[9px] rounded bg-red-100 text-red-600">manual</span>}
+                  <td className="px-3 py-2 text-xs">
+                    <div className="font-mono">{b.ip}</div>
+                    <div className="text-[10px] text-muted-fg">{b.country || "Onbekend"}</div>
+                    {b.ip_manually_blocked && <span className="inline-block mt-1 px-1 py-0.5 text-[9px] rounded bg-red-100 text-red-600">manual</span>}
                   </td>
                   <td className="px-3 py-2 text-strong">{REASON_LABEL[b.reason] || b.reason}</td>
                   <td className="px-3 py-2 font-mono text-xs text-muted-fg">{b.endpoint}</td>
-                  <td className="px-3 py-2 text-xs text-muted-fg max-w-[220px] truncate" title={b.user_agent}>{b.user_agent}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <div className="text-strong">{b.os || "?"} · {b.browser || "?"}</div>
+                    <div className="text-[10px] text-muted-fg">{b.device || "?"}</div>
+                    <div className="text-[10px] text-muted-fg truncate max-w-[220px]" title={b.user_agent}>{b.user_agent}</div>
+                  </td>
                   <td className="px-3 py-2 text-xs text-muted-fg whitespace-nowrap">{new Date(b.created_at).toLocaleString("nl-NL")}</td>
                   <td className="px-3 py-2">
                     {b.unblocked ? (
@@ -1127,6 +1373,7 @@ const FEEDBACK_STATUS = [
 const FeedbackAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
+  const [assignees, setAssignees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("open");
   const [openItem, setOpenItem] = useState(null);
@@ -1134,8 +1381,12 @@ const FeedbackAdmin = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API}/admin/feedback`, { headers: authHeader() });
+      const [r, a] = await Promise.all([
+        axios.get(`${API}/admin/feedback`, { headers: authHeader() }),
+        axios.get(`${API}/admin/assignees`, { headers: authHeader() }),
+      ]);
       setItems(r.data || []);
+      setAssignees(a.data || []);
     } catch { toast.error("Kon feedback niet laden"); } finally { setLoading(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -1210,7 +1461,7 @@ const FeedbackAdmin = () => {
                           <p className="text-sm text-strong mt-1 whitespace-pre-wrap">{f.message}</p>
                           {f.assigned_to && <p className="text-[10px] text-muted-fg mt-1">Toegewezen aan: {f.assigned_to}</p>}
                         </div>
-                        <div className="flex flex-col gap-1.5 shrink-0">
+                        <div className="flex flex-col gap-1.5 shrink-0 min-w-[180px]">
                           <select
                             value={f.status || "new"}
                             onChange={(e) => setStatus(f.id, e.target.value)}
@@ -1219,11 +1470,21 @@ const FeedbackAdmin = () => {
                           >
                             {FEEDBACK_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                           </select>
-                          <button
-                            onClick={() => assign(f.id, f.assigned_to === user?.email ? null : user?.email)}
-                            className="text-xs rounded-full px-2 py-1 border border-app hover:border-pear-500"
-                            data-testid={`fb-assign-me-${f.id}`}
-                          >{f.assigned_to === user?.email ? "Loskoppelen" : "Wijs aan mij toe"}</button>
+                          <select
+                            value={f.assigned_to || ""}
+                            onChange={(e) => assign(f.id, e.target.value || null)}
+                            className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                            data-testid={`fb-assignee-${f.id}`}
+                          >
+                            <option value="">— Niet toegewezen —</option>
+                            {assignees.map((a) => (
+                              <option key={a.email} value={a.email}>{a.display_name || a.email} · {a.role}</option>
+                            ))}
+                            {/* Include current user if not in list */}
+                            {user?.email && !assignees.find((a) => a.email === user.email) && (
+                              <option value={user.email}>{user.email} · (mij)</option>
+                            )}
+                          </select>
                           <button
                             onClick={() => setOpenItem(f)}
                             className="text-xs rounded-full px-2 py-1 border border-app hover:border-pear-500"
@@ -1272,19 +1533,59 @@ const FeedbackAdmin = () => {
   );
 };
 
-const AdminLayout = ({ children }) => (
-  <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-    <div className="mb-6 text-sm">
-      <Link to="/" className="text-muted-fg hover:text-pear-500">← Terug naar site</Link>
+// ------------------------------------------------------------
+// Changelog admin — reads public /api/changelog
+// ------------------------------------------------------------
+const ChangelogAdmin = () => {
+  const [data, setData] = useState({ entries: [], current: null });
+  useEffect(() => { axios.get(`${API}/changelog`).then((r) => setData(r.data || { entries: [] })).catch(() => {}); }, []);
+  return (
+    <div data-testid="cms-changelog">
+      <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+        <Sparkles className="h-6 w-6 text-pear-500" /> Changelog / Versies
+      </h2>
+      <p className="text-sm text-muted-fg mt-1 mb-6">Alle uitgebrachte versies van het platform. Huidige versie: <strong>v{data.current || "?"}</strong></p>
+      <div className="relative pl-6">
+        <div className="absolute left-2 top-1 bottom-1 w-px bg-app" />
+        {data.entries.map((e, i) => (
+          <div key={e.version} className="relative mb-8" data-testid={`cms-changelog-${e.version}`}>
+            <div className={`absolute -left-6 top-1.5 w-3 h-3 rounded-full ${i === 0 ? "bg-pear-500 ring-4 ring-pear-500/20" : "bg-app border-2 border-pear-300"}`} />
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <h3 className="font-heading text-xl font-semibold text-strong">v{e.version}</h3>
+              <span className="text-xs text-muted-fg">{new Date(e.date).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}</span>
+            </div>
+            <ul className="mt-2 space-y-1 text-sm text-strong/90 list-disc pl-5">
+              {e.highlights.map((h, idx) => <li key={idx}>{h}</li>)}
+            </ul>
+          </div>
+        ))}
+      </div>
     </div>
-    <div className="flex flex-col lg:flex-row gap-8">
-      <AdminSidebar />
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex-1 min-w-0">
-        {children}
-      </motion.div>
+  );
+};
+
+const AdminLayout = ({ children }) => {
+  const [currentVersion, setCurrentVersion] = useState(null);
+  useEffect(() => {
+    axios.get(`${API}/changelog`)
+      .then((r) => setCurrentVersion(r.data?.current || null))
+      .catch(() => {});
+  }, []);
+  return (
+    <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+      <div className="mb-6 text-sm">
+        <Link to="/" className="text-muted-fg hover:text-pear-500">← Terug naar site</Link>
+      </div>
+      <div className="flex flex-col lg:flex-row gap-8">
+        <AdminSidebar />
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex-1 min-w-0">
+          <VersionAlertBar currentVersion={currentVersion} />
+          {children}
+        </motion.div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default function AdminDashboard() {
   return (
@@ -1301,6 +1602,7 @@ export default function AdminDashboard() {
           <Route path="messages" element={<MessagesAdmin />} />
           <Route path="feedback" element={<FeedbackAdmin />} />
           <Route path="cybersecurity" element={<CybersecurityAdmin />} />
+          <Route path="changelog" element={<ChangelogAdmin />} />
         </Routes>
       </AdminLayout>
     </RequireAdmin>

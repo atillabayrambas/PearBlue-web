@@ -98,6 +98,24 @@ export const PRICING = [
   { cat: "cybersecurity", id: "cyber-mgmt-tbd", nl: "Managed cybersecurity (SOC, EDR-response)", en: "Managed cybersecurity (SOC, EDR response)", unit: "per_maand", tbd: true, note_nl: "Prijzen worden binnenkort gepubliceerd", note_en: "Prices to be published soon" },
 ];
 
+// Category → service group
+export const SERVICE_OF_CAT = {
+  project: "web",
+  website: "web",
+  advanced: "web",
+  upload: "web",
+  ecom: "web",
+  integrations: "web",
+  ict: "ict",
+  cybersecurity: "cyber",
+};
+
+export const SERVICES = [
+  { key: "web", nl: "Website & Media", en: "Website & Media" },
+  { key: "ict", nl: "ICT-diensten", en: "ICT services" },
+  { key: "cyber", nl: "Cybersecurity", en: "Cybersecurity" },
+];
+
 // Convenience selector
 export const itemsByCat = (catKey) => PRICING.filter((p) => p.cat === catKey);
 

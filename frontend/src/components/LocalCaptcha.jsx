@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import axios from "axios";
 import { Check, ShieldCheck } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
  * Lightweight local captcha:
@@ -18,11 +21,17 @@ export const LocalCaptcha = ({ onChange }) => {
   const [checked, setChecked] = useState(false);
   const [honeypot, setHoneypot] = useState("");
   const startRef = useRef(Date.now());
+  const firedRef = useRef(false);
 
   useEffect(() => {
     const elapsed = Date.now() - startRef.current;
     const ok = checked && !honeypot && elapsed > 1500;
     onChange?.(ok, { honeypot, elapsedMs: elapsed });
+    // Silent telemetry: only fire once when it first flips to OK.
+    if (ok && !firedRef.current) {
+      firedRef.current = true;
+      axios.post(`${API}/telemetry/captcha-verified`, {}).catch(() => {});
+    }
   }, [checked, honeypot, onChange]);
 
   return (

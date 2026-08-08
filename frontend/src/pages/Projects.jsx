@@ -28,7 +28,11 @@ export default function Projects() {
 
   useEffect(() => {
     axios.get(`${API}/projects`)
-      .then((res) => setItems([...(res.data || []), ...PORTFOLIO_PROJECTS]))
+      .then((res) => {
+        const dbItems = res.data || [];
+        // If DB has been seeded (>=3 items), use only DB. Fallback to static list otherwise.
+        setItems(dbItems.length >= 3 ? dbItems : [...dbItems, ...PORTFOLIO_PROJECTS]);
+      })
       .catch(() => setItems(PORTFOLIO_PROJECTS));
   }, []);
 

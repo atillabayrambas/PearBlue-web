@@ -78,6 +78,12 @@ class ContactMessage(BaseModel):
     language: Optional[str] = "nl"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     email_sent: bool = False
+    status: Optional[str] = "new"
+    priority: Optional[str] = "P3"
+    assigned_to: Optional[str] = None
+    notes: Optional[list] = None
+    spam: Optional[bool] = False
+    spam_reason: Optional[str] = None
 
 
 class ContactCreate(BaseModel):
@@ -442,15 +448,29 @@ async def create_contact(payload: ContactCreate, request: Request):
     # Spam gate on message
     is_spam, reason = _detect_spam(f"{payload.subject or ''} {payload.message}")
     if is_spam:
+        # Instead of hard-rejecting, still persist as a spam-marked record so the
+        # admin can review/delete via the Spam sub-tab.
         await _record_block(request, "spam", "/api/contact", {"spam_reason": reason})
+        doc = {
+            "id": str(uuid.uuid4()),
+            "name": payload.name, "email": payload.email, "phone": payload.phone,
+            "company": payload.company, "subject": payload.subject, "message": payload.message,
+            "language": payload.language, "email_sent": False,
+            "spam": True, "spam_reason": reason,
+            "status": "new", "priority": "P4", "assigned_to": None, "notes": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.contact_messages.insert_one(doc)
         raise HTTPException(status_code=400, detail={"message": "Bericht is als spam gedetecteerd.", "reason": reason})
     email_sent = await _send_contact_email(payload)
     msg = ContactMessage(**payload.model_dump(), email_sent=email_sent)
     doc = msg.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
-    doc['status'] = 'new'  # new | in_progress | on_hold | done
+    doc['status'] = 'new'  # new | in_progress | on_hold | done | archived
+    doc['priority'] = 'P3'  # P1 (highest) | P2 | P3 | P4 | Major
     doc['assigned_to'] = None
     doc['notes'] = []
+    doc['spam'] = False
     await db.contact_messages.insert_one(doc)
     return msg
 
@@ -485,11 +505,19 @@ async def create_quote(payload: QuoteCreate):
 
 # ---- Projects (public GET; protected POST/DELETE) ----
 @api_router.get("/projects", response_model=List[Project])
-async def list_projects():
-    items = await db.projects.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+async def list_projects(include_archived: bool = False):
+    q = {} if include_archived else {"archived": {"$ne": True}}
+    items = await db.projects.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     for i in items:
         if isinstance(i.get('created_at'), str):
             i['created_at'] = datetime.fromisoformat(i['created_at'])
+    return items
+
+
+@api_router.get("/admin/projects/all")
+async def admin_list_projects(current=Depends(require_admin)):
+    """Admin-only: returns all projects including archived, without response-model coercion."""
+    items = await db.projects.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return items
 
 
@@ -604,17 +632,50 @@ def _detect_spam(text: str) -> tuple[bool, str]:
 _PUB_RATE: dict[str, list[float]] = defaultdict(list)
 
 
+def _parse_ua(ua: str) -> dict:
+    """Extract OS / browser / device from a user-agent string (best-effort)."""
+    ua = (ua or "").lower()
+    os_name = "Onbekend"
+    if "windows nt 10" in ua: os_name = "Windows 10/11"
+    elif "windows nt 6.3" in ua: os_name = "Windows 8.1"
+    elif "windows" in ua: os_name = "Windows"
+    elif "mac os x" in ua or "macintosh" in ua: os_name = "macOS"
+    elif "android" in ua: os_name = "Android"
+    elif "iphone" in ua or "ipad" in ua or "ios" in ua: os_name = "iOS"
+    elif "linux" in ua: os_name = "Linux"
+    browser = "Onbekend"
+    if "edg/" in ua: browser = "Edge"
+    elif "chrome/" in ua and "chromium" not in ua: browser = "Chrome"
+    elif "firefox/" in ua: browser = "Firefox"
+    elif "safari/" in ua and "chrome/" not in ua: browser = "Safari"
+    elif "curl/" in ua: browser = "cURL"
+    elif "python-" in ua or "httpx" in ua: browser = "Python client"
+    elif "bot" in ua or "crawler" in ua or "spider" in ua: browser = "Bot/Crawler"
+    device = "Desktop"
+    if "mobile" in ua or "iphone" in ua or "android" in ua: device = "Mobile"
+    elif "tablet" in ua or "ipad" in ua: device = "Tablet"
+    return {"os": os_name, "browser": browser, "device": device}
+
+
 async def _record_block(request: Request, reason: str, endpoint: str, extra: dict | None = None):
     """Persist a blocked request into db.cybersec_blocks (unblocked=False by default)."""
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    ua = request.headers.get("user-agent", "")[:300]
+    parsed = _parse_ua(ua)
+    # Country from Cloudflare / Kubernetes header if available; else "Unknown"
+    country = request.headers.get("cf-ipcountry") or request.headers.get("x-country") or "Onbekend"
     doc = {
         "id": str(uuid.uuid4()),
         "ip": ip,
-        "user_agent": request.headers.get("user-agent", "")[:300],
+        "user_agent": ua,
         "referer": request.headers.get("referer", "")[:300],
         "endpoint": endpoint,
         "method": request.method,
-        "reason": reason,  # "rate_limit" | "honeypot" | "spam" | "captcha"
+        "reason": reason,  # "rate_limit" | "honeypot" | "spam" | "captcha" | "manual_block"
+        "os": parsed["os"],
+        "browser": parsed["browser"],
+        "device": parsed["device"],
+        "country": country,
         "extra": extra or {},
         "unblocked": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1437,7 +1498,7 @@ async def cms_counters(current=Depends(require_admin)):
 # ---- Contact-message status/notes (CMS) ----
 @api_router.patch("/admin/contact/{msg_id}")
 async def patch_contact_status(msg_id: str, patch: dict, current=Depends(require_permission("messages"))):
-    allowed = {"status", "assigned_to"}
+    allowed = {"status", "assigned_to", "priority", "spam"}
     upd = {k: v for k, v in (patch or {}).items() if k in allowed}
     if not upd:
         raise HTTPException(400, "Nothing to update")
@@ -1459,6 +1520,174 @@ async def add_contact_note(msg_id: str, payload: dict, current=Depends(require_p
     if res.matched_count == 0:
         raise HTTPException(404, "Message not found")
     return note
+
+
+# ---- Bulk actions for messages ----
+class BulkIds(BaseModel):
+    ids: List[str]
+
+
+@api_router.post("/admin/contact/bulk-delete")
+async def bulk_delete_contacts(payload: BulkIds, current=Depends(require_permission("messages"))):
+    if not payload.ids:
+        return {"deleted": 0}
+    res = await db.contact_messages.delete_many({"id": {"$in": payload.ids}})
+    await _log_activity(current.get("email"), "messages.bulk_delete", None, {"count": res.deleted_count})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.post("/admin/contact/delete-all-spam")
+async def delete_all_spam(current=Depends(require_permission("messages"))):
+    res = await db.contact_messages.delete_many({"spam": True})
+    await _log_activity(current.get("email"), "messages.delete_spam", None, {"count": res.deleted_count})
+    return {"deleted": res.deleted_count}
+
+
+# ---- Assignees (users assignable to items) ----
+_ASSIGNABLE_ROLES = {"super_admin", "admin", "beheerder", "moderator", "chat_support"}
+
+
+@api_router.get("/admin/assignees")
+async def list_assignees(current=Depends(require_admin)):
+    admins = await db.admins.find(
+        {"role": {"$in": list(_ASSIGNABLE_ROLES)}},
+        {"_id": 0, "password_hash": 0},
+    ).to_list(200)
+    return sorted(
+        [{"email": a.get("email"), "display_name": a.get("display_name"), "role": a.get("role", "admin")} for a in admins if a.get("email")],
+        key=lambda x: x["email"],
+    )
+
+
+# ---- Verified captchas counter (public POST) ----
+@api_router.post("/telemetry/captcha-verified")
+async def telemetry_captcha_verified(request: Request):
+    """Public — the LocalCaptcha component pings this every time a human successfully ticks."""
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    # Dedupe: only one per IP per hour to avoid inflation
+    key = f"captcha:{ip}"
+    now = time.time()
+    hits = [t for t in _PUB_RATE[key] if now - t < 3600]
+    if len(hits) >= 10:
+        return {"ok": False}
+    hits.append(now)
+    _PUB_RATE[key] = hits
+    await db.cybersec_captchas.insert_one({"ip": ip, "at": datetime.now(timezone.utc).isoformat()})
+    return {"ok": True}
+
+
+@api_router.get("/admin/cybersecurity/captcha-stats")
+async def captcha_stats(current=Depends(require_permission("cybersecurity"))):
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    docs = await db.cybersec_captchas.find({"at": {"$gte": since}}, {"_id": 0, "at": 1}).to_list(20000)
+    by_day: dict[str, int] = {}
+    for d in docs:
+        try:
+            k = d["at"][:10]
+            by_day[k] = by_day.get(k, 0) + 1
+        except Exception:
+            continue
+    return {"total_30d": len(docs), "daily": [{"day": k, "count": v} for k, v in sorted(by_day.items())]}
+
+
+# ---- Changelog ----
+@api_router.get("/changelog")
+async def public_changelog():
+    """Public JSON of released versions — kept in-code so devops changes stay in git history."""
+    entries = [
+        {
+            "version": "0.7-Beta",
+            "date": "2026-02-08",
+            "highlights": [
+                "3-tab prijslijst per dienst met gecombineerde calculator",
+                "Kostencalculator: subtotaal + 21% BTW + totaal + Wishlist opslaan/delen",
+                "Volledige parallax pear-achtergrond",
+                "Kruisrol-toewijzing (Berichten / Reviews / Portaal / Feedback)",
+                "Portfolio-import van bestaande case-studies naar CMS met archiveer-functie",
+                "Berichten: prioriteit P1-P4 + Major, sub-tabs, spam bulk-actions",
+                "Cybersecurity: land / OS / browser / device verrijking + captcha-verificaties chart",
+                "CMS versie-toolbar met dismiss + changelog-pagina",
+            ],
+        },
+        {
+            "version": "0.6-Beta",
+            "date": "2026-02-08",
+            "highlights": [
+                "Volledige `/prijslijst` (Excel-bron) + calculator met smart average",
+                "LocalCaptcha + akkoord-tekst op contact/portal/reviews/chatbot",
+                "IP-rate-limits + block-logging",
+                "Cybersecurity CMS met deblokkeren/reblokkeren + daily chart",
+                "Feedback-widget + Feedback CMS",
+                "Sidebar-badges peer-blauw",
+                "Mobiele header (thema/taal in hamburger)",
+                "Privacy pagina + Google Maps (Delfzijl)",
+                "5-revisies clause in Terms + PricingTables",
+            ],
+        },
+        {
+            "version": "0.5-Beta",
+            "date": "2026-02-08",
+            "highlights": [
+                "AI Chat anti-spam + agent-handoff (Zoho Desk-mail flow)",
+                "Ticket-bijlagen (client → Zoho Desk multipart)",
+                "Trustpilot script bugfix (SSR-injectie in index.html)",
+            ],
+        },
+        {
+            "version": "0.4-Beta",
+            "date": "2026-02-07",
+            "highlights": [
+                "Gebruikersbeheer CMS (6 rollen)",
+                "Custom scripts CMS (header/footer)",
+                "Algemene voorwaarden pagina",
+                "Portal ticket detail met replies",
+            ],
+        },
+        {
+            "version": "0.3-Beta",
+            "date": "2026-02-06",
+            "highlights": [
+                "Stripe iDEAL Betaal Nu op Zoho-facturen",
+                "Review invitations + Trust-stats UI",
+                "Portal Zoho project-detail (in-app)",
+                "Portal i18n (NL/EN)",
+            ],
+        },
+        {
+            "version": "0.2-Beta",
+            "date": "2026-02-05",
+            "highlights": [
+                "Zoho OAuth portaal (Books / Projects / Desk)",
+                "Klantreviews met CMS-moderatie",
+                "Cookie-banner + GA4 opt-in",
+                "AI Dashboard (Claude 4.6 chatbot analytics)",
+            ],
+        },
+        {
+            "version": "0.1-Beta",
+            "date": "2026-02-04",
+            "highlights": [
+                "5-pagina site (Home/Over ons/Diensten/Portfolio/Contact)",
+                "NL/EN i18n + donker/licht thema",
+                "Contact-formulier + admin CMS (portfolio, messages, settings)",
+            ],
+        },
+    ]
+    return {"current": entries[0]["version"], "entries": entries}
+
+
+# ---- Portfolio: archive support ----
+@api_router.patch("/projects/{project_id}")
+async def patch_project(project_id: str, patch: dict, current=Depends(require_admin)):
+    allowed = {"title", "category", "tag", "description", "image_url", "external_url", "archived"}
+    upd = {k: v for k, v in (patch or {}).items() if k in allowed}
+    if not upd:
+        raise HTTPException(400, "Nothing to update")
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.projects.update_one({"id": project_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Project not found")
+    return {"status": "updated"}
 
 
 app.include_router(api_router)
@@ -1494,8 +1723,45 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def on_startup():
     await seed_admin()
+    await seed_portfolio()
     # Background poller for review invites (runs every ~15 min)
     asyncio.create_task(review_poller(db, _send_email))
+
+
+# Static seed content — case studies from /app/frontend/src/data/projects.js
+_SEED_PORTFOLIO = [
+    {"seed_id": "case-boekweit-cyber", "title": "Boekweit Logistics — Bitdefender Rollout", "category": "Cybersecurity", "tag": "Cybersecurity", "description": "Bitdefender GravityZone Elite uitgerold over 84 endpoints en 6 servers voor een noordelijk logistiek bedrijf. EDR, encryptie en 24/7 monitoring vanuit ons SOC. Storingen dalen met 74%, en het management krijgt maandelijkse risk-rapportages in duidelijke taal.", "image_url": "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?crop=entropy&cs=srgb&fm=jpg&w=1400&q=85", "external_url": "https://www.pearblue.nl/services/computerbeveiliging/"},
+    {"seed_id": "case-groninger-cloud", "title": "Groninger Zorgcoöperatie — Cloud Migratie", "category": "IT Infrastructuur", "tag": "IT Platform", "description": "Migratie van 32 werkplekken naar Nextcloud + Internxt met zero-downtime overgang. MFA, Zero-Trust device-compliance en herstelbare back-ups binnen 5 minuten.", "image_url": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85", "external_url": "https://www.pearblue.nl/services/it-infrastructuur/"},
+    {"seed_id": "case-fresh-bakkerij", "title": "Bakkerij De Peer — Merkverhaal & Webshop", "category": "E-commerce", "tag": "E-commerce", "description": "Van huisstijl tot webshop met iDEAL en Mollie: een frisse online bakkerij die abonnementen op wekelijkse broodpakketten aanbiedt.", "image_url": "https://images.unsplash.com/photo-1509440159596-0249088772ff?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85", "external_url": "https://www.pearblue.nl/diensten/"},
+    {"seed_id": "case-aivoice", "title": "AiVoice Studio — AI Transcriptie SaaS", "category": "AI Product", "tag": "AI Product", "description": "Custom SaaS voor podcasters en journalisten: realtime transcriptie, samenvattingen en sprekerherkenning op Claude + Whisper. 400+ actieve creators, SLA 99,9%.", "image_url": "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85", "external_url": "https://www.pearblue.nl/services/kunstmatige-intelligentie-ai/"},
+    {"seed_id": "case-fresh-studio", "title": "Fresh Studio — Creative Agency Site", "category": "Media Website", "tag": "Media Website", "description": "Portfoliosite voor een creatief bureau met vloeiende Framer Motion overgangen, headless CMS en meertalige content.", "image_url": "https://images.unsplash.com/photo-1519222970733-f546218fa6d7?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85", "external_url": "https://www.pearblue.nl/portfolio/"},
+    {"seed_id": "case-dashboards", "title": "Havenbedrijf — BI Dashboards", "category": "Analytics", "tag": "Analytics", "description": "Custom BI-dashboards voor havenoperaties met live KPI's uit meerdere bronsystemen. Opererende managers besparen 6 uur per week aan handmatige rapportage.", "image_url": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85", "external_url": "https://www.pearblue.nl/services/"},
+]
+
+
+async def seed_portfolio():
+    """One-shot: import curated portfolio into db.projects if not already present."""
+    try:
+        for item in _SEED_PORTFOLIO:
+            existing = await db.projects.find_one({"seed_id": item["seed_id"]})
+            if existing:
+                continue
+            doc = {
+                "id": str(uuid.uuid4()),
+                "seed_id": item["seed_id"],
+                "title": item["title"],
+                "category": item["category"],
+                "tag": item["tag"],
+                "description": item["description"],
+                "image_url": item["image_url"],
+                "external_url": item.get("external_url"),
+                "archived": False,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.projects.insert_one(doc)
+        logger.info("Seed portfolio ensured.")
+    except Exception as e:
+        logger.warning(f"Portfolio seed failed: {e}")
 
 
 @app.on_event("shutdown")

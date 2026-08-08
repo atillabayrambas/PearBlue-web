@@ -28,7 +28,6 @@ export const Footer = () => {
             <li><Link to="/portfolio" className="hover:text-pear-500" data-testid="footer-link-portfolio">{t("nav.portfolio")}</Link></li>
             <li><Link to="/portal" className="hover:text-pear-500" data-testid="footer-link-portal">Klantportaal</Link></li>
             <li><Link to="/contact" className="hover:text-pear-500" data-testid="footer-link-contact">{t("nav.contact")}</Link></li>
-            <li><Link to="/prijslijst" className="hover:text-pear-500" data-testid="footer-link-pricing">{lang === "en" ? "Pricelist" : "Prijslijst"}</Link></li>
             <li><Link to="/voorwaarden" className="hover:text-pear-500" data-testid="footer-link-terms">{lang === "en" ? "Terms" : "Voorwaarden"}</Link></li>
             <li><Link to="/privacybeleid" className="hover:text-pear-500" data-testid="footer-link-privacy">{lang === "en" ? "Privacy" : "Privacybeleid"}</Link></li>
           </ul>
@@ -44,7 +43,7 @@ export const Footer = () => {
       </div>
       <div className="border-t border-app">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-muted-fg">
-          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")} · <span className="text-muted-fg/70">v1.2</span></p>
+          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")} · <span className="text-muted-fg/70">v0.7-Beta</span></p>
           <p className="inline-flex items-center gap-1.5" data-testid="footer-made-with-care">
             Made with care in the Netherlands. <span aria-label="Netherlands flag" role="img">🇳🇱</span> <span aria-label="heart" role="img">❤️</span>
           </p>

@@ -27,6 +27,7 @@ import TicketDetail from "@/pages/TicketDetail";
 import TermsPage from "@/pages/TermsPage";
 import PrivacyPage from "@/pages/PrivacyPage";
 import PricingListPage from "@/pages/PricingListPage";
+import ChangelogPage from "@/pages/ChangelogPage";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 
@@ -67,6 +68,7 @@ function Shell() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/prijslijst" element={<PricingListPage />} />
           <Route path="/pricing" element={<PricingListPage />} />
+          <Route path="/changelog" element={<ChangelogPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="*" element={<Home />} />
