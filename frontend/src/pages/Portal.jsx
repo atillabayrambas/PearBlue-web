@@ -2,10 +2,11 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
-import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, ExternalLink } from "lucide-react";
+import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, ExternalLink, Star } from "lucide-react";
 import { toast } from "sonner";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
+import { ReviewForm } from "../components/Reviews";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -239,6 +240,17 @@ export default function Portal() {
           })()}
         </SectionCard>
       </div>
+
+      <section className="mt-10 surface border border-app rounded-3xl p-6 sm:p-8" data-testid="portal-review-section">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center"><Star className="h-5 w-5" /></div>
+          <div>
+            <h3 className="font-heading text-lg font-semibold text-strong">Laat een review achter</h3>
+            <p className="text-xs text-muted-fg">Tevreden over ons werk? We waarderen je feedback enorm — na goedkeuring plaatsen we hem op de site.</p>
+          </div>
+        </div>
+        <ReviewForm compact />
+      </section>
     </div>
   );
 }

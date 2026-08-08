@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
@@ -23,6 +23,7 @@ const AdminSidebar = () => {
     { to: "/admin", label: "Portfolio", icon: Briefcase, end: true, testid: "cms-nav-projects" },
     { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
     { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations" },
+    { to: "/admin/reviews", label: "Klantreviews", icon: Star, testid: "cms-nav-reviews" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
     { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages" },
   ];
@@ -397,6 +398,129 @@ const RegistrationsAdmin = () => {
   );
 };
 
+// --- Reviews tab ---
+const StarsRow = ({ n }) => (
+  <div className="flex items-center gap-0.5 text-pear-500">
+    {[...Array(5)].map((_, i) => (
+      <Star key={i} className={`h-3.5 w-3.5 ${i < n ? "fill-current" : "opacity-25"}`} />
+    ))}
+  </div>
+);
+
+const ReviewsAdmin = () => {
+  const { authHeader } = useAuth();
+  const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    axios.get(`${API}/reviews/all`, { headers: authHeader() })
+      .then((r) => setItems(r.data || []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const patch = async (id, updates) => {
+    setBusy(id);
+    try {
+      await axios.patch(`${API}/reviews/${id}`, updates, { headers: authHeader() });
+      toast.success("Review bijgewerkt");
+      load();
+    } catch { toast.error("Bijwerken mislukt"); } finally { setBusy(null); }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Deze review permanent verwijderen?")) return;
+    setBusy(id);
+    try {
+      await axios.delete(`${API}/reviews/${id}`, { headers: authHeader() });
+      toast.success("Verwijderd");
+      load();
+    } catch { toast.error("Verwijderen mislukt"); } finally { setBusy(null); }
+  };
+
+  const visible = items.filter((r) => {
+    if (filter === "pending") return !r.approved;
+    if (filter === "approved") return r.approved && !r.featured;
+    if (filter === "featured") return r.featured;
+    return true;
+  });
+
+  return (
+    <div data-testid="cms-reviews">
+      <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-3xl font-medium text-strong">Klantreviews</h1>
+          <p className="text-sm text-muted-fg mt-1">Beoordeel binnenkomende reviews en markeer je favorieten om ze op de homepage te tonen.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { k: "all", l: "Alles" },
+            { k: "pending", l: "Openstaand" },
+            { k: "approved", l: "Goedgekeurd" },
+            { k: "featured", l: "Uitgelicht" },
+          ].map((f) => (
+            <button key={f.k} onClick={() => setFilter(f.k)} data-testid={`reviews-filter-${f.k}`}
+              className={`text-xs rounded-full px-3 py-1.5 border transition-colors ${
+                filter === f.k ? "bg-pear-500 text-white border-pear-500" : "surface text-strong border-app hover:border-pear-500"
+              }`}>{f.l}</button>
+          ))}
+        </div>
+      </header>
+      {loading ? (
+        <p className="text-muted-fg">Laden…</p>
+      ) : visible.length === 0 ? (
+        <div className="surface border border-app rounded-2xl p-10 text-center text-muted-fg">Geen reviews in deze filter.</div>
+      ) : (
+        <div className="surface border border-app rounded-2xl divide-y divide-app">
+          {visible.map((r) => (
+            <div key={r.id} className="p-4" data-testid={`cms-review-${r.id}`}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="font-semibold text-strong">{r.name}</p>
+                    <StarsRow n={r.rating} />
+                    {r.approved && <span className="text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold bg-pear-100 text-pear-700">Live</span>}
+                    {r.featured && <span className="text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold bg-amber-100 text-amber-700">Uitgelicht</span>}
+                  </div>
+                  <p className="text-xs text-muted-fg mt-0.5">
+                    {[r.company, r.project].filter(Boolean).join(" · ")} · {new Date(r.created_at).toLocaleString("nl-NL")}
+                  </p>
+                  <p className="text-sm text-strong/90 mt-2 whitespace-pre-wrap">&ldquo;{r.quote}&rdquo;</p>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button onClick={() => patch(r.id, { approved: !r.approved })} disabled={busy === r.id}
+                    className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-3 py-1.5 disabled:opacity-50 ${
+                      r.approved ? "surface-2 text-strong border border-app" : "bg-pear-500 text-white hover:bg-pear-600"
+                    }`}
+                    data-testid={`review-approve-${r.id}`}>
+                    <Check className="h-3.5 w-3.5" /> {r.approved ? "Intrekken" : "Goedkeuren"}
+                  </button>
+                  <button onClick={() => patch(r.id, { featured: !r.featured, approved: true })} disabled={busy === r.id}
+                    className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-3 py-1.5 disabled:opacity-50 ${
+                      r.featured ? "surface-2 text-strong border border-app" : "bg-amber-500 text-white hover:bg-amber-600"
+                    }`}
+                    data-testid={`review-feature-${r.id}`}>
+                    <Sparkles className="h-3.5 w-3.5" /> {r.featured ? "Van homepage" : "Op homepage"}
+                  </button>
+                  <button onClick={() => remove(r.id)} disabled={busy === r.id}
+                    className="inline-flex items-center gap-1 text-xs font-semibold rounded-full surface-2 text-red-500 border border-red-200 px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+                    data-testid={`review-delete-${r.id}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Layout ---
 const AdminLayout = ({ children }) => (
   <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
@@ -420,6 +544,7 @@ export default function AdminDashboard() {
           <Route index element={<ProjectsAdmin />} />
           <Route path="analytics" element={<AnalyticsAdmin />} />
           <Route path="registrations" element={<RegistrationsAdmin />} />
+          <Route path="reviews" element={<ReviewsAdmin />} />
           <Route path="settings" element={<SettingsAdmin />} />
           <Route path="messages" element={<MessagesAdmin />} />
         </Routes>
