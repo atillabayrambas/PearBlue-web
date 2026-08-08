@@ -2116,7 +2116,7 @@ async def send_password_reset(email: str, current=Depends(require_admin)):
         )
     except Exception as e:
         logger.warning(f"Reset mail failed: {e}")
-    return {"status": "sent", "email": email_l, "reset_url": reset_url}
+    return {"status": "sent", "email": email_l, "expires_in_minutes": 60}
 
 
 # ---- Public: verify + apply a password reset token ----
