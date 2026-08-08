@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
@@ -18,16 +18,32 @@ const RequireAdmin = ({ children }) => {
 };
 
 const AdminSidebar = () => {
-  const { logout, user } = useAuth();
+  const { logout, user, authHeader } = useAuth();
+  const [counters, setCounters] = useState({});
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await axios.get(`${API}/admin/counters`, { headers: authHeader() });
+        if (alive) setCounters(r.data || {});
+      } catch { /* ignore */ }
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { alive = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const items = [
     { to: "/admin", label: "Portfolio", icon: Briefcase, end: true, testid: "cms-nav-projects" },
     { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
-    { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations" },
-    { to: "/admin/reviews", label: "Klantreviews", icon: Star, testid: "cms-nav-reviews" },
+    { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations", badge: counters.portal },
+    { to: "/admin/reviews", label: "Klantreviews", icon: Star, testid: "cms-nav-reviews", badge: counters.reviews },
+    { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages", badge: counters.messages },
+    { to: "/admin/feedback", label: "Feedback", icon: MessageSquare, testid: "cms-nav-feedback", badge: counters.feedback },
+    { to: "/admin/cybersecurity", label: "Cybersecurity", icon: ShieldAlert, testid: "cms-nav-cybersecurity", badge: counters.cybersecurity },
     { to: "/admin/users", label: "Gebruikers & rollen", icon: Users, testid: "cms-nav-users" },
     { to: "/admin/scripts", label: "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
-    { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages" },
   ];
   return (
     <aside className="lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start" data-testid="cms-sidebar">
@@ -49,7 +65,15 @@ const AdminSidebar = () => {
             }
           >
             <i.icon className="h-4 w-4" />
-            {i.label}
+            <span className="flex-1">{i.label}</span>
+            {i.badge > 0 && (
+              <span
+                className="inline-flex items-center justify-center min-w-[20px] h-5 rounded-full bg-pear-500 text-white text-[10px] font-bold px-1.5 shadow-[0_0_0_2px_var(--pb-surface,_white)]"
+                data-testid={`badge-${i.testid}`}
+              >
+                {i.badge > 99 ? "99+" : i.badge}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -60,6 +84,9 @@ const AdminSidebar = () => {
       >
         <LogOut className="h-4 w-4" /> Uitloggen
       </button>
+      <div className="mt-6 pt-4 border-t border-app text-[10px] text-muted-fg text-center">
+        PearBlue CMS · v1.2 · 2026
+      </div>
     </aside>
   );
 };
@@ -255,43 +282,107 @@ const SettingsAdmin = () => {
 };
 
 // --- Messages tab ---
+const MSG_STATUS = [
+  { key: "new", label: "Nieuw", color: "bg-red-100 text-red-600" },
+  { key: "in_progress", label: "In behandeling", color: "bg-amber-100 text-amber-700" },
+  { key: "on_hold", label: "Hold", color: "bg-slate-100 text-slate-600" },
+  { key: "done", label: "Afgerond", color: "bg-emerald-100 text-emerald-700" },
+];
+
 const MessagesAdmin = () => {
-  const { authHeader } = useAuth();
+  const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    axios.get(`${API}/contact`, { headers: authHeader() })
-      .then((r) => setItems(r.data || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API}/contact`, { headers: authHeader() });
+      setItems(r.data || []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const patch = async (id, upd) => {
+    try {
+      await axios.patch(`${API}/admin/contact/${id}`, upd, { headers: authHeader() });
+      load();
+    } catch { toast.error("Update mislukt"); }
+  };
+  const addNote = async (id, text) => {
+    if (!text.trim()) return;
+    try {
+      await axios.post(`${API}/admin/contact/${id}/notes`, { text }, { headers: authHeader() });
+      load();
+      toast.success("Notitie toegevoegd");
+    } catch { toast.error("Notitie mislukt"); }
+  };
+
   return (
     <div data-testid="cms-messages">
       <header className="mb-6">
         <h1 className="font-heading text-3xl font-medium text-strong">Contact berichten</h1>
-        <p className="text-sm text-muted-fg mt-1">Bekijk alle contact- en offerte-aanvragen die via de website binnenkomen.</p>
+        <p className="text-sm text-muted-fg mt-1">Beheer aanvragen — status, toewijzing en notities.</p>
       </header>
       {loading ? <p className="text-muted-fg">Laden…</p> : items.length === 0 ? (
         <div className="surface border border-app rounded-2xl p-10 text-center text-muted-fg">Nog geen berichten ontvangen.</div>
       ) : (
         <div className="surface border border-app rounded-2xl divide-y divide-app">
-          {items.map((m, i) => (
-            <details key={m.id || i} className="group" data-testid={`cms-message-${i}`}>
-              <summary className="p-4 cursor-pointer flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-semibold text-strong truncate">{m.name} <span className="text-muted-fg font-normal">— {m.email}</span></p>
-                  <p className="text-xs text-muted-fg truncate">{m.subject || "(geen onderwerp)"} · {new Date(m.created_at).toLocaleString("nl-NL")}</p>
+          {items.map((m, i) => {
+            const st = MSG_STATUS.find((s) => s.key === (m.status || "new")) || MSG_STATUS[0];
+            return (
+              <details key={m.id || i} className="group" data-testid={`cms-message-${i}`}>
+                <summary className="p-4 cursor-pointer flex items-center justify-between gap-4 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-strong truncate">{m.name} <span className="text-muted-fg font-normal">— {m.email}</span></p>
+                    <p className="text-xs text-muted-fg truncate">{m.subject || "(geen onderwerp)"} · {new Date(m.created_at).toLocaleString("nl-NL")}</p>
+                  </div>
+                  <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${st.color}`}>{st.label}</span>
+                  {m.assigned_to && <span className="text-[10px] text-muted-fg">@ {m.assigned_to}</span>}
+                </summary>
+                <div className="px-4 pb-4 pt-1 text-sm text-strong/90 space-y-3">
+                  {m.phone && <p><strong className="text-muted-fg">Tel:</strong> {m.phone}</p>}
+                  {m.company && <p><strong className="text-muted-fg">Bedrijf:</strong> {m.company}</p>}
+                  <p className="whitespace-pre-wrap"><strong className="text-muted-fg block mb-1">Bericht:</strong>{m.message}</p>
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-app/40">
+                    <select
+                      value={m.status || "new"}
+                      onChange={(e) => patch(m.id, { status: e.target.value })}
+                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      data-testid={`msg-status-${m.id || i}`}
+                    >
+                      {MSG_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => patch(m.id, { assigned_to: m.assigned_to === user?.email ? null : user?.email })}
+                      className="text-xs rounded-full px-3 py-1 border border-app hover:border-pear-500"
+                      data-testid={`msg-assign-${m.id || i}`}
+                    >{m.assigned_to === user?.email ? "Loskoppelen" : "Wijs aan mij toe"}</button>
+                    <a
+                      href={`mailto:${m.email}?subject=Re: ${encodeURIComponent(m.subject || 'PearBlue')}`}
+                      className="text-xs rounded-full px-3 py-1 border border-pear-500 text-pear-500 hover:bg-pear-50"
+                      data-testid={`msg-reply-${m.id || i}`}
+                    >Antwoord via e-mail</a>
+                  </div>
+                  {(m.notes || []).length > 0 && (
+                    <div className="pt-2 border-t border-app/40 space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-muted-fg">Notities</p>
+                      {(m.notes || []).map((n) => (
+                        <div key={n.id} className="text-xs bg-pear-50/40 dark:bg-pear-500/5 rounded p-2">
+                          <div className="whitespace-pre-wrap">{n.text}</div>
+                          <div className="text-[10px] text-muted-fg mt-0.5">— {n.by} · {new Date(n.at).toLocaleString("nl-NL")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.target); addNote(m.id, fd.get("note")); e.target.reset(); }} className="flex gap-2 pt-2">
+                    <input name="note" placeholder="Interne notitie…" className="flex-1 rounded-lg border border-app bg-app px-3 py-1.5 text-xs" data-testid={`msg-note-input-${m.id || i}`} />
+                    <button type="submit" className="text-xs rounded-full px-3 py-1 border border-app hover:border-pear-500" data-testid={`msg-note-submit-${m.id || i}`}>Toevoegen</button>
+                  </form>
                 </div>
-                <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${m.email_sent ? "bg-pear-100 text-pear-700" : "bg-slate-200 text-slate-600"}`}>{m.email_sent ? "E-mail" : "DB only"}</span>
-              </summary>
-              <div className="px-4 pb-4 pt-1 text-sm text-strong/90 space-y-1">
-                {m.phone && <p><strong className="text-muted-fg">Tel:</strong> {m.phone}</p>}
-                {m.company && <p><strong className="text-muted-fg">Bedrijf:</strong> {m.company}</p>}
-                <p className="whitespace-pre-wrap"><strong className="text-muted-fg block mb-1">Bericht:</strong>{m.message}</p>
-              </div>
-            </details>
-          ))}
+              </details>
+            );
+          })}
         </div>
       )}
     </div>
@@ -833,7 +924,354 @@ const ScriptsAdmin = () => {
   );
 };
 
-// --- Layout ---
+// --- Layout & Cybersecurity/Feedback Admin (kept together) ---
+
+// ------------------------------------------------------------
+// Cybersecurity CMS — blocked requests with unblock / reblock
+// ------------------------------------------------------------
+const REASON_LABEL = {
+  rate_limit: "Rate limit",
+  spam: "Spam",
+  honeypot: "Honeypot",
+  captcha: "Captcha",
+  manual_block: "Handmatig geblokkeerd",
+  unknown: "Onbekend",
+};
+
+const CybersecurityAdmin = () => {
+  const { authHeader } = useAuth();
+  const [blocks, setBlocks] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [b, s] = await Promise.all([
+        axios.get(`${API}/admin/cybersecurity/blocks`, { headers: authHeader() }),
+        axios.get(`${API}/admin/cybersecurity/stats`, { headers: authHeader() }),
+      ]);
+      setBlocks(b.data || []);
+      setStats(s.data || null);
+    } catch (e) {
+      toast.error("Kon cybersecurity-data niet laden");
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const toggle = async (block, unblock) => {
+    try {
+      const path = unblock ? "unblock" : "reblock";
+      await axios.post(`${API}/admin/cybersecurity/blocks/${block.id}/${path}`, {}, { headers: authHeader() });
+      toast.success(unblock ? "Ontblokkeerd" : "Opnieuw geblokkeerd");
+      load();
+    } catch { toast.error("Actie mislukt"); }
+  };
+
+  const shown = filter === "all"
+    ? blocks
+    : filter === "active"
+      ? blocks.filter((b) => !b.unblocked)
+      : blocks.filter((b) => b.unblocked);
+
+  const maxDaily = stats?.daily?.reduce((m, d) => Math.max(m, d.count), 1) || 1;
+
+  return (
+    <div className="space-y-6" data-testid="cms-cybersecurity">
+      <div>
+        <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+          <ShieldAlert className="h-6 w-6 text-pear-500" />
+          Cybersecurity
+        </h2>
+        <p className="text-sm text-muted-fg mt-1">Verzoeken die door de rate-limiter, spam-filter of honeypot zijn geblokkeerd. Je kunt handmatig ont- of herblokkeren.</p>
+      </div>
+
+      {/* Stats + chart */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-2xl border border-app p-5 surface">
+            <div className="text-xs uppercase tracking-widest text-muted-fg">Blokkades (30 dagen)</div>
+            <div className="font-heading text-3xl font-medium text-strong mt-1" data-testid="cs-total-30d">{stats.total_30d}</div>
+          </div>
+          <div className="rounded-2xl border border-app p-5 surface">
+            <div className="text-xs uppercase tracking-widest text-muted-fg">Unieke IPs (30 dagen)</div>
+            <div className="font-heading text-3xl font-medium text-strong mt-1" data-testid="cs-unique-ips">{stats.unique_ips_30d}</div>
+          </div>
+          <div className="rounded-2xl border border-app p-5 surface">
+            <div className="text-xs uppercase tracking-widest text-muted-fg mb-2">Top-oorzaken</div>
+            <ul className="space-y-1 text-sm">
+              {(stats.reasons || []).slice(0, 4).map((r) => (
+                <li key={r.reason} className="flex justify-between">
+                  <span className="text-strong">{REASON_LABEL[r.reason] || r.reason}</span>
+                  <span className="text-muted-fg font-mono">{r.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {stats?.daily?.length > 0 && (
+        <div className="rounded-2xl border border-app p-5 surface" data-testid="cs-daily-chart">
+          <div className="text-xs uppercase tracking-widest text-muted-fg mb-3">Blokkades per dag</div>
+          <div className="flex items-end gap-1.5 h-32">
+            {stats.daily.map((d) => (
+              <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
+                <div
+                  className="w-full bg-pear-500 rounded-t transition-all"
+                  style={{ height: `${(d.count / maxDaily) * 100}%`, minHeight: d.count > 0 ? "2px" : "0" }}
+                  title={`${d.day}: ${d.count}`}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between text-[10px] text-muted-fg">
+            <span>{stats.daily[0]?.day || ""}</span>
+            <span>{stats.daily[stats.daily.length - 1]?.day || ""}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="flex items-center gap-2 text-sm">
+        {[
+          { key: "all", label: "Alle" },
+          { key: "active", label: "Actief geblokkeerd" },
+          { key: "unblocked", label: "Gedeblokkeerd" },
+        ].map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            data-testid={`cs-filter-${f.key}`}
+            className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+              filter === f.key ? "bg-pear-500 text-white border-pear-500" : "text-strong border-app hover:border-pear-500"
+            }`}
+          >{f.label}</button>
+        ))}
+        <button onClick={load} className="ml-auto text-xs text-muted-fg hover:text-pear-500" data-testid="cs-refresh">↻ Vernieuwen</button>
+      </div>
+
+      {/* Blocks table */}
+      <div className="rounded-2xl border border-app overflow-hidden surface" data-testid="cs-blocks-table">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-pear-50/50 dark:bg-pear-500/5 text-left">
+              <tr>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wie (IP)</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wat</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Waar</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Hoe</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wanneer</th>
+                <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Status</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-fg">Laden…</td></tr>
+              ) : shown.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-fg">Geen geblokkeerde verzoeken.</td></tr>
+              ) : shown.map((b) => (
+                <tr key={b.id} className="border-t border-app/50" data-testid={`cs-row-${b.id}`}>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {b.ip}
+                    {b.ip_manually_blocked && <span className="ml-1 inline-block px-1 py-0.5 text-[9px] rounded bg-red-100 text-red-600">manual</span>}
+                  </td>
+                  <td className="px-3 py-2 text-strong">{REASON_LABEL[b.reason] || b.reason}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-muted-fg">{b.endpoint}</td>
+                  <td className="px-3 py-2 text-xs text-muted-fg max-w-[220px] truncate" title={b.user_agent}>{b.user_agent}</td>
+                  <td className="px-3 py-2 text-xs text-muted-fg whitespace-nowrap">{new Date(b.created_at).toLocaleString("nl-NL")}</td>
+                  <td className="px-3 py-2">
+                    {b.unblocked ? (
+                      <span className="text-xs text-emerald-600 font-semibold">Gedeblokkeerd</span>
+                    ) : (
+                      <span className="text-xs text-red-500 font-semibold">Geblokkeerd</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {b.unblocked ? (
+                      <button
+                        onClick={() => toggle(b, false)}
+                        data-testid={`cs-reblock-${b.id}`}
+                        className="text-xs px-2.5 py-1 rounded-full border border-red-200 text-red-500 hover:bg-red-50"
+                      >Opnieuw blokkeren</button>
+                    ) : (
+                      <button
+                        onClick={() => toggle(b, true)}
+                        data-testid={`cs-unblock-${b.id}`}
+                        className="text-xs px-2.5 py-1 rounded-full border border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                      >Deblokkeren</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
+// Feedback CMS
+// ------------------------------------------------------------
+const FEEDBACK_STATUS = [
+  { key: "new", label: "Nieuw", color: "bg-red-100 text-red-600" },
+  { key: "in_progress", label: "In behandeling", color: "bg-amber-100 text-amber-700" },
+  { key: "on_hold", label: "On hold", color: "bg-slate-100 text-slate-600" },
+  { key: "done", label: "Afgerond", color: "bg-emerald-100 text-emerald-700" },
+];
+
+const FeedbackAdmin = () => {
+  const { authHeader, user } = useAuth();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("open");
+  const [openItem, setOpenItem] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API}/admin/feedback`, { headers: authHeader() });
+      setItems(r.data || []);
+    } catch { toast.error("Kon feedback niet laden"); } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const setStatus = async (id, status) => {
+    try {
+      await axios.patch(`${API}/admin/feedback/${id}`, { status }, { headers: authHeader() });
+      toast.success("Status bijgewerkt");
+      load();
+    } catch { toast.error("Actie mislukt"); }
+  };
+  const assign = async (id, email) => {
+    try {
+      await axios.patch(`${API}/admin/feedback/${id}`, { assigned_to: email || null }, { headers: authHeader() });
+      load();
+    } catch { toast.error("Toewijzen mislukt"); }
+  };
+  const addNote = async (id, text) => {
+    if (!text.trim()) return;
+    try {
+      await axios.post(`${API}/admin/feedback/${id}/notes`, { text }, { headers: authHeader() });
+      const r = await axios.get(`${API}/admin/feedback`, { headers: authHeader() });
+      setItems(r.data || []);
+      const updated = (r.data || []).find((x) => x.id === id);
+      setOpenItem(updated || null);
+    } catch { toast.error("Notitie toevoegen mislukt"); }
+  };
+
+  const byPage = items.reduce((acc, it) => { (acc[it.page] = acc[it.page] || []).push(it); return acc; }, {});
+  const filtered = (list) => filter === "open" ? list.filter((x) => x.status !== "done") : list;
+
+  return (
+    <div className="space-y-6" data-testid="cms-feedback">
+      <div>
+        <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+          <MessageSquare className="h-6 w-6 text-pear-500" />
+          Klantfeedback
+        </h2>
+        <p className="text-sm text-muted-fg mt-1">Feedback per pagina — status, toewijzing en interne notities.</p>
+      </div>
+      <div className="flex items-center gap-2 text-sm">
+        {["open", "all"].map((k) => (
+          <button
+            key={k}
+            onClick={() => setFilter(k)}
+            data-testid={`fb-filter-${k}`}
+            className={`px-3 py-1.5 rounded-full border text-xs font-medium ${filter === k ? "bg-pear-500 text-white border-pear-500" : "text-strong border-app hover:border-pear-500"}`}
+          >{k === "open" ? "Open items" : "Alles"}</button>
+        ))}
+        <button onClick={load} className="ml-auto text-xs text-muted-fg hover:text-pear-500" data-testid="fb-refresh">↻ Vernieuwen</button>
+      </div>
+      {loading ? <div className="text-muted-fg">Laden…</div> : Object.keys(byPage).length === 0 ? (
+        <div className="text-muted-fg text-sm">Nog geen feedback binnen.</div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(byPage).map(([page, list]) => (
+            <div key={page} data-testid={`fb-group-${page}`}>
+              <div className="text-xs uppercase tracking-widest text-muted-fg mb-2">Pagina: <span className="text-strong">{page}</span> · {filtered(list).length} items</div>
+              <div className="rounded-2xl border border-app overflow-hidden surface">
+                {filtered(list).map((f) => {
+                  const st = FEEDBACK_STATUS.find((s) => s.key === (f.status || "new")) || FEEDBACK_STATUS[0];
+                  return (
+                    <div key={f.id} className="p-4 border-b border-app/50 last:border-0" data-testid={`fb-row-${f.id}`}>
+                      <div className="flex flex-wrap items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] uppercase font-bold rounded-full px-2 py-0.5 ${st.color}`}>{st.label}</span>
+                            {f.rating && <span className="text-xs text-pear-500">{"★".repeat(f.rating)}</span>}
+                            <span className="text-[10px] text-muted-fg">{new Date(f.created_at).toLocaleString("nl-NL")}</span>
+                            {f.email && <span className="text-[10px] text-muted-fg">· {f.email}</span>}
+                          </div>
+                          <p className="text-sm text-strong mt-1 whitespace-pre-wrap">{f.message}</p>
+                          {f.assigned_to && <p className="text-[10px] text-muted-fg mt-1">Toegewezen aan: {f.assigned_to}</p>}
+                        </div>
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <select
+                            value={f.status || "new"}
+                            onChange={(e) => setStatus(f.id, e.target.value)}
+                            className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                            data-testid={`fb-status-${f.id}`}
+                          >
+                            {FEEDBACK_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          </select>
+                          <button
+                            onClick={() => assign(f.id, f.assigned_to === user?.email ? null : user?.email)}
+                            className="text-xs rounded-full px-2 py-1 border border-app hover:border-pear-500"
+                            data-testid={`fb-assign-me-${f.id}`}
+                          >{f.assigned_to === user?.email ? "Loskoppelen" : "Wijs aan mij toe"}</button>
+                          <button
+                            onClick={() => setOpenItem(f)}
+                            className="text-xs rounded-full px-2 py-1 border border-app hover:border-pear-500"
+                            data-testid={`fb-notes-${f.id}`}
+                          >Notities ({(f.notes || []).length})</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {openItem && (
+        <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setOpenItem(null)} data-testid="fb-notes-modal">
+          <div className="w-full max-w-lg bg-app border border-app rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <div className="font-heading font-semibold text-strong">Notities</div>
+                <div className="text-[11px] text-muted-fg">{openItem.page} · {new Date(openItem.created_at).toLocaleString("nl-NL")}</div>
+              </div>
+              <button onClick={() => setOpenItem(null)} className="text-muted-fg hover:text-strong text-2xl leading-none">×</button>
+            </div>
+            <div className="text-sm text-strong bg-pear-50/40 dark:bg-pear-500/5 rounded-xl p-3 mb-3 whitespace-pre-wrap">{openItem.message}</div>
+            <div className="space-y-2 max-h-40 overflow-y-auto mb-3">
+              {(openItem.notes || []).length === 0 ? (
+                <div className="text-xs text-muted-fg">Nog geen notities.</div>
+              ) : (openItem.notes || []).map((n) => (
+                <div key={n.id} className="text-xs bg-pear-50/40 dark:bg-pear-500/5 rounded p-2">
+                  <div className="text-strong whitespace-pre-wrap">{n.text}</div>
+                  <div className="text-[10px] text-muted-fg mt-1">— {n.by} · {new Date(n.at).toLocaleString("nl-NL")}</div>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={async (e) => { e.preventDefault(); const fd = new FormData(e.target); await addNote(openItem.id, fd.get("note")); e.target.reset(); }} className="flex gap-2">
+              <input name="note" placeholder="Voeg een notitie toe…" className="flex-1 rounded-xl border border-app bg-app px-3 py-2 text-sm" data-testid="fb-note-input" />
+              <button type="submit" className="btn-primary" data-testid="fb-note-submit">Toevoegen</button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminLayout = ({ children }) => (
   <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
     <div className="mb-6 text-sm">
@@ -861,6 +1299,8 @@ export default function AdminDashboard() {
           <Route path="scripts" element={<ScriptsAdmin />} />
           <Route path="settings" element={<SettingsAdmin />} />
           <Route path="messages" element={<MessagesAdmin />} />
+          <Route path="feedback" element={<FeedbackAdmin />} />
+          <Route path="cybersecurity" element={<CybersecurityAdmin />} />
         </Routes>
       </AdminLayout>
     </RequireAdmin>

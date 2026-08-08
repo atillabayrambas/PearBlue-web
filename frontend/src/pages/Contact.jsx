@@ -5,6 +5,8 @@ import { Mail, Phone, MapPin, Clock, Send, CheckCircle2 } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { toast } from "sonner";
 import { usePageSeo } from "../hooks/usePageSeo";
+import { LocalCaptcha, ConsentText } from "../components/LocalCaptcha";
+import { FeedbackWidget } from "../components/FeedbackWidget";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -13,11 +15,13 @@ export default function Contact() {
   usePageSeo({ title: "Contact", description: "Neem contact op met PearBlue — info@pearblue.nl · +31 596 229 030. We reageren binnen één werkdag.", path: "/contact" });
   const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", subject: "", message: "" });
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
+  const [captchaOk, setCaptchaOk] = useState(false);
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!captchaOk) { toast.error(lang === "en" ? "Please confirm you are not a robot" : "Bevestig eerst dat je geen robot bent"); return; }
     setStatus("submitting");
     try {
       await axios.post(`${API}/contact`, { ...form, language: lang });
@@ -110,15 +114,41 @@ export default function Contact() {
                     className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none resize-none text-strong transition-colors" />
                 </label>
                 <div className="md:col-span-2">
-                  <button type="submit" disabled={status === "submitting"} className="btn-primary" data-testid="contact-submit">
+                  <LocalCaptcha onChange={setCaptchaOk} />
+                  <button type="submit" disabled={status === "submitting" || !captchaOk} className="btn-primary disabled:opacity-50" data-testid="contact-submit">
                     {status === "submitting" ? t("contact.submitting") : (<>{t("contact.submit")} <Send className="h-4 w-4" /></>)}
                   </button>
+                  <ConsentText context="contact" />
                 </div>
               </form>
               )}
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Google Maps — Delfzijl location */}
+      <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-20" data-testid="contact-map-section">
+        <div className="mb-4">
+          <h3 className="font-heading text-xl font-semibold text-strong flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-pear-500" />
+            {lang === "en" ? "Find us in Delfzijl" : "Vind ons in Delfzijl"}
+          </h3>
+        </div>
+        <div className="rounded-3xl overflow-hidden border border-app shadow-sm">
+          <iframe
+            title={lang === "en" ? "PearBlue — Delfzijl location" : "PearBlue — Locatie Delfzijl"}
+            src="https://www.google.com/maps?q=Delfzijl%2C%20Nederland&output=embed"
+            width="100%"
+            height="420"
+            style={{ border: 0 }}
+            allowFullScreen=""
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            data-testid="contact-map-iframe"
+          />
+        </div>
+        <FeedbackWidget page="contact" />
       </section>
     </div>
   );

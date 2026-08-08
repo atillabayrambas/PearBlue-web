@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
+import time
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
@@ -280,12 +281,12 @@ ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROL
 ROLES_WITH_CMS_ACCESS = {"admin", ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT}
 
 ROLE_PERMS = {
-    ROLE_SUPER_ADMIN: {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings"},
-    "admin": {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings"},
-    ROLE_BEHEERDER: {"users", "content", "reviews", "analytics", "chat", "tickets", "portfolio"},
-    ROLE_ANALIST: {"analytics"},
-    ROLE_MODERATOR: {"content", "portfolio", "reviews"},
-    ROLE_CHAT_SUPPORT: {"chat", "tickets"},
+    ROLE_SUPER_ADMIN: {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing"},
+    "admin": {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing"},
+    ROLE_BEHEERDER: {"users", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing"},
+    ROLE_ANALIST: {"analytics", "cybersecurity"},
+    ROLE_MODERATOR: {"content", "portfolio", "reviews", "messages", "feedback"},
+    ROLE_CHAT_SUPPORT: {"chat", "tickets", "messages"},
     ROLE_GEBRUIKER: set(),
 }
 
@@ -428,11 +429,28 @@ async def auth_me(current=Depends(require_admin)):
 
 # ---- Contact ----
 @api_router.post("/contact", response_model=ContactMessage)
-async def create_contact(payload: ContactCreate):
+async def create_contact(payload: ContactCreate, request: Request):
+    # IP-level defenses
+    if await _is_ip_manually_blocked(request):
+        await _record_block(request, "manual_block", "/api/contact")
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        _public_rate_limit(request, "/api/contact", window_seconds=300, max_hits=5)
+    except HTTPException:
+        await _record_block(request, "rate_limit", "/api/contact")
+        raise
+    # Spam gate on message
+    is_spam, reason = _detect_spam(f"{payload.subject or ''} {payload.message}")
+    if is_spam:
+        await _record_block(request, "spam", "/api/contact", {"spam_reason": reason})
+        raise HTTPException(status_code=400, detail={"message": "Bericht is als spam gedetecteerd.", "reason": reason})
     email_sent = await _send_contact_email(payload)
     msg = ContactMessage(**payload.model_dump(), email_sent=email_sent)
     doc = msg.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
+    doc['status'] = 'new'  # new | in_progress | on_hold | done
+    doc['assigned_to'] = None
+    doc['notes'] = []
     await db.contact_messages.insert_one(doc)
     return msg
 
@@ -582,6 +600,52 @@ def _detect_spam(text: str) -> tuple[bool, str]:
     return False, ""
 
 
+# ---- Public form rate-limiter + Cybersecurity block logger ----
+_PUB_RATE: dict[str, list[float]] = defaultdict(list)
+
+
+async def _record_block(request: Request, reason: str, endpoint: str, extra: dict | None = None):
+    """Persist a blocked request into db.cybersec_blocks (unblocked=False by default)."""
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "ip": ip,
+        "user_agent": request.headers.get("user-agent", "")[:300],
+        "referer": request.headers.get("referer", "")[:300],
+        "endpoint": endpoint,
+        "method": request.method,
+        "reason": reason,  # "rate_limit" | "honeypot" | "spam" | "captcha"
+        "extra": extra or {},
+        "unblocked": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.cybersec_blocks.insert_one(doc)
+
+
+def _public_rate_limit(request: Request, endpoint: str, window_seconds: int = 300, max_hits: int = 5):
+    """Simple in-memory IP rate limiter for public POST endpoints. Raises 429 when exceeded."""
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    key = f"{endpoint}:{ip}"
+    # Check unblock status — if IP is manually blocked forever, honor it.
+    # We rely on the async check right before this; caller can await _is_ip_blocked separately.
+    now = time.time()
+    hits = [t for t in _PUB_RATE[key] if now - t < window_seconds]
+    if len(hits) >= max_hits:
+        raise HTTPException(status_code=429, detail={
+            "message": "Te veel verzoeken vanaf dit IP-adres. Probeer het later opnieuw.",
+            "message_en": "Too many requests from this IP. Please try again later.",
+            "retry_after_seconds": window_seconds,
+        })
+    hits.append(now)
+    _PUB_RATE[key] = hits
+
+
+async def _is_ip_manually_blocked(request: Request) -> bool:
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    doc = await db.cybersec_manual_blocks.find_one({"ip": ip, "active": True}, {"_id": 0})
+    return bool(doc)
+
+
 def _chat_rate_check(request: Request) -> int:
     """Return remaining allowance for this IP; raise 429 if exhausted."""
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
@@ -612,6 +676,9 @@ def _chat_rate_check(request: Request) -> int:
 async def chat_endpoint(payload: ChatRequest, request: Request):
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=503, detail="Chat service not configured")
+    if await _is_ip_manually_blocked(request):
+        await _record_block(request, "manual_block", "/api/chat")
+        raise HTTPException(status_code=403, detail="Forbidden")
     # Spam gate — reject before hitting the LLM
     is_spam, reason = _detect_spam(payload.message)
     if is_spam:
@@ -624,12 +691,17 @@ async def chat_endpoint(payload: ChatRequest, request: Request):
             "language": payload.language,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
+        await _record_block(request, "spam", "/api/chat", {"spam_reason": reason, "session_id": payload.session_id})
         raise HTTPException(status_code=400, detail={
             "message": "Je bericht is als spam gedetecteerd. Herformuleer zonder links of speciale tekens.",
             "message_en": "Your message was flagged as spam. Please rephrase without links or special characters.",
             "reason": reason,
         })
-    remaining = _chat_rate_check(request)
+    try:
+        remaining = _chat_rate_check(request)
+    except HTTPException:
+        await _record_block(request, "rate_limit", "/api/chat", {"session_id": payload.session_id})
+        raise
     try:
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
@@ -824,15 +896,21 @@ async def _send_email(to_email: str, subject: str, html: str, reply_to: Optional
 
 @api_router.post("/portal/register", response_model=PortalRegistration)
 async def register_portal(payload: PortalRegistrationCreate, request: Request):
-    # Per-IP rate limit: 5 registrations per hour
-    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
-    now = datetime.now(timezone.utc)
-    window_start = now - timedelta(hours=1)
-    hits = [t for t in _register_rate_store[ip] if t > window_start]
-    if len(hits) >= 5:
-        raise HTTPException(status_code=429, detail="Te veel aanvragen. Probeer het over een uur opnieuw.")
-    hits.append(now)
-    _register_rate_store[ip] = hits
+    # IP defenses + block logging
+    if await _is_ip_manually_blocked(request):
+        await _record_block(request, "manual_block", "/api/portal/register")
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        _public_rate_limit(request, "/api/portal/register", window_seconds=3600, max_hits=5)
+    except HTTPException:
+        await _record_block(request, "rate_limit", "/api/portal/register")
+        raise
+    # Spam gate on the free-text message
+    combined = f"{payload.company or ''} {payload.message or ''}"
+    is_spam, reason = _detect_spam(combined) if combined.strip() else (False, "")
+    if is_spam:
+        await _record_block(request, "spam", "/api/portal/register", {"spam_reason": reason})
+        raise HTTPException(status_code=400, detail={"message": "Aanvraag geblokkeerd — spam-signalen gedetecteerd.", "reason": reason})
 
     reg = PortalRegistration(**payload.model_dump())
     doc = reg.model_dump()
@@ -889,7 +967,19 @@ async def review_registration(reg_id: str, payload: RegistrationReview, current=
 
 # ---- Reviews (customer testimonials) ----
 @api_router.post("/reviews", response_model=Review)
-async def create_review(payload: ReviewCreate):
+async def create_review(payload: ReviewCreate, request: Request):
+    if await _is_ip_manually_blocked(request):
+        await _record_block(request, "manual_block", "/api/reviews")
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        _public_rate_limit(request, "/api/reviews", window_seconds=3600, max_hits=3)
+    except HTTPException:
+        await _record_block(request, "rate_limit", "/api/reviews")
+        raise
+    is_spam, reason = _detect_spam(payload.quote)
+    if is_spam:
+        await _record_block(request, "spam", "/api/reviews", {"spam_reason": reason})
+        raise HTTPException(status_code=400, detail={"message": "Review geblokkeerd — spam-signalen.", "reason": reason})
     r = Review(**payload.model_dump())
     doc = r.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
@@ -1158,6 +1248,217 @@ async def update_scripts(payload: CustomScripts, current=Depends(require_permiss
     await _log_activity(current.get("email"), "scripts.update", None,
                         {"header_len": len(payload.header_scripts), "footer_len": len(payload.footer_scripts)})
     return {"status": "saved"}
+
+
+# ---- Feedback (public submissions + admin list) ----
+class FeedbackPayload(BaseModel):
+    page: str = Field(..., min_length=1, max_length=80)
+    message: str = Field(..., min_length=5, max_length=2000)
+    email: Optional[str] = Field(None, max_length=200)
+    rating: Optional[int] = Field(None, ge=1, le=5)
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    return xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
+
+
+_FEEDBACK_RATE: dict[str, float] = {}
+
+
+@api_router.post("/feedback")
+async def submit_feedback(payload: FeedbackPayload, request: Request):
+    ip = _client_ip(request)
+    now = time.time()
+    last = _FEEDBACK_RATE.get(ip, 0)
+    if now - last < 20:  # 20s between submissions per IP
+        raise HTTPException(429, "Please wait a moment before sending another feedback")
+    _FEEDBACK_RATE[ip] = now
+    is_spam, reason = _detect_spam(payload.message)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "page": payload.page.strip(),
+        "message": payload.message.strip(),
+        "email": (payload.email or "").strip() or None,
+        "rating": payload.rating,
+        "ip": ip,
+        "user_agent": request.headers.get("user-agent", "")[:300],
+        "status": "new",  # new | in_progress | on_hold | done
+        "assigned_to": None,
+        "notes": [],
+        "spam": bool(is_spam),
+        "spam_reason": reason if is_spam else None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.feedback.insert_one(doc)
+    return {"status": "received"}
+
+
+@api_router.get("/admin/feedback")
+async def list_feedback(current=Depends(require_permission("messages"))):
+    docs = await db.feedback.find({"spam": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api_router.patch("/admin/feedback/{fid}")
+async def update_feedback(fid: str, patch: dict, current=Depends(require_permission("messages"))):
+    allowed = {"status", "assigned_to"}
+    upd = {k: v for k, v in (patch or {}).items() if k in allowed}
+    if not upd:
+        raise HTTPException(400, "Nothing to update")
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.feedback.update_one({"id": fid}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Feedback not found")
+    await _log_activity(current.get("email"), "feedback.update", fid, upd)
+    return {"status": "updated"}
+
+
+@api_router.post("/admin/feedback/{fid}/notes")
+async def add_feedback_note(fid: str, payload: dict, current=Depends(require_permission("messages"))):
+    text = (payload or {}).get("text", "").strip()
+    if not text or len(text) > 2000:
+        raise HTTPException(400, "Invalid note text")
+    note = {"id": str(uuid.uuid4()), "text": text, "by": current.get("email"), "at": datetime.now(timezone.utc).isoformat()}
+    res = await db.feedback.update_one({"id": fid}, {"$push": {"notes": note}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Feedback not found")
+    return note
+
+
+# ---- Cybersecurity CMS (blocked IPs / requests) ----
+@api_router.get("/admin/cybersecurity/blocks")
+async def list_cybersec_blocks(limit: int = 300, current=Depends(require_permission("cybersecurity"))):
+    docs = await db.cybersec_blocks.find({}, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 1000))
+    # Enrich with manual-block status by IP
+    ips = list({d.get("ip") for d in docs if d.get("ip")})
+    manual = {}
+    if ips:
+        async for m in db.cybersec_manual_blocks.find({"ip": {"$in": ips}}, {"_id": 0}):
+            manual[m["ip"]] = m
+    for d in docs:
+        d["ip_manually_blocked"] = bool(manual.get(d.get("ip"), {}).get("active"))
+    return docs
+
+
+@api_router.post("/admin/cybersecurity/blocks/{block_id}/unblock")
+async def unblock_block(block_id: str, current=Depends(require_permission("cybersecurity"))):
+    """Mark this block record as unblocked. Also lifts manual block on its IP."""
+    doc = await db.cybersec_blocks.find_one({"id": block_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Block not found")
+    await db.cybersec_blocks.update_one(
+        {"id": block_id},
+        {"$set": {"unblocked": True, "unblocked_at": datetime.now(timezone.utc).isoformat(), "unblocked_by": current.get("email")}},
+    )
+    # Also deactivate manual-block for this IP if any
+    if doc.get("ip"):
+        await db.cybersec_manual_blocks.update_many({"ip": doc["ip"]}, {"$set": {"active": False}})
+    await _log_activity(current.get("email"), "cybersec.unblock", block_id, {"ip": doc.get("ip")})
+    return {"status": "unblocked"}
+
+
+@api_router.post("/admin/cybersecurity/blocks/{block_id}/reblock")
+async def reblock_block(block_id: str, current=Depends(require_permission("cybersecurity"))):
+    """Reinstate the block record + add/activate a manual block entry on its IP."""
+    doc = await db.cybersec_blocks.find_one({"id": block_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Block not found")
+    await db.cybersec_blocks.update_one(
+        {"id": block_id},
+        {"$set": {"unblocked": False, "reblocked_at": datetime.now(timezone.utc).isoformat(), "reblocked_by": current.get("email")}},
+    )
+    if doc.get("ip"):
+        await db.cybersec_manual_blocks.update_one(
+            {"ip": doc["ip"]},
+            {"$set": {
+                "ip": doc["ip"],
+                "active": True,
+                "reason": "manual",
+                "by": current.get("email"),
+                "at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    await _log_activity(current.get("email"), "cybersec.reblock", block_id, {"ip": doc.get("ip")})
+    return {"status": "reblocked"}
+
+
+@api_router.get("/admin/cybersecurity/stats")
+async def cybersec_stats(current=Depends(require_permission("cybersecurity"))):
+    """Daily block counts for the last 30 days + reason breakdown for the chart."""
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=30)).isoformat()
+    docs = await db.cybersec_blocks.find({"created_at": {"$gte": since}}, {"_id": 0, "created_at": 1, "reason": 1, "ip": 1}).to_list(20000)
+    by_day: dict[str, int] = {}
+    by_reason: dict[str, int] = {}
+    unique_ips: set[str] = set()
+    for d in docs:
+        try:
+            day = d["created_at"][:10]
+        except Exception:
+            continue
+        by_day[day] = by_day.get(day, 0) + 1
+        r = d.get("reason") or "unknown"
+        by_reason[r] = by_reason.get(r, 0) + 1
+        if d.get("ip"):
+            unique_ips.add(d["ip"])
+    daily = [{"day": k, "count": v} for k, v in sorted(by_day.items())]
+    reasons = [{"reason": k, "count": v} for k, v in sorted(by_reason.items(), key=lambda x: -x[1])]
+    return {"total_30d": len(docs), "unique_ips_30d": len(unique_ips), "daily": daily, "reasons": reasons}
+
+
+# ---- CMS sidebar counters (unresolved-badge numbers) ----
+@api_router.get("/admin/counters")
+async def cms_counters(current=Depends(require_admin)):
+    # Only count "open" items that need attention.
+    messages_new = await db.contact_messages.count_documents({"status": {"$in": [None, "new", "in_progress", "on_hold"]}})
+    # Fallback for legacy records without a status field
+    if messages_new == 0:
+        messages_new = await db.contact_messages.count_documents({"status": {"$exists": False}})
+    portal_pending = await db.portal_registrations.count_documents({"status": "pending"})
+    reviews_pending = await db.reviews.count_documents({"approved": False})
+    feedback_new = await db.feedback.count_documents({"status": {"$in": [None, "new", "in_progress", "on_hold"]}, "spam": {"$ne": True}})
+    handoffs_pending = await db.chat_handoffs.count_documents({"acknowledged": False})
+    cybersec_new_24h = await db.cybersec_blocks.count_documents({
+        "unblocked": {"$ne": True},
+        "created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()},
+    })
+    return {
+        "messages": messages_new,
+        "portal": portal_pending,
+        "reviews": reviews_pending,
+        "feedback": feedback_new,
+        "handoffs": handoffs_pending,
+        "cybersecurity": cybersec_new_24h,
+    }
+
+
+# ---- Contact-message status/notes (CMS) ----
+@api_router.patch("/admin/contact/{msg_id}")
+async def patch_contact_status(msg_id: str, patch: dict, current=Depends(require_permission("messages"))):
+    allowed = {"status", "assigned_to"}
+    upd = {k: v for k, v in (patch or {}).items() if k in allowed}
+    if not upd:
+        raise HTTPException(400, "Nothing to update")
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.contact_messages.update_one({"id": msg_id}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Message not found")
+    await _log_activity(current.get("email"), "message.update", msg_id, upd)
+    return {"status": "updated"}
+
+
+@api_router.post("/admin/contact/{msg_id}/notes")
+async def add_contact_note(msg_id: str, payload: dict, current=Depends(require_permission("messages"))):
+    text = (payload or {}).get("text", "").strip()
+    if not text or len(text) > 2000:
+        raise HTTPException(400, "Invalid note text")
+    note = {"id": str(uuid.uuid4()), "text": text, "by": current.get("email"), "at": datetime.now(timezone.utc).isoformat()}
+    res = await db.contact_messages.update_one({"id": msg_id}, {"$push": {"notes": note}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Message not found")
+    return note
 
 
 app.include_router(api_router)

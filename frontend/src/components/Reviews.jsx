@@ -3,6 +3,7 @@ import axios from "axios";
 import { motion } from "framer-motion";
 import { Star, Send, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { LocalCaptcha, ConsentText } from "./LocalCaptcha";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -54,6 +55,7 @@ export const ReviewForm = ({ compact = false, initialProject = "" }) => {
   const [form, setForm] = useState({ name: "", company: "", project: initialProject, rating: 5, quote: "" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [captchaOk, setCaptchaOk] = useState(false);
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -63,6 +65,7 @@ export const ReviewForm = ({ compact = false, initialProject = "" }) => {
       toast.error("Schrijf minstens 10 tekens in je review.");
       return;
     }
+    if (!captchaOk) { toast.error("Bevestig eerst dat je geen robot bent."); return; }
     setSending(true);
     try {
       await axios.post(`${API}/reviews`, form);
@@ -125,9 +128,11 @@ export const ReviewForm = ({ compact = false, initialProject = "" }) => {
           minLength={10}
           className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong resize-none" />
       </label>
-      <button type="submit" disabled={sending} className="btn-primary w-full justify-center" data-testid="review-submit">
+      <button type="submit" disabled={sending || !captchaOk} className="btn-primary w-full justify-center disabled:opacity-50" data-testid="review-submit">
         {sending ? "Verzenden…" : <>Review versturen <Send className="h-4 w-4" /></>}
       </button>
+      <LocalCaptcha onChange={setCaptchaOk} />
+      <ConsentText context="review" />
     </form>
   );
 };

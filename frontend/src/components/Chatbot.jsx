@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, X, Send, Sparkles, User, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
+import { LocalCaptcha, ConsentText } from "./LocalCaptcha";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -26,6 +27,7 @@ export const Chatbot = () => {
   const [handoffForm, setHandoffForm] = useState({ name: "", email: "", message: "" });
   const [handoffBusy, setHandoffBusy] = useState(false);
   const [handoffDone, setHandoffDone] = useState(false);
+  const [captchaOk, setCaptchaOk] = useState(() => localStorage.getItem("pb_chat_captcha") === "ok");
   const scrollerRef = useRef(null);
 
   const welcome = lang === "nl"
@@ -183,6 +185,16 @@ export const Chatbot = () => {
               </div>
             )}
 
+            {!captchaOk && (
+              <div className="px-4 py-3 border-t border-app bg-pear-50/40 dark:bg-pear-500/5" data-testid="chatbot-captcha-gate">
+                <p className="text-xs text-muted-fg mb-1">
+                  {lang === "en" ? "Confirm you're human to start chatting:" : "Bevestig dat je een mens bent om te starten:"}
+                </p>
+                <LocalCaptcha onChange={(ok) => { setCaptchaOk(ok); if (ok) localStorage.setItem("pb_chat_captcha", "ok"); }} />
+                <ConsentText context="chatbot" />
+              </div>
+            )}
+
             <form onSubmit={send} className="p-3 border-t border-app flex items-center gap-2" data-testid="chatbot-form">
               <input
                 id="pb-chat-input"
@@ -190,10 +202,11 @@ export const Chatbot = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={lang === "nl" ? "Stel een vraag…" : "Ask a question…"}
-                className="flex-1 rounded-full surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong"
+                disabled={!captchaOk}
+                className="flex-1 rounded-full surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong disabled:opacity-50"
                 data-testid="chatbot-input"
               />
-              <button type="submit" disabled={busy || !input.trim()} className="w-10 h-10 rounded-full bg-pear-500 text-white flex items-center justify-center hover:bg-pear-600 disabled:opacity-50" data-testid="chatbot-send">
+              <button type="submit" disabled={busy || !input.trim() || !captchaOk} className="w-10 h-10 rounded-full bg-pear-500 text-white flex items-center justify-center hover:bg-pear-600 disabled:opacity-50" data-testid="chatbot-send">
                 <Send className="h-4 w-4" />
               </button>
             </form>

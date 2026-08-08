@@ -12,6 +12,7 @@ import { Chatbot } from "@/components/Chatbot";
 import { CookieBanner } from "@/components/CookieBanner";
 import { AnalyticsLoader } from "@/components/AnalyticsLoader";
 import { CustomScriptsInjector } from "@/components/CustomScriptsInjector";
+import { ParallaxBackground } from "@/components/ParallaxBackground";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Services from "@/pages/Services";
@@ -24,6 +25,8 @@ import PaymentSuccess from "@/pages/PaymentSuccess";
 import ProjectDetail from "@/pages/ProjectDetail";
 import TicketDetail from "@/pages/TicketDetail";
 import TermsPage from "@/pages/TermsPage";
+import PrivacyPage from "@/pages/PrivacyPage";
+import PricingListPage from "@/pages/PricingListPage";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 
@@ -41,7 +44,8 @@ const useIsAdminRoute = () => {
 function Shell() {
   const isAdmin = useIsAdminRoute();
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {!isAdmin && <ParallaxBackground />}
       {!isAdmin && <Navbar />}
       <main className="flex-1">
         <Routes>
@@ -59,6 +63,10 @@ function Shell() {
           <Route path="/review" element={<ReviewInvitePage />} />
           <Route path="/voorwaarden" element={<TermsPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacybeleid" element={<PrivacyPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/prijslijst" element={<PricingListPage />} />
+          <Route path="/pricing" element={<PricingListPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="*" element={<Home />} />

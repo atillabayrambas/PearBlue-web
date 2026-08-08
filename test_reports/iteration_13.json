@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 13 backend + frontend testing complete. All 21 pytest cases PASS (feedback CRUD + rate-limit, contact/portal/reviews spam + rate-limit block-logging, admin cybersecurity list/stats/unblock/reblock/manual-block persistence, admin feedback list/patch/notes, admin messages patch/notes, admin counters shape+auth, regressions on /reviews approved-only and /site/scripts public). Frontend flows verified via Playwright: /prijslijst renders page-pricing-list with 34 price rows, anchors, revisies-callout, calculator modal shows all three totals; shop toggle increases one-off by €674 (matches smart-average expectation). /privacybeleid and /privacy alias both render. Footer privacy link + Cybersecurity price 'from €5 /machine /month' (EN default) visible on homepage; pricing-see-full-list button present. Contact form has LocalCaptcha (disabled until ticked), consent-text-contact, contact-map-section + iframe. Chatbot has captcha gate on first open with disabled input + consent-text-chatbot. FeedbackWidget on /diensten opens and shows form. Mobile viewport (390x844): hamburger menu contains mobile-controls with theme+mobile-lang-toggle inside. Admin login as admin@pearblue.nl works; sidebar shows cms-nav-feedback + cms-nav-cybersecurity; all 5 badge-cms-nav-* rendered (Portaal:5, Reviews:4, Berichten:12, Feedback:4, Cybersecurity:6); version footer 'PearBlue CMS · v1.2 · 2026' visible. /admin/cybersecurity renders cs-total-30d=7, cs-unique-ips=7, cs-daily-chart, all three filter buttons (all/active/unblocked), cs-blocks-table with unblock (6) + reblock (1) buttons. Parallax-bg NOT rendered on admin routes. Manual block persistence verified end-to-end (reblock → cybersec_manual_blocks.active=true → unblock deactivates).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13.py",
+    "/app/test_reports/pytest/iteration13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1504 lines — approaching the 700-line guideline threshold; consider splitting cybersecurity+feedback+counters into a separate admin_cms router module in a future iteration.",
+    "_public_rate_limit + _FEEDBACK_RATE are in-memory dicts (per-process). If backend scales to >1 replica the rate-limits reset per pod. Acceptable for MVP; note for production scale-out (move to Redis).",
+    "GET /api/admin/cybersecurity/blocks returns docs without ip_manually_blocked field for docs whose IP has no manual entry — actually it defaults to False via the bool() cast, so this is fine. Verified.",
+    "PATCH /api/admin/feedback rejects when 'notes' is passed (only status/assigned_to allowed) — this is intentional; notes go through the dedicated /notes endpoint. Consistent with contact-message flow.",
+    "AdminDashboard.jsx is ~1300 lines and hosts every CMS tab component (MessagesAdmin, FeedbackAdmin, CybersecurityAdmin) — recommend splitting into /admin/tabs/*.jsx files for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration13.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% of tested flows"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (super_admin) — verified working",
+  "seed_data_creation": "Pytest created ~11 cybersec_blocks records + 1 feedback + 1 contact message during runs. Left one reblocked-then-unblocked entry to prove the flow. Test IPs (10.13.x.y) were unblocked at the end of the flow test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 13 fully passes. When running test_iteration13.py, always pass unique X-Forwarded-For per test (helper _fip() generates 10.13.x.y). To avoid manual-blocking the test host itself, tests never trigger reblock on the real client IP — they only reblock the synthetic X-Forwarded-For IP and immediately unblock it. Homepage/site language default is EN (browser locale); NL text like 'vanaf €5 p/machine p/maand' requires an explicit language toggle in tests. cs-total-30d + cs-unique-ips render only after /admin/cybersecurity/stats fetch completes (~500ms) — wait_for_selector on cs-blocks-table then timeout(3000ms).",
+  "rca of the issue": "N/A — no bugs found."
+}

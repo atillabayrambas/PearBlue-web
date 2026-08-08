@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
 import { ReviewForm } from "../components/Reviews";
+import { LocalCaptcha, ConsentText } from "../components/LocalCaptcha";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
 
@@ -60,9 +61,11 @@ const RegistrationForm = () => {
   const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [captchaOk, setCaptchaOk] = useState(false);
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const submit = async (e) => {
     e.preventDefault();
+    if (!captchaOk) { toast.error(lang === "en" ? "Please confirm you are not a robot" : "Bevestig eerst dat je geen robot bent"); return; }
     setSending(true);
     try {
       await axios.post(`${API}/portal/register`, { ...form, language: lang });
@@ -111,9 +114,11 @@ const RegistrationForm = () => {
         <textarea rows={3} value={form.message} onChange={change("message")} data-testid="portal-reg-message"
           className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none resize-none text-strong" />
       </label>
-      <button type="submit" disabled={sending} className="btn-primary w-full justify-center" data-testid="portal-reg-submit">
+      <button type="submit" disabled={sending || !captchaOk} className="btn-primary w-full justify-center disabled:opacity-50" data-testid="portal-reg-submit">
         {sending ? t("regBusy") : t("regSubmit")}
       </button>
+      <LocalCaptcha onChange={setCaptchaOk} />
+      <ConsentText context="portal-register" />
     </form>
   );
 };

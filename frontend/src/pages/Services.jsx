@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { Globe, Server, ShieldCheck, Check, ArrowRight } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
+import { PricingTables } from "../components/PricingTables";
+import { FeedbackWidget } from "../components/FeedbackWidget";
 
 const IMG = {
   ict_hero: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?crop=entropy&cs=srgb&fm=jpg&w=1400&q=85",
@@ -217,6 +219,8 @@ export default function Services() {
         </section>
       ))}
 
+      <PricingTables />
+
       <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20">
         <div className="relative rounded-3xl overflow-hidden bg-pear-900 text-white p-10 lg:p-14">
           <div className="pear-blob bg-pear-500 w-[380px] h-[380px] top-[-120px] right-[-80px]" />
@@ -227,6 +231,7 @@ export default function Services() {
             </Link>
           </div>
         </div>
+        <FeedbackWidget page="diensten" />
       </section>
     </div>
   );

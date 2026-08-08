@@ -16,8 +16,8 @@ export const PricingTables = () => {
     : ["Network design & cabling", "Cloud setup & migration", "24/7 management & monitoring", "Security & access (MFA)", "Workplace rollout & device mgmt", "Audit & roadmap"];
 
   const cyberFeatures = lang === "nl"
-    ? ["Bitdefender GravityZone Elite", "Antimalware & Ransomware bescherming", "Firewall & webbeveiliging", "EDR: geavanceerde detectie", "Encryptie voor gevoelige data", "Risk management dashboard", "Beheerd of onbeheerd", "Flexibel per actieve machine"]
-    : ["Bitdefender GravityZone Elite", "Antimalware & ransomware protection", "Firewall & web protection", "EDR: advanced detection & response", "Encryption for sensitive data", "Risk management dashboard", "Managed or unmanaged", "Flexible per active machine"];
+    ? ["Bitdefender GravityZone Elite", "Antimalware & Ransomware bescherming", "Firewall & webbeveiliging", "EDR: geavanceerde detectie", "Encryptie voor gevoelige data", "Risk management dashboard", "Beheerd of onbeheerd", "€5 per machine per maand"]
+    : ["Bitdefender GravityZone Elite", "Antimalware & ransomware protection", "Firewall & web protection", "EDR: advanced detection & response", "Encryption for sensitive data", "Risk management dashboard", "Managed or unmanaged", "€5 per machine per month"];
 
   const tiers = [
     {
@@ -110,6 +110,20 @@ export const PricingTables = () => {
             </Link>
           </motion.article>
         ))}
+      </div>
+
+      <div className="mt-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-sm">
+        <div className="text-muted-fg leading-relaxed max-w-2xl">
+          <strong className="text-strong">
+            {lang === "nl" ? "5 revisies inbegrepen" : "5 revisions included"}
+          </strong>{" "}
+          — {lang === "nl"
+            ? "de eerste 2 tijdens de test-/ontwerpfase, de laatste 3 voor verbeteringen en laatste aanpassingen."
+            : "the first 2 during test/design phase, the last 3 for refinements and final tweaks."}
+        </div>
+        <Link to="/prijslijst" className="btn-secondary shrink-0" data-testid="pricing-see-full-list">
+          {lang === "nl" ? "Zie volledige prijslijst" : "See full pricelist"} <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
     </section>
   );

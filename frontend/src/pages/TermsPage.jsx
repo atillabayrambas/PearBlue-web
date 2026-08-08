@@ -36,6 +36,7 @@ Deze algemene voorwaarden zijn van toepassing op alle overeenkomsten met PearBlu
 1. PearBlue spant zich in de opdracht zorgvuldig uit te voeren, met de vereiste vakbekwaamheid — inspanningsverplichting, geen resultaatsverplichting tenzij expliciet overeengekomen.
 2. Opdrachtgever draagt zorg voor tijdige aanlevering van benodigde informatie, teksten, beeldmateriaal en toegangen. Vertraging vanuit Opdrachtgever leidt tot herplanning.
 3. Meerwerk buiten de originele scope wordt schriftelijk (via e-mail) bevestigd en apart gefactureerd.
+4. **Revisies**: elk project omvat standaard **5 revisierondes** — de eerste 2 tijdens de test- en ontwerpfase (grote koersaanpassingen), de laatste 3 voor verbeteringen en definitieve aanpassingen (finetuning). Aanvullende revisies worden verrekend op basis van uurtarief.
 
 ## Artikel 6 — Intellectueel eigendom
 
@@ -87,7 +88,7 @@ PearBlue behoudt het recht deze voorwaarden te wijzigen. De actuele versie wordt
 
 ---
 
-*Laatst bijgewerkt: februari 2026 · PearBlue · KvK 89654321 · info@pearblue.nl · +31 596 229 030*
+*Laatst bijgewerkt: februari 2026 · Versie 1.2 · PearBlue · KvK 89654321 · info@pearblue.nl · +31 596 229 030*
 `;
 
 const EN = `
@@ -123,6 +124,7 @@ These terms & conditions apply to all agreements with PearBlue (Chamber of Comme
 1. PearBlue undertakes to perform the assignment carefully and with due professional expertise — this is a best-efforts obligation, not a result obligation, unless explicitly agreed.
 2. Client is responsible for timely delivery of required information, copy, media and access. Delays on the Client's side lead to rescheduling.
 3. Additional work outside the original scope will be confirmed in writing (via email) and invoiced separately.
+4. **Revisions**: every project includes **5 revision rounds** — the first 2 during test and design phase (major course corrections), the last 3 for refinements and final adjustments (fine-tuning). Additional revisions are billed at the hourly rate.
 
 ## Article 6 — Intellectual property
 
@@ -174,7 +176,7 @@ PearBlue reserves the right to amend these terms. The current version is publish
 
 ---
 
-*Last updated: February 2026 · PearBlue · CoC 89654321 · info@pearblue.nl · +31 596 229 030*
+*Last updated: February 2026 · Version 1.2 · PearBlue · CoC 89654321 · info@pearblue.nl · +31 596 229 030*
 `;
 
 const renderMd = (md) => {

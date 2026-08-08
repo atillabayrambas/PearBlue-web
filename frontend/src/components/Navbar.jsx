@@ -99,19 +99,22 @@ export const Navbar = () => {
         </nav>
 
         <div className="flex items-center gap-2">
-          <ThemeSwitcher />
-          <button
-            onClick={() => setLang(lang === "nl" ? "en" : "nl")}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-fg hover:text-pear-500 border border-app rounded-full px-3 py-1.5"
-            data-testid="lang-toggle"
-            aria-label="Toggle language"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {lang.toUpperCase()}
-          </button>
+          {/* Theme + Lang: desktop only. On mobile these live in the hamburger. */}
+          <div className="hidden md:flex items-center gap-2">
+            <ThemeSwitcher />
+            <button
+              onClick={() => setLang(lang === "nl" ? "en" : "nl")}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-fg hover:text-pear-500 border border-app rounded-full px-3 py-1.5"
+              data-testid="lang-toggle"
+              aria-label="Toggle language"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              {lang.toUpperCase()}
+            </button>
+          </div>
           <Link
             to="/portal"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-strong border border-app rounded-full px-3 py-1.5 hover:border-pear-500 hover:text-pear-500 max-w-[9rem]"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-strong border border-app rounded-full px-3 py-1.5 hover:border-pear-500 hover:text-pear-500 max-w-[8rem] sm:max-w-[9rem]"
             data-testid="nav-portal"
             aria-label={portalAuth ? "Klantportaal" : "Login"}
           >
@@ -128,7 +131,7 @@ export const Navbar = () => {
             )}
           </Link>
           {isAdmin && (
-            <Link to="/admin" className="hidden md:inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-3 py-1.5" data-testid="nav-cms">
+            <Link to="/admin" className="inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-2.5 sm:px-3 py-1.5" data-testid="nav-cms">
               CMS
             </Link>
           )}
@@ -160,6 +163,17 @@ export const Navbar = () => {
                 {l.label}
               </NavLink>
             ))}
+            <div className="pt-3 border-t border-app flex items-center gap-3 md:hidden" data-testid="mobile-controls">
+              <ThemeSwitcher />
+              <button
+                onClick={() => setLang(lang === "nl" ? "en" : "nl")}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-fg hover:text-pear-500 border border-app rounded-full px-3 py-1.5"
+                data-testid="mobile-lang-toggle"
+              >
+                <Globe className="h-3.5 w-3.5" />
+                {lang.toUpperCase()}
+              </button>
+            </div>
             <Link to="/contact" className="btn-primary mt-2" data-testid="mobile-nav-cta">
               {t("nav.cta")}
             </Link>
