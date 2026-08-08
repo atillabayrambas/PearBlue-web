@@ -261,6 +261,67 @@ def make_router(db) -> APIRouter:
             params={"index": 1, "range": 50},
         )
 
+    @router.get("/portal/invoices/{invoice_id}")
+    async def invoice_detail(request: Request, invoice_id: str):
+        uid = _require_portal_user(request)
+        if not BOOKS_ORG_ID:
+            raise HTTPException(400, "ZOHO_BOOKS_ORG_ID not configured")
+        return await _zoho_get(
+            uid,
+            f"{DEFAULT_API_DOMAIN}/books/v3/invoices/{invoice_id}",
+            params={"organization_id": BOOKS_ORG_ID},
+        )
+
+    @router.get("/portal/invoices/{invoice_id}/pdf")
+    async def invoice_pdf(request: Request, invoice_id: str):
+        """Stream the Zoho Books PDF back to the browser."""
+        from fastapi.responses import StreamingResponse
+        uid = _require_portal_user(request)
+        if not BOOKS_ORG_ID:
+            raise HTTPException(400, "ZOHO_BOOKS_ORG_ID not configured")
+        token, u = await _access_token(uid)
+        url = f"{DEFAULT_API_DOMAIN}/books/v3/invoices/{invoice_id}"
+        params = {"organization_id": BOOKS_ORG_ID, "accept": "pdf"}
+        headers = {"Authorization": f"Zoho-oauthtoken {token}", "Accept": "application/pdf"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(url, params=params, headers=headers)
+        if r.status_code == 401 and u.get("refresh_token"):
+            # Refresh once and retry
+            async with httpx.AsyncClient(timeout=20) as client:
+                rt = await client.post(f"{ACCOUNTS}/oauth/v2/token", data={
+                    "refresh_token": _dec(u["refresh_token"]),
+                    "client_id": ZOHO_CLIENT_ID,
+                    "client_secret": ZOHO_CLIENT_SECRET,
+                    "grant_type": "refresh_token",
+                })
+                data = rt.json()
+            new_access = data.get("access_token")
+            if new_access:
+                await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": {
+                    "access_token": _enc(new_access),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }})
+                headers["Authorization"] = f"Zoho-oauthtoken {new_access}"
+                async with httpx.AsyncClient(timeout=30) as client:
+                    r = await client.get(url, params=params, headers=headers)
+        if r.status_code >= 400:
+            raise HTTPException(r.status_code, r.text[:200])
+        return StreamingResponse(
+            iter([r.content]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="factuur-{invoice_id}.pdf"'},
+        )
+
+    @router.get("/portal/projects/{project_id}")
+    async def project_detail(request: Request, project_id: str):
+        uid = _require_portal_user(request)
+        if not PROJECTS_PORTAL_ID:
+            raise HTTPException(400, "ZOHO_PROJECTS_PORTAL_ID not configured")
+        return await _zoho_get(
+            uid,
+            f"https://projectsapi.zoho.eu/restapi/portal/{PROJECTS_PORTAL_ID}/projects/{project_id}/",
+        )
+
     @router.get("/portal/tickets")
     async def tickets(request: Request, from_: int = 1, limit: int = 50):
         uid = _require_portal_user(request)

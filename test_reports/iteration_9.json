@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 9 testing complete: 10/10 backend tests PASS. Bug fix verified — Zoho project row now navigates in-app to /portal/project/:id (no longer emits projectsapi.zoho.eu link). New backend endpoints correctly require portal auth (GET /api/portal/projects/{id}, /api/portal/invoices/{id}, /api/portal/invoices/{id}/pdf all → 401 unauth). Regression clean: /api/health ok, /api/reviews approved-only, /api/stats/trust returns {reviews,avg,projects}, /api/admin/reviews/scan-invites → 401, /api/payments/invoice-checkout → 401. Email HTML contains Trustpilot + Facebook share buttons (Google URL blank → correctly omitted). Frontend: /portal anon shows portal-zoho-login + portal-register-form, /portal/project/341680000000084075 renders page-project-detail + project-back with graceful 401 error state and NO redirect to projectsapi.zoho.eu. Home page: trust-stats + 3 stat cards render, big grid featured-reviews removed, featured-reviews-compact hidden when 0 featured; after seeding a featured review it appears with review-card-compact-0 (verified end-to-end, then cleaned up). /admin/login regression: password form + admin-zoho-login both visible. No console/page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9.py",
+    "/app/test_reports/pytest/iteration9.xml"
+  ],
+  "action_items": [
+    "No blocking issues — Zoho project link bug is fixed and new endpoints/UI polish are production-safe."
+  ],
+  "critical_code_review_comments": [
+    "ProjectDetail.jsx correctly consumes /api/portal/projects/{id} via withCredentials and renders a graceful error card for 401 — no external Zoho URL exposed in DOM.",
+    "zoho_portal.py: project_detail endpoint delegates to _zoho_get which raises HTTPException on ≥400 — good, but consider adding same 'refresh once' semantics that exist on invoice PDF path (already handled inside _zoho_get via _refresh_and_retry, so this is fine).",
+    "Portal.jsx invoice row uses fmtAmount with Intl.NumberFormat('nl-NL', {currency}) fallback — safe against undefined values. openPdf/printPdf open in new tab; since PDF stream is behind session-cookie auth, printPdf's window.open + addEventListener('load') may not fire due to cross-tab restrictions but is acceptable degradation.",
+    "review_invites._share_buttons_html correctly omits platforms with blank env vars; test asserts Google absent and Trustpilot+Facebook present.",
+    "Old bug root cause was frontend rendering p.link.self.url — that code path is fully removed; the projects list now uses onClick to window.location.assign(`/portal/project/${p.id_string || p.id}`).",
+    "server.py still >800 lines — recommend extracting reviews CRUD next."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% of testable flows (Zoho-authenticated project fetch skipped per spec — cannot obtain a real Zoho session in test env)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (JWT). Super-admin Zoho: beheer@multibay.eu (tokens in db.zoho_users, untouched).",
+  "seed_data_creation": "Created 1 featured review 'TEST FeatIter9' + 1 'TEST Iter9' via pytest — both deleted after tests via admin token.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests import review_invites in-process (importlib.reload) after seeding os.environ from /app/backend/.env — pattern from Iteration 8 preserved. The new /portal/project/:id route is exercised anonymously (401 path); authenticated fetch was not tested (no Zoho session available). Public Reviews POST requires both 'message' AND 'quote' — schema mirrors existing endpoint.",
+  "rca of the issue": "Original bug: Portal.jsx projects list rendered <a href={p.link.self.url}> pointing at projectsapi.zoho.eu — a private Zoho REST endpoint requiring server-side OAuth headers, hence 'Site niet bereikbaar' when the browser followed the link. Fix (verified): (a) Portal.jsx projects list now uses onClick={() => window.location.assign(`/portal/project/${p.id_string || p.id}`)} — pure in-app navigation; (b) new page ProjectDetail.jsx fetches details via backend GET /api/portal/projects/{id} which correctly proxies with the user's Zoho token and requires portal session (401 without). No projectsapi.zoho.eu URL is emitted client-side anymore."
+}

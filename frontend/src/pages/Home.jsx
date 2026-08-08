@@ -7,7 +7,7 @@ import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
 import { usePageSeo } from "../hooks/usePageSeo";
-import { FeaturedReviews } from "../components/Reviews";
+import { FeaturedReviewsCompact } from "../components/Reviews";
 import { TrustStats } from "../components/TrustStats";
 import { TrustpilotWidget } from "../components/TrustpilotWidget";
 
@@ -102,11 +102,9 @@ export default function Home() {
       {/* PRICING TABLES (3 pakketten) */}
       <PricingTables />
 
-      {/* TRUST STATS */}
+      {/* TRUST STATS + compact reviews strip */}
       <TrustStats />
-
-      {/* CLIENT REVIEWS */}
-      <FeaturedReviews />
+      <FeaturedReviewsCompact />
 
       {/* TRUSTPILOT WIDGET (optional, activates when BUSINESS_UNIT_ID is set) */}
       <TrustpilotWidget />

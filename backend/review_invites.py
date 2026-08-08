@@ -20,6 +20,9 @@ ZOHO_CLIENT_SECRET = os.environ.get("ZOHO_CLIENT_SECRET", "")
 BOOKS_ORG_ID = os.environ.get("ZOHO_BOOKS_ORG_ID", "").strip()
 PROJECTS_PORTAL_ID = os.environ.get("ZOHO_PROJECTS_PORTAL_ID", "").strip()
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+GOOGLE_REVIEW_URL = os.environ.get("GOOGLE_REVIEW_URL", "").strip()
+TRUSTPILOT_REVIEW_URL = os.environ.get("TRUSTPILOT_REVIEW_URL", "").strip()
+FACEBOOK_PAGE_URL = os.environ.get("FACEBOOK_PAGE_URL", "").strip()
 SUPER_ADMIN_EMAILS = {
     e.strip().lower() for e in os.environ.get("SUPER_ADMIN_EMAILS", "").split(",") if e.strip()
 }
@@ -90,6 +93,33 @@ async def _zoho_get(db, user: dict, url: str, *, params=None, headers=None):
     return r.json()
 
 
+def _share_buttons_html() -> str:
+    """Optional share row appended to invite emails when platform links are configured."""
+    targets = []
+    if GOOGLE_REVIEW_URL:
+        targets.append(("Google", GOOGLE_REVIEW_URL, "#ffffff", "#0A192F", "#e2e8f0"))
+    if TRUSTPILOT_REVIEW_URL:
+        targets.append(("Trustpilot", TRUSTPILOT_REVIEW_URL, "#00b67a", "#ffffff", "#00b67a"))
+    if FACEBOOK_PAGE_URL:
+        fb_url = FACEBOOK_PAGE_URL.rstrip("/") + "/reviews"
+        targets.append(("Facebook", fb_url, "#1877f2", "#ffffff", "#1877f2"))
+    if not targets:
+        return ""
+    buttons = "".join([
+        f'<a href="{url}" style="display:inline-block; margin:4px; padding:8px 16px; border-radius:999px; text-decoration:none; font-size:13px; font-weight:600; background:{bg}; color:{fg}; border:1px solid {bd};">{label}</a>'
+        for (label, url, bg, fg, bd) in targets
+    ])
+    return f"""
+    <hr style="border:none; border-top:1px solid #e2e8f0; margin:24px 0;"/>
+    <p style="font-size:13px; color:#334155; margin:0 0 10px; text-align:center;">
+      Plaats hem <strong>ook</strong> op je favoriete platform — één klik.
+    </p>
+    <p style="text-align:center; margin:0 0 6px;">{buttons}</p>
+    <p style="font-size:11px; color:#94a3b8; text-align:center; margin:8px 0 0;">
+      One click — your review opens on the chosen platform.
+    </p>"""
+
+
 def _bilingual_invite_html(project_name: str, review_url: str) -> str:
     return f"""
 <div style="font-family: Arial, sans-serif; max-width:600px; margin:0 auto; color:#0A192F;">
@@ -120,6 +150,7 @@ def _bilingual_invite_html(project_name: str, review_url: str) -> str:
         Leave your review →
       </a>
     </p>
+    {_share_buttons_html()}
     <p style="font-size:12px; color:#94a3b8; text-align:center; margin-top:28px;">
       PearBlue — jouw complete digitale partner · info@pearblue.nl
     </p>

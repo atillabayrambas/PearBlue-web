@@ -172,3 +172,40 @@ export const FeaturedReviews = () => {
     </section>
   );
 };
+
+// Compact horizontally-scrollable reviews strip — fits under trust-stats block on the homepage.
+export const FeaturedReviewsCompact = () => {
+  const [reviews, setReviews] = useState([]);
+  useEffect(() => {
+    axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
+  }, []);
+  if (!reviews.length) return null;
+  return (
+    <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-12" data-testid="featured-reviews-compact">
+      <div className="flex items-baseline justify-between mb-4">
+        <p className="overline">Klantverhalen</p>
+        {reviews.length > 3 && <span className="text-xs text-muted-fg">{reviews.length} reviews</span>}
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x snap-mandatory">
+        {reviews.slice(0, 8).map((r, i) => (
+          <motion.article
+            key={r.id}
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.4, delay: i * 0.05 }}
+            className="surface border border-app rounded-2xl p-5 min-w-[280px] max-w-[320px] snap-start shrink-0"
+            data-testid={`review-card-compact-${i}`}
+          >
+            <ReviewStars rating={r.rating} />
+            <p className="mt-3 text-sm text-strong/90 leading-relaxed line-clamp-4">&ldquo;{r.quote}&rdquo;</p>
+            <div className="mt-4 pt-3 border-t border-app">
+              <p className="font-semibold text-strong text-xs">{r.name}</p>
+              {(r.company || r.project) && <p className="text-[11px] text-muted-fg truncate">{[r.company, r.project].filter(Boolean).join(" · ")}</p>}
+            </div>
+          </motion.article>
+        ))}
+      </div>
+    </section>
+  );
+};

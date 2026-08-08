@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
-import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, ExternalLink, Star, ShieldCheck } from "lucide-react";
+import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, Star, ShieldCheck, Download, Eye, Printer, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
@@ -206,27 +206,59 @@ export default function Portal() {
                 toast.error(e?.response?.data?.detail || "Kon Stripe checkout niet starten");
               }
             };
+            const fmtAmount = (val, currency = "EUR") => {
+              if (val == null || val === "") return "—";
+              const n = typeof val === "number" ? val : parseFloat(String(val).replace(/[^\d.-]/g, ""));
+              if (isNaN(n)) return String(val);
+              try {
+                return new Intl.NumberFormat("nl-NL", { style: "currency", currency }).format(n);
+              } catch { return `€ ${n.toFixed(2)}`; }
+            };
+            const openPdf = (invoice_id) => window.open(`${API}/portal/invoices/${invoice_id}/pdf`, "_blank");
+            const printPdf = async (invoice_id) => {
+              const w = window.open(`${API}/portal/invoices/${invoice_id}/pdf`, "_blank");
+              if (w) w.addEventListener("load", () => w.print());
+            };
             return (
-              <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-invoices-list">
+              <ul className="space-y-3" data-testid="portal-invoices-list">
                 {list.slice(0, 20).map((inv, i) => {
                   const balance = parseFloat(inv.balance || 0);
                   const canPay = balance > 0 && (inv.status !== "paid" && inv.status !== "void");
+                  const currency = inv.currency_code || "EUR";
                   return (
-                    <li key={inv.invoice_id || i} className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-strong truncate">{inv.invoice_number || inv.number || `#${i + 1}`}</p>
-                        <p className="text-xs text-muted-fg truncate">{inv.customer_name || inv.date}</p>
+                    <li key={inv.invoice_id || i} className="rounded-xl surface-2 p-3.5" data-testid={`portal-invoice-row-${inv.invoice_id}`}>
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-strong truncate">{inv.invoice_number || inv.number || `#${i + 1}`}</p>
+                          <p className="text-xs text-muted-fg truncate">{inv.customer_name || inv.date}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-sm font-semibold text-strong tabular-nums">{fmtAmount(inv.total, currency)}</span>
+                          {balance > 0 && balance !== parseFloat(inv.total || 0) && (
+                            <p className="text-[10px] text-amber-600">open: {fmtAmount(balance, currency)}</p>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-sm font-medium text-pear-500 shrink-0">{inv.total || inv.balance || ""}</span>
-                      {canPay && (
-                        <button
-                          onClick={() => payInvoice(inv.invoice_id)}
-                          data-testid={`portal-pay-invoice-${inv.invoice_id}`}
-                          className="text-xs font-semibold rounded-full bg-pear-500 text-white px-3 py-1.5 hover:bg-pear-600 shrink-0"
-                        >
-                          Betaal nu
+                      <div className="flex flex-wrap gap-1.5">
+                        <button onClick={() => openPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-view-invoice-${inv.invoice_id}`}>
+                          <Eye className="h-3 w-3" /> Bekijken
                         </button>
-                      )}
+                        <button onClick={() => openPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-pdf-invoice-${inv.invoice_id}`}>
+                          <Download className="h-3 w-3" /> PDF
+                        </button>
+                        <button onClick={() => printPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-print-invoice-${inv.invoice_id}`}>
+                          <Printer className="h-3 w-3" /> Print
+                        </button>
+                        {canPay && (
+                          <button
+                            onClick={() => payInvoice(inv.invoice_id)}
+                            data-testid={`portal-pay-invoice-${inv.invoice_id}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-pear-500 text-white px-2.5 py-1 hover:bg-pear-600 ml-auto"
+                          >
+                            <CreditCard className="h-3 w-3" /> Betaal nu
+                          </button>
+                        )}
+                      </div>
                     </li>
                   );
                 })}
@@ -239,15 +271,19 @@ export default function Portal() {
           {(() => {
             const list = projects.data?.projects || [];
             if (!list.length) return <p className="text-sm text-muted-fg">Geen projecten gevonden.</p>;
+            const openProject = (pid) => window.location.assign(`/portal/project/${pid}`);
             return (
               <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-projects-list">
                 {list.slice(0, 20).map((p, i) => (
-                  <li key={p.id || i} className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3">
+                  <li key={p.id || i}
+                      className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3 cursor-pointer hover:border-pear-500 border border-transparent transition-colors"
+                      onClick={() => openProject(p.id_string || p.id)}
+                      data-testid={`portal-project-row-${p.id_string || p.id}`}>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-strong truncate">{p.name}</p>
                       <p className="text-xs text-muted-fg truncate">{p.status || p.owner_name}</p>
                     </div>
-                    {p.link?.self?.url && <a href={p.link.self.url} target="_blank" rel="noreferrer" className="text-pear-500"><ExternalLink className="h-4 w-4" /></a>}
+                    <Eye className="h-4 w-4 text-pear-500 shrink-0" />
                   </li>
                 ))}
               </ul>
