@@ -194,17 +194,42 @@ export default function Portal() {
           {(() => {
             const list = invoices.data?.invoices || invoices.data?.data || [];
             if (!list.length) return <p className="text-sm text-muted-fg">Geen facturen gevonden.</p>;
+            const payInvoice = async (invoice_id) => {
+              try {
+                const r = await axios.post(
+                  `${API}/payments/invoice-checkout`,
+                  { invoice_id, origin_url: window.location.origin },
+                  { withCredentials: true }
+                );
+                if (r.data?.checkout_url) window.location.href = r.data.checkout_url;
+              } catch (e) {
+                toast.error(e?.response?.data?.detail || "Kon Stripe checkout niet starten");
+              }
+            };
             return (
               <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-invoices-list">
-                {list.slice(0, 20).map((inv, i) => (
-                  <li key={inv.invoice_id || i} className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-strong truncate">{inv.invoice_number || inv.number || `#${i + 1}`}</p>
-                      <p className="text-xs text-muted-fg truncate">{inv.customer_name || inv.date}</p>
-                    </div>
-                    <span className="text-sm font-medium text-pear-500 shrink-0">{inv.total || inv.balance || ""}</span>
-                  </li>
-                ))}
+                {list.slice(0, 20).map((inv, i) => {
+                  const balance = parseFloat(inv.balance || 0);
+                  const canPay = balance > 0 && (inv.status !== "paid" && inv.status !== "void");
+                  return (
+                    <li key={inv.invoice_id || i} className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-strong truncate">{inv.invoice_number || inv.number || `#${i + 1}`}</p>
+                        <p className="text-xs text-muted-fg truncate">{inv.customer_name || inv.date}</p>
+                      </div>
+                      <span className="text-sm font-medium text-pear-500 shrink-0">{inv.total || inv.balance || ""}</span>
+                      {canPay && (
+                        <button
+                          onClick={() => payInvoice(inv.invoice_id)}
+                          data-testid={`portal-pay-invoice-${inv.invoice_id}`}
+                          className="text-xs font-semibold rounded-full bg-pear-500 text-white px-3 py-1.5 hover:bg-pear-600 shrink-0"
+                        >
+                          Betaal nu
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             );
           })()}

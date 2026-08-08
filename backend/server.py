@@ -23,6 +23,8 @@ from collections import defaultdict
 from starlette.middleware.sessions import SessionMiddleware
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from zoho_portal import make_router as make_zoho_router
+from review_invites import scan_now as review_scan_now, start_background_poller as review_poller
+from stripe_payments import make_router as make_stripe_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -652,10 +654,10 @@ async def register_portal(payload: PortalRegistrationCreate, request: Request):
 
 
 @api_router.get("/portal/registrations", response_model=List[PortalRegistration])
-async def list_registrations(status: Optional[str] = None, current=Depends(require_admin)):
+async def list_registrations(status_filter: Optional[str] = None, current=Depends(require_admin)):
     q: dict = {}
-    if status:
-        q["status"] = status
+    if status_filter:
+        q["status"] = status_filter
     items = await db.portal_registrations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     for i in items:
         if isinstance(i.get('created_at'), str):
@@ -748,8 +750,21 @@ async def delete_review(review_id: str, current=Depends(require_admin)):
     return {"status": "deleted"}
 
 
+# ---- Review invitations (auto-poller + admin trigger) ----
+@api_router.post("/admin/reviews/scan-invites")
+async def admin_scan_review_invites(current=Depends(require_admin)):
+    return await review_scan_now(db, _send_email)
+
+
+@api_router.get("/admin/reviews/invite-log")
+async def admin_invite_log(current=Depends(require_admin)):
+    items = await db.review_invites.find({}, {"_id": 0}).sort("recorded_at", -1).to_list(200)
+    return items
+
+
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
+app.include_router(make_stripe_router(db))
 
 # Session middleware BEFORE CORS
 SESSION_SECRET = os.environ.get('SESSION_SECRET', 'change-me-in-production-32-bytes-min')
@@ -780,6 +795,8 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def on_startup():
     await seed_admin()
+    # Background poller for review invites (runs every ~15 min)
+    asyncio.create_task(review_poller(db, _send_email))
 
 
 @app.on_event("shutdown")

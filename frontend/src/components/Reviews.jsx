@@ -1,10 +1,34 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Star, Send, CheckCircle2 } from "lucide-react";
+import { Star, Send, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// Public share targets. Fill in the Google Place ID + Trustpilot review URL via env
+// to activate one-click cross-posting to those platforms.
+const GOOGLE_PLACE_ID = process.env.REACT_APP_GOOGLE_PLACE_ID || "";
+const TRUSTPILOT_REVIEW_URL = process.env.REACT_APP_TRUSTPILOT_REVIEW_URL || "";
+const FACEBOOK_PAGE_URL = process.env.REACT_APP_FACEBOOK_PAGE_URL || "";
+
+const SHARE_TARGETS = [
+  GOOGLE_PLACE_ID && {
+    key: "google", label: "Google",
+    url: `https://search.google.com/local/writereview?placeid=${GOOGLE_PLACE_ID}`,
+    bg: "bg-white text-slate-800 border border-slate-200 hover:bg-slate-50",
+  },
+  TRUSTPILOT_REVIEW_URL && {
+    key: "trustpilot", label: "Trustpilot",
+    url: TRUSTPILOT_REVIEW_URL,
+    bg: "bg-[#00b67a] text-white hover:bg-[#009f6a]",
+  },
+  FACEBOOK_PAGE_URL && {
+    key: "facebook", label: "Facebook",
+    url: `${FACEBOOK_PAGE_URL}/reviews`,
+    bg: "bg-[#1877f2] text-white hover:bg-[#166fe0]",
+  },
+].filter(Boolean);
 
 const StarPicker = ({ value, onChange }) => (
   <div className="flex items-center gap-1" data-testid="review-rating-picker">
@@ -23,8 +47,8 @@ const StarPicker = ({ value, onChange }) => (
   </div>
 );
 
-export const ReviewForm = ({ compact = false }) => {
-  const [form, setForm] = useState({ name: "", company: "", project: "", rating: 5, quote: "" });
+export const ReviewForm = ({ compact = false, initialProject = "" }) => {
+  const [form, setForm] = useState({ name: "", company: "", project: initialProject, rating: 5, quote: "" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -50,6 +74,21 @@ export const ReviewForm = ({ compact = false }) => {
         <div className="w-14 h-14 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center mx-auto mb-4"><CheckCircle2 className="h-7 w-7" /></div>
         <p className="font-heading text-lg text-strong">Bedankt voor je review!</p>
         <p className="text-sm text-muted-fg mt-1">Onze admin bekijkt je bericht en publiceert het binnen 1 werkdag.</p>
+        {SHARE_TARGETS.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-app" data-testid="review-share-panel">
+            <p className="text-xs uppercase tracking-widest text-muted-fg mb-3">Plaats hem ook op</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SHARE_TARGETS.map((t) => (
+                <a key={t.key} href={t.url} target="_blank" rel="noreferrer"
+                  data-testid={`review-share-${t.key}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${t.bg}`}>
+                  {t.label} <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-fg mt-3">Één klik — je review wordt geopend op het gekozen platform.</p>
+          </div>
+        )}
       </div>
     );
   }

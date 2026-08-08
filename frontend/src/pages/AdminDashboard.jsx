@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
@@ -413,6 +413,8 @@ const ReviewsAdmin = () => {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
+  const [invLog, setInvLog] = useState([]);
+  const [scanBusy, setScanBusy] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -420,8 +422,25 @@ const ReviewsAdmin = () => {
       .then((r) => setItems(r.data || []))
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
+    axios.get(`${API}/admin/reviews/invite-log`, { headers: authHeader() })
+      .then((r) => setInvLog(r.data || []))
+      .catch(() => setInvLog([]));
   };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const scanInvites = async () => {
+    setScanBusy(true);
+    try {
+      const r = await axios.post(`${API}/admin/reviews/scan-invites`, {}, { headers: authHeader() });
+      const { scanned = 0, invited = 0, skipped = 0, errors = [] } = r.data || {};
+      if (invited > 0) toast.success(`${invited} uitnodiging${invited === 1 ? "" : "en"} verstuurd (van ${scanned} voltooide projecten, ${skipped} al eerder verwerkt)`);
+      else toast.info(`${scanned} voltooide projecten gescand — ${skipped} al eerder uitgenodigd, 0 nieuwe.`);
+      if (errors.length) toast.warning(`${errors.length} waarschuwing${errors.length === 1 ? "" : "en"}: ${errors[0]}`);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Scan mislukt");
+    } finally { setScanBusy(false); }
+  };
 
   const patch = async (id, updates) => {
     setBusy(id);
@@ -470,6 +489,36 @@ const ReviewsAdmin = () => {
           ))}
         </div>
       </header>
+
+      <section className="surface border border-app rounded-2xl p-5 mb-6" data-testid="cms-invite-panel">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="font-heading font-semibold text-strong flex items-center gap-2"><Send className="h-4 w-4 text-pear-500" /> Automatische review-uitnodigingen</h2>
+            <p className="text-xs text-muted-fg mt-1">Zoho-projecten met status <em>closed</em> krijgen automatisch een tweetalige review-uitnodiging (klant e-mail via Zoho Books). Poller draait elke 15 min.</p>
+          </div>
+          <button onClick={scanInvites} disabled={scanBusy} className="btn-primary shrink-0" data-testid="cms-invite-scan-now">
+            {scanBusy ? "Bezig…" : <><Send className="h-4 w-4" /> Scan nu</>}
+          </button>
+        </div>
+        {invLog.length > 0 && (
+          <div className="mt-5 border-t border-app pt-4">
+            <h3 className="text-xs uppercase tracking-widest text-muted-fg mb-2 flex items-center gap-1"><Clock className="h-3 w-3" /> Laatste uitnodigingen ({invLog.length})</h3>
+            <ul className="divide-y divide-app max-h-56 overflow-y-auto text-sm" data-testid="cms-invite-log">
+              {invLog.slice(0, 15).map((l, i) => (
+                <li key={l.project_id || i} className="py-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-strong truncate">{l.project_name || l.project_id}</p>
+                    <p className="text-xs text-muted-fg truncate">{l.email || "geen klant-e-mail gevonden"}</p>
+                  </div>
+                  <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold shrink-0 ${l.delivered ? "bg-pear-100 text-pear-700" : "bg-amber-100 text-amber-700"}`}>
+                    {l.delivered ? "Verstuurd" : "Overgeslagen"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
       {loading ? (
         <p className="text-muted-fg">Laden…</p>
       ) : visible.length === 0 ? (

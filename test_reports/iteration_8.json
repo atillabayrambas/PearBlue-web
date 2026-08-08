@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 8 testing complete: 25/25 backend tests PASS (auth guards on scan-invites, invite-log, invoice-checkout, payments status, Stripe webhook; idempotency of scan-invites; reviews public-only-approved; regression on contact/chat/admin login; super-admin JWT mint round-trip). Frontend testing verified: admin-zoho-login button on /admin/login, /admin/reviews cms-invite-panel + cms-invite-scan-now renders and triggers backend scan, /review page renders with project prefill from ?project=Website+Multibay, review form submits and success state appears, review-share-panel correctly HIDDEN when REACT_APP_* env vars are blank, /portal anon view renders zoho-login + register-form and does NOT show Betaal-nu button. Seed review 'TEST Iter8' cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/payments/invoice-checkout", "issue": "Bogus body (missing origin_url) returns 422 (Pydantic) BEFORE portal auth check. Review spec expected 401 first. Contract still safe (unauthorized cannot proceed) but ordering differs from spec. Recommend using request-level Depends for auth so 401 fires before body validation."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration8.py", "/app/test_reports/pytest/iteration8.xml"],
+  "action_items": [
+    "OPTIONAL: reorder Stripe /payments/invoice-checkout to check portal session before Pydantic body validation so bogus payloads return 401 (matches Iteration 8 spec).",
+    "No blocking issues — feature set is production-safe."
+  ],
+  "critical_code_review_comments": [
+    "stripe_payments.py checkout endpoint validates body before auth — attacker can enumerate schema without valid session. Low-risk but violates fail-closed principle.",
+    "server.py is ~805 lines — consider extracting review CRUD into a submodule as file continues to grow.",
+    "review_invites and stripe_payments routers correctly guarded; MongoDB _id fields excluded via projections.",
+    "JWT secret loaded from env with 'change-me' fallback in both server.py and zoho_portal.py — good, but the fallback would silently mismatch tokens in the two modules if env is ever missing. Consider raising RuntimeError instead."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8.py (new)"
+  ],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "100% of testable flows (Zoho-authenticated Portal Betaal-nu path skipped per spec)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (JWT). Super-admin Zoho: beheer@multibay.eu (tokens stored in db.zoho_users, not modified).",
+  "seed_data_creation": "Created 1 review 'TEST Iter8' via UI + a few via pytest, all cleaned up after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend .env exports REACT_APP_BACKEND_URL from within test module (via dotenv_values) — good. For super-admin mint token test to work in-process, we now push _env into os.environ.setdefault so zoho_portal picks up JWT_SECRET. Reviews approved=false query param has been removed as expected — public list is always approved-only. Feature B end-to-end (Stripe -> Zoho Books mark-paid) can only be validated with a real Stripe test checkout completion; only auth guards + status/webhook contracts were tested here."
+}

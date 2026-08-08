@@ -18,6 +18,8 @@ import Projects from "@/pages/Projects";
 import Contact from "@/pages/Contact";
 import Portal from "@/pages/Portal";
 import ZohoCallback from "@/pages/ZohoCallback";
+import ReviewInvitePage from "@/pages/ReviewInvitePage";
+import PaymentSuccess from "@/pages/PaymentSuccess";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 
@@ -46,7 +48,9 @@ function Shell() {
           <Route path="/projecten" element={<Projects />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/portal" element={<Portal />} />
+          <Route path="/portal/betaling-gelukt" element={<PaymentSuccess />} />
           <Route path="/oauth/zoho/callback" element={<ZohoCallback />} />
+          <Route path="/review" element={<ReviewInvitePage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="*" element={<Home />} />
