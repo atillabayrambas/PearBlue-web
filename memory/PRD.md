@@ -75,19 +75,34 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **Versie 1.2** in footer + Terms.
 - Testing: pytest 21/21 pass + Playwright all flows green (`/app/test_reports/iteration_13.json`).
 
-## Prioritized Backlog (Phase 4 & beyond)
-- **P1** — Zoho bidirectionele contact-sync (daily worker, Zoho Books ↔ CMS gebruikers).
-- **P1** — Review autopilot (invite dag na paid Zoho invoice).
-- **P1** — Brevo mailmarketing integratie + CMS-tab (campaigns, lists, tracking).
-- **P1** — Uitgebreid Gebruikersbeheer: adres/postcode/KVK/BTW/bedrijfsnaam velden, wachtwoord wijzigen / reset-mail knop, profielfoto randomizer (pear/robot thema), 2-way Zoho-sync in-place.
-- **P1** — Berichten↔Zoho Desk 2-way koppeling (subject/header ticket-nummer parse; reply-in-CMS pusht naar Zoho; Zoho reply pusht naar berichten).
-- **P2** — Sharing (facturen/projecten/tickets) met externe email, dubbele bevestiging via mail.
-- **P2** — Changelog CMS-pagina + versies zichtbaar in footer + Terms.
-- **P2** — Meta Pixel ID in Site Settings + toevoegen aan AI Dashboard.
-- **P2** — CMS EN i18n compleet — audit alle statische strings in `AdminDashboard.jsx` (nu hardcoded NL).
-- **P2** — Refactor `server.py` (>1500 lines) naar `routes/` en `AdminDashboard.jsx` naar `admin/tabs/*.jsx`.
-- **P3** — ICT + Cybersecurity prijzen (wachten op user-input).
-- **P3** — Twee-weg review-sync (Google/Trustpilot API-limitaties).
+### Feb 2026 — Iteration 14 (this session, 9/9 pytest + all UI flows green)
+- **Prijslijst 3-tabs**: Website & Media / ICT-diensten / Cybersecurity — categorieën per dienst.
+- **Calculator herwerkt**: solid opaque modal + BTW 21% + wishlist (localStorage) + share (navigator.share/clipboard) + per-service subtotalen + gecombineerd.
+- **Prijslijst design fix** (px-5 padding), **prijslijst uit footer**, **versie → v0.7-Beta**.
+- **Volledige parallax pear** (dual-layer op alle publieke pagina's, verborgen op /admin).
+- **About bold render fix** + **Terms 5.4 revisies-clause**.
+- **Changelog**: publieke `/changelog` + CMS `/admin/changelog` + `GET /api/changelog` (7 versies).
+- **CMS Version alert bar** (dismiss/bekijk/auto-31d).
+- **Portfolio seed** (6 curated cases) + Archiveer-filter/knop + PATCH /projects/{id}.
+- **Kruisrol-toewijzing** (`/admin/assignees`) op Feedback + Messages.
+- **Messages upgrade**: Postvak IN / Spam / Archief / Alles + sort + Outlook-checkbox + prio P1-P4/Major + mark-spam + bulk-delete + delete-all-spam.
+- **Cybersecurity UA-parsing** (OS/browser/device/land) + captcha-verified chart via `/telemetry/captcha-verified`.
+- Bugfix door testing agent: `ContactMessage` Pydantic model uitgebreid met spam/priority/status/assigned_to/notes (anders verdwenen ze in GET response).
+
+## Prioritized Backlog (Phase 4/5 — deferred)
+- **P1** — Virusscanner tab in Cybersecurity (scan-API + quarantaine + mail-alert)
+- **P1** — Brevo mailmarketing CMS-tab (lists/campaigns/tracking)
+- **P1** — Zoho bidirectional contact-sync (daily worker)
+- **P1** — Berichten ↔ Zoho Desk 2-way sync via ticket-nummer in subject
+- **P1** — Review autopilot (invite dag na paid invoice)
+- **P2** — Uitgebreid gebruikersbeheer (adres/postcode/KVK/BTW/wachtwoord-reset-mail/profielfoto pear-thema, 2-way Zoho sync in-place)
+- **P2** — CMS pagination (5/10/25/50/100/200) op alle lijsten
+- **P2** — Globale CMS zoekbalk met previews
+- **P2** — Sharing facturen/projecten/tickets met externe email + dual-party confirmatie
+- **P2** — Meta Pixel ID in AI Dashboard
+- **P3** — ICT + Cybersecurity managed prijzen (wacht op user-input)
+- **P3** — Volledige EN i18n voor CMS labels
+- **P3** — Refactor `server.py` (1764 regels) naar `routes/*.py`
 
 ## Test Credentials
 - Admin: `admin@pearblue.nl` / `PearBlue2026!` — see `/app/memory/test_credentials.md`.
