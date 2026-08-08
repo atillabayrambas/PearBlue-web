@@ -1,69 +1,14 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, ExternalLink, Trash2, Link as LinkIcon, ArrowRight } from "lucide-react";
+import { Plus, X, ExternalLink, Trash2, Link as LinkIcon, ArrowRight, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLang } from "../i18n/LanguageContext";
+import { useAuth } from "../auth/AuthContext";
 import { toast } from "sonner";
+import { PORTFOLIO_PROJECTS } from "../data/projects";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const SEEDED = [
-  {
-    id: "seed-1",
-    title: "Bloem & Wortel",
-    category: "ecom",
-    tag: "E-commerce",
-    description: "Complete webshop met iDEAL, voorraadbeheer en meertaligheid voor een duurzame bloemist.",
-    image_url: "https://images.unsplash.com/photo-1547468243-8839e59a7c54?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85",
-    external_url: "#",
-  },
-  {
-    id: "seed-2",
-    title: "InfraStack NL",
-    category: "infra",
-    tag: "IT Platform",
-    description: "Multi-tenant cloud dashboard voor MKB IT-beheer met server monitoring en ticketing.",
-    image_url: "https://images.unsplash.com/photo-1680992046615-065f58bcb4d8?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85",
-    external_url: "#",
-  },
-  {
-    id: "seed-3",
-    title: "AiVoice Studio",
-    category: "ai",
-    tag: "AI Product",
-    description: "Realtime AI-transcriptie en samenvattingen voor podcasters en journalisten.",
-    image_url: "https://images.unsplash.com/photo-1758073519996-6d3c63b4922c?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85",
-    external_url: "#",
-  },
-  {
-    id: "seed-4",
-    title: "Guard365",
-    category: "sec",
-    tag: "Cybersecurity",
-    description: "24/7 monitoring dashboard bovenop Bitdefender GravityZone met eigen alerting.",
-    image_url: "https://images.unsplash.com/photo-1728739529355-31dcaefd82b7?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85",
-    external_url: "#",
-  },
-  {
-    id: "seed-5",
-    title: "Fresh Studio",
-    category: "media",
-    tag: "Media Website",
-    description: "Creative agency portfolio site met framer-motion overgangen en CMS.",
-    image_url: "https://images.unsplash.com/photo-1727434032773-af3cd98375ba?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85",
-    external_url: "#",
-  },
-  {
-    id: "seed-6",
-    title: "Peer Advies",
-    category: "corp",
-    tag: "Corporate Site",
-    description: "Corporate website met multi-language, klantenportaal en Google Analytics 4.",
-    image_url: "https://images.unsplash.com/photo-1606836591695-4d58a73eba1e?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85",
-    external_url: "#",
-  },
-];
 
 const CATEGORIES = [
   { key: "all", nl: "Alles", en: "All" },
@@ -79,6 +24,7 @@ const emptyForm = { title: "", category: "media", tag: "", description: "", imag
 
 export default function Projects() {
   const { t, lang } = useLang();
+  const { isAdmin, authHeader } = useAuth();
   const [filter, setFilter] = useState("all");
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -89,40 +35,42 @@ export default function Projects() {
   const load = async () => {
     try {
       const res = await axios.get(`${API}/projects`);
-      setItems([...(res.data || []), ...SEEDED]);
+      setItems([...(res.data || []), ...PORTFOLIO_PROJECTS]);
     } catch (e) {
       console.error(e);
-      setItems(SEEDED);
+      setItems(PORTFOLIO_PROJECTS);
     }
   };
 
   useEffect(() => { load(); }, []);
 
   const visible = filter === "all" ? items : items.filter((i) => i.category === filter);
-
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const submitProject = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await axios.post(`${API}/projects`, form);
+      await axios.post(`${API}/projects`, form, { headers: authHeader() });
       toast.success(lang === "nl" ? "Project toegevoegd!" : "Project added!");
       setShowForm(false);
       setForm(emptyForm);
       load();
     } catch (err) {
-      toast.error(lang === "nl" ? "Kon project niet opslaan." : "Could not save project.");
+      const code = err?.response?.status;
+      toast.error(code === 401 ? (lang === "nl" ? "Log eerst in als admin." : "Please log in as admin.") : (lang === "nl" ? "Kon project niet opslaan." : "Could not save project."));
     } finally {
       setSaving(false);
     }
   };
 
+  const isSeeded = (p) => typeof p.id === "string" && p.id.startsWith("case-");
+
   const deleteProject = async (p) => {
-    if (p.id.startsWith("seed-")) return;
+    if (isSeeded(p)) return;
     if (!window.confirm(t("projects.confirm_delete"))) return;
     try {
-      await axios.delete(`${API}/projects/${p.id}`);
+      await axios.delete(`${API}/projects/${p.id}`, { headers: authHeader() });
       toast.success(lang === "nl" ? "Verwijderd." : "Deleted.");
       setSelected(null);
       load();
@@ -138,13 +86,19 @@ export default function Projects() {
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <div>
             <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-light tracking-tighter text-strong leading-[1.05] max-w-3xl" data-testid="projects-title">
-              {t("projects.title")}
+              {t("portfolio.title")}
             </h1>
-            <p className="mt-5 text-lg text-muted-fg max-w-2xl">{t("projects.subtitle")}</p>
+            <p className="mt-5 text-lg text-muted-fg max-w-2xl">{t("portfolio.subtitle")}</p>
           </div>
-          <button onClick={() => setShowForm(true)} className="btn-primary self-start lg:self-auto" data-testid="projects-add-button">
-            <Plus className="h-4 w-4" /> {t("projects.add")}
-          </button>
+          {isAdmin ? (
+            <button onClick={() => setShowForm(true)} className="btn-primary self-start lg:self-auto" data-testid="projects-add-button">
+              <Plus className="h-4 w-4" /> {t("projects.add")}
+            </button>
+          ) : (
+            <Link to="/admin/login" className="btn-secondary self-start lg:self-auto" data-testid="projects-admin-login-link">
+              <Lock className="h-4 w-4" /> Admin
+            </Link>
+          )}
         </div>
 
         <div className="mt-8 flex flex-wrap gap-2">
@@ -216,11 +170,7 @@ export default function Projects() {
             >
               <div className="relative aspect-[16/9] overflow-hidden">
                 <img src={selected.image_url} alt={selected.title} className="w-full h-full object-cover" />
-                <button
-                  onClick={() => setSelected(null)}
-                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 backdrop-blur text-pear-900 flex items-center justify-center hover:bg-white"
-                  aria-label="Close" data-testid="project-modal-close"
-                >
+                <button onClick={() => setSelected(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 backdrop-blur text-pear-900 flex items-center justify-center hover:bg-white" aria-label="Close" data-testid="project-modal-close">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -237,12 +187,8 @@ export default function Projects() {
                   <button onClick={() => setSelected(null)} className="btn-secondary" data-testid="project-modal-close-btn">
                     {t("projects.close")}
                   </button>
-                  {!selected.id.startsWith("seed-") && (
-                    <button
-                      onClick={() => deleteProject(selected)}
-                      className="ml-auto inline-flex items-center gap-2 text-red-500 text-sm font-semibold hover:text-red-600"
-                      data-testid="project-modal-delete"
-                    >
+                  {isAdmin && !isSeeded(selected) && (
+                    <button onClick={() => deleteProject(selected)} className="ml-auto inline-flex items-center gap-2 text-red-500 text-sm font-semibold hover:text-red-600" data-testid="project-modal-delete">
                       <Trash2 className="h-4 w-4" /> {t("projects.delete")}
                     </button>
                   )}
@@ -255,7 +201,7 @@ export default function Projects() {
 
       {/* ADD FORM MODAL */}
       <AnimatePresence>
-        {showForm && (
+        {showForm && isAdmin && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[70] bg-pear-900/70 backdrop-blur-sm flex items-center justify-center p-4"

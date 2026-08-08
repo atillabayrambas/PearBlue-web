@@ -1,17 +1,16 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles, Star, ChevronRight } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
+import { PORTFOLIO_PROJECTS } from "../data/projects";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const IMAGES = {
   hero: "https://images.unsplash.com/photo-1585854467604-cf2080ccef31?crop=entropy&cs=srgb&fm=jpg&w=1400&q=85",
-  ai: "https://images.unsplash.com/photo-1758073519996-6d3c63b4922c?crop=entropy&cs=srgb&fm=jpg&w=900&q=85",
-  security: "https://images.unsplash.com/photo-1728739529355-31dcaefd82b7?crop=entropy&cs=srgb&fm=jpg&w=900&q=85",
-  infra: "https://images.unsplash.com/photo-1680992046615-065f58bcb4d8?crop=entropy&cs=srgb&fm=jpg&w=900&q=85",
-  fluid: "https://images.unsplash.com/photo-1727434032773-af3cd98375ba?crop=entropy&cs=srgb&fm=jpg&w=900&q=85",
-  nature: "https://images.unsplash.com/photo-1547468243-8839e59a7c54?crop=entropy&cs=srgb&fm=jpg&w=900&q=85",
 };
 
 const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.6 } } };
@@ -19,6 +18,14 @@ const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 
 export default function Home() {
   const { t } = useLang();
+  const [preview, setPreview] = useState(PORTFOLIO_PROJECTS.slice(0, 4));
+
+  useEffect(() => {
+    axios.get(`${API}/projects`).then((res) => {
+      const all = [...(res.data || []), ...PORTFOLIO_PROJECTS];
+      setPreview(all.slice(0, 4));
+    }).catch(() => setPreview(PORTFOLIO_PROJECTS.slice(0, 4)));
+  }, []);
 
   return (
     <div data-testid="page-home">
@@ -98,38 +105,36 @@ export default function Home() {
             <h2 className="font-heading font-medium text-4xl sm:text-5xl tracking-tight text-strong leading-tight">{t("portfolio.title")}</h2>
             <p className="mt-4 text-lg text-muted-fg">{t("portfolio.subtitle")}</p>
           </div>
-          <Link to="/projecten" className="btn-secondary self-start md:self-auto" data-testid="portfolio-view-all">
+          <Link to="/portfolio" className="btn-secondary self-start md:self-auto" data-testid="portfolio-view-all">
             {t("portfolio.all")} <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-          {[
-            { title: "Bloem & Wortel", tag: "E-commerce", img: IMAGES.nature, span: "md:col-span-8" },
-            { title: "InfraStack NL", tag: "IT Platform", img: IMAGES.infra, span: "md:col-span-4" },
-            { title: "AiVoice", tag: "AI Product", img: IMAGES.ai, span: "md:col-span-4" },
-            { title: "Fresh Studio", tag: "Media Website", img: IMAGES.fluid, span: "md:col-span-8" },
-          ].map((p, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.5, delay: i * 0.05 }}
-              className={`relative group rounded-2xl overflow-hidden ${p.span} aspect-[4/3] card-lift`}
-              data-testid={`portfolio-card-${i}`}
-            >
-              <img src={p.img} alt={p.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-t from-pear-900/70 via-pear-900/20 to-transparent" />
-              <div className="absolute bottom-5 left-5 right-5 text-white flex items-end justify-between">
-                <div>
-                  <div className="text-[11px] uppercase tracking-widest text-white/80">{p.tag}</div>
-                  <div className="font-heading text-2xl font-medium">{p.title}</div>
+          {preview.map((p, i) => {
+            const span = p.span || (i % 2 === 0 ? "md:col-span-8" : "md:col-span-4");
+            return (
+              <motion.div
+                key={p.id || i}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5, delay: i * 0.05 }}
+                className={`relative group rounded-2xl overflow-hidden ${span} aspect-[4/3] card-lift`}
+                data-testid={`portfolio-card-${i}`}
+              >
+                <img src={p.image_url} alt={p.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-gradient-to-t from-pear-900/70 via-pear-900/20 to-transparent" />
+                <div className="absolute bottom-5 left-5 right-5 text-white flex items-end justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-widest text-white/80">{p.tag || p.category}</div>
+                    <div className="font-heading text-2xl font-medium">{p.title}</div>
+                  </div>
+                  <Link to="/portfolio" className="text-xs bg-white/20 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/25 hover:bg-white/30">{t("portfolio.view")}</Link>
                 </div>
-                <span className="text-xs bg-white/20 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/25">{t("portfolio.view")}</span>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       </section>
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Mail, Phone, MapPin, Briefcase } from "lucide-react";
+import { Mail, Phone, MapPin } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { Logo } from "./Logo";
 
@@ -27,7 +27,8 @@ export const Footer = () => {
             <li><Link to="/" className="hover:text-pear-500" data-testid="footer-link-home">{t("nav.home")}</Link></li>
             <li><Link to="/over-ons" className="hover:text-pear-500" data-testid="footer-link-about">{t("nav.about")}</Link></li>
             <li><Link to="/diensten" className="hover:text-pear-500" data-testid="footer-link-services">{t("nav.services")}</Link></li>
-            <li><Link to="/projecten" className="hover:text-pear-500 inline-flex items-center gap-1" data-testid="footer-link-projects"><Briefcase className="h-3 w-3" /> {t("projects.title")}</Link></li>
+            <li><Link to="/portfolio" className="hover:text-pear-500" data-testid="footer-link-portfolio">{t("nav.portfolio")}</Link></li>
+            <li><Link to="/projecten" className="hover:text-pear-500" data-testid="footer-link-projects">{t("projects.title")}</Link></li>
             <li><Link to="/contact" className="hover:text-pear-500" data-testid="footer-link-contact">{t("nav.contact")}</Link></li>
           </ul>
         </div>

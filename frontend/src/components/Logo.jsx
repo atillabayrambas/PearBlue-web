@@ -1,35 +1,39 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useTheme } from "../theme/ThemeContext";
 
-const LOGO_URL = "https://customer-assets-lxgj4vgw.emergentagent.net/job_3b5c4d50-dd30-4d09-93b8-e113754c7368/artifacts/bxpfaweb_PearBlue-logo-04-scaled.webp";
+// Two new logos: light theme (dark text) and dark theme (white text). Blue pear stays original.
+const LOGO_LIGHT = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/0iemi3i5_PearBlue%20logo-04.webp"; // dark text — for light theme
+const LOGO_DARK = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/q9h768hj_PearBlue%20logo-03.webp"; // light/white text — for dark theme
 
-export const Logo = ({ size = 36, showText = true, className = "" }) => {
+export const Logo = ({ size = 40, showText = true, className = "" }) => {
+  const { resolved } = useTheme();
+  const src = resolved === "dark" ? LOGO_DARK : LOGO_LIGHT;
+
   return (
-    <Link to="/" className={`inline-flex items-center gap-3 ${className}`} data-testid="brand-logo">
-      <span
-        className="relative block overflow-hidden shrink-0"
-        style={{ width: size, height: size }}
-        aria-hidden="true"
-      >
-        {/* Crop just the pear glyph from the wide logo (blue stays original) */}
-        <img
-          src={LOGO_URL}
-          alt=""
-          style={{
-            height: size,
-            width: "auto",
-            maxWidth: "none",
-            objectFit: "cover",
-            objectPosition: "left center",
-            position: "absolute",
-            left: 0,
-            top: 0,
-          }}
-        />
-      </span>
-      {showText && (
-        <span className="font-heading text-[1.35rem] font-semibold tracking-tight text-strong leading-none">
-          Pear<span className="text-pear-500">Blue</span>
+    <Link to="/" className={`inline-flex items-center ${className}`} data-testid="brand-logo" aria-label="PearBlue home">
+      {showText ? (
+        <img src={src} alt="PearBlue" style={{ height: size }} className="w-auto" />
+      ) : (
+        <span
+          className="relative block overflow-hidden shrink-0"
+          style={{ width: size, height: size }}
+          aria-hidden="true"
+        >
+          <img
+            src={src}
+            alt=""
+            style={{
+              height: size,
+              width: "auto",
+              maxWidth: "none",
+              objectFit: "cover",
+              objectPosition: "left center",
+              position: "absolute",
+              left: 0,
+              top: 0,
+            }}
+          />
         </span>
       )}
     </Link>

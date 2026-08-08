@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,9 +10,12 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
+import bcrypt
+import jwt
 import resend
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -28,8 +32,19 @@ CONTACT_RECIPIENT_EMAIL = os.environ.get('CONTACT_RECIPIENT_EMAIL', 'info@pearbl
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
+# Auth configuration
+JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
+JWT_ALG = 'HS256'
+JWT_EXP_MINUTES = 60 * 24 * 7  # 7 days
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@pearblue.nl').lower().strip()
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
+
+# LLM configuration
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+
 app = FastAPI(title="PearBlue API")
 api_router = APIRouter(prefix="/api")
+security = HTTPBearer(auto_error=False)
 
 
 # ---------- Models ----------
@@ -106,21 +121,93 @@ class ProjectCreate(BaseModel):
     external_url: Optional[str] = None
 
 
-# ---------- Helpers ----------
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    user: dict
+
+
+class ChatRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=120)
+    message: str = Field(..., min_length=1, max_length=2000)
+    language: Optional[str] = "nl"
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    session_id: str
+
+
+# ---------- Auth helpers ----------
+def hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def create_access_token(email: str, role: str = "admin") -> str:
+    payload = {
+        "sub": email,
+        "role": role,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXP_MINUTES),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def require_admin(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> dict:
+    if creds is None or not creds.credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALG])
+        if payload.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return {"email": payload.get("sub"), "role": payload.get("role")}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def seed_admin():
+    existing = await db.admins.find_one({"email": ADMIN_EMAIL})
+    hashed = hash_password(ADMIN_PASSWORD)
+    if existing is None:
+        await db.admins.insert_one({
+            "email": ADMIN_EMAIL,
+            "password_hash": hashed,
+            "role": "admin",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        logger.info(f"Admin seeded: {ADMIN_EMAIL}")
+    elif not verify_password(ADMIN_PASSWORD, existing.get("password_hash", "")):
+        await db.admins.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hashed}})
+        logger.info(f"Admin password updated: {ADMIN_EMAIL}")
+
+
+# ---------- Email helpers ----------
 def _build_contact_html(payload: ContactCreate) -> str:
     return f"""
     <div style="font-family: Arial, sans-serif; max-width:600px; margin:0 auto; color:#0A192F;">
       <div style="background:#02C0FF; color:#fff; padding:24px; border-radius:12px 12px 0 0;">
         <h2 style="margin:0;">Nieuw bericht via PearBlue website</h2>
       </div>
-      <table style="width:100%; border-collapse:collapse; background:#fff; padding:24px; border-radius:0 0 12px 12px; box-shadow:0 2px 12px rgba(0,0,0,0.06);">
-        <tr><td style="padding:8px 0;"><strong>Naam:</strong></td><td>{payload.name}</td></tr>
-        <tr><td style="padding:8px 0;"><strong>E-mail:</strong></td><td>{payload.email}</td></tr>
-        <tr><td style="padding:8px 0;"><strong>Telefoon:</strong></td><td>{payload.phone or '-'}</td></tr>
-        <tr><td style="padding:8px 0;"><strong>Bedrijf:</strong></td><td>{payload.company or '-'}</td></tr>
-        <tr><td style="padding:8px 0;"><strong>Onderwerp:</strong></td><td>{payload.subject or '-'}</td></tr>
-        <tr><td style="padding:8px 0; vertical-align:top;"><strong>Bericht:</strong></td><td style="white-space:pre-wrap;">{payload.message}</td></tr>
-        <tr><td style="padding:8px 0;"><strong>Taal:</strong></td><td>{payload.language}</td></tr>
+      <table style="width:100%; border-collapse:collapse; background:#fff; padding:24px;">
+        <tr><td><strong>Naam:</strong></td><td>{payload.name}</td></tr>
+        <tr><td><strong>E-mail:</strong></td><td>{payload.email}</td></tr>
+        <tr><td><strong>Telefoon:</strong></td><td>{payload.phone or '-'}</td></tr>
+        <tr><td><strong>Bedrijf:</strong></td><td>{payload.company or '-'}</td></tr>
+        <tr><td><strong>Onderwerp:</strong></td><td>{payload.subject or '-'}</td></tr>
+        <tr><td style="vertical-align:top;"><strong>Bericht:</strong></td><td style="white-space:pre-wrap;">{payload.message}</td></tr>
       </table>
     </div>
     """
@@ -146,10 +233,37 @@ async def _send_contact_email(payload: ContactCreate) -> bool:
         return False
 
 
+# ---------- Chat helpers ----------
+CHATBOT_SYSTEM_PROMPT = (
+    "Je bent 'Pear', de vriendelijke digitale assistent van PearBlue — een Nederlands "
+    "bureau voor ICT & Media Design. Beantwoord vragen over PearBlue's diensten en prijzen "
+    "kort en helder (max 4 zinnen). Wees warm, professioneel en behulpzaam. Detecteer de "
+    "taal van de gebruiker (NL of EN) en antwoord in dezelfde taal.\n\n"
+    "Kerninformatie over PearBlue:\n"
+    "- 'Jouw Complete Digitale Partner' — innovatief, duurzaam, betaalbaar\n"
+    "- Vestiging: Boekweitkamp 7, 9932MA Delfzijl\n"
+    "- KVK: 87201607 · Eenmanszaak · Handelsnaam PearBlue\n"
+    "- Contact: info@pearblue.nl · +31 596 229 030\n\n"
+    "Drie pakketten:\n"
+    "1) Website — vanaf €200. Ontwerp, copywriting, hosting, meertalig (NL/EN), basis SEO.\n"
+    "2) ICT Diensten — vanaf €100. Netwerkontwerp, cloud, beheer & 24/7 monitoring, security, "
+    "device-management, audits & roadmap.\n"
+    "3) Cybersecurity — vanaf €5 per actieve machine. Bitdefender GravityZone Elite met EDR, "
+    "firewall, encryptie en risk management. Beheerd of onbeheerd. Geen langlopende contracten.\n\n"
+    "Voor concrete offertes of afspraken: verwijs beleefd naar de contact-pagina "
+    "(/contact) of info@pearblue.nl. Verzin nooit prijzen of feiten die niet in deze "
+    "context staan — zeg dan dat je het navraagt of verwijs naar contact."
+)
+
+
 # ---------- Routes ----------
 @api_router.get("/")
 async def root():
-    return {"message": "PearBlue API is running", "resend_configured": bool(RESEND_API_KEY)}
+    return {
+        "message": "PearBlue API is running",
+        "resend_configured": bool(RESEND_API_KEY),
+        "llm_configured": bool(EMERGENT_LLM_KEY),
+    }
 
 
 @api_router.get("/health")
@@ -157,6 +271,23 @@ async def health():
     return {"status": "ok"}
 
 
+# ---- Auth ----
+@api_router.post("/auth/login", response_model=LoginResponse)
+async def login(payload: LoginRequest):
+    email = payload.email.lower().strip()
+    admin = await db.admins.find_one({"email": email}, {"_id": 0})
+    if admin is None or not verify_password(payload.password, admin.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_access_token(email=email, role=admin.get("role", "admin"))
+    return LoginResponse(access_token=token, user={"email": email, "role": admin.get("role", "admin")})
+
+
+@api_router.get("/auth/me")
+async def auth_me(current=Depends(require_admin)):
+    return current
+
+
+# ---- Contact ----
 @api_router.post("/contact", response_model=ContactMessage)
 async def create_contact(payload: ContactCreate):
     email_sent = await _send_contact_email(payload)
@@ -168,7 +299,7 @@ async def create_contact(payload: ContactCreate):
 
 
 @api_router.get("/contact", response_model=List[ContactMessage])
-async def list_contacts():
+async def list_contacts(current=Depends(require_admin)):
     items = await db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     for i in items:
         if isinstance(i.get('created_at'), str):
@@ -182,7 +313,6 @@ async def create_quote(payload: QuoteCreate):
     doc = q.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     await db.quote_requests.insert_one(doc)
-    # Also fire an email if Resend is configured
     if RESEND_API_KEY:
         contact_like = ContactCreate(
             name=payload.name,
@@ -196,6 +326,7 @@ async def create_quote(payload: QuoteCreate):
     return q
 
 
+# ---- Projects (public GET; protected POST/DELETE) ----
 @api_router.get("/projects", response_model=List[Project])
 async def list_projects():
     items = await db.projects.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -206,7 +337,7 @@ async def list_projects():
 
 
 @api_router.post("/projects", response_model=Project)
-async def create_project(payload: ProjectCreate):
+async def create_project(payload: ProjectCreate, current=Depends(require_admin)):
     p = Project(**payload.model_dump())
     doc = p.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
@@ -215,11 +346,38 @@ async def create_project(payload: ProjectCreate):
 
 
 @api_router.delete("/projects/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(project_id: str, current=Depends(require_admin)):
     result = await db.projects.delete_one({"id": project_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"status": "deleted", "id": project_id}
+
+
+# ---- Chatbot ----
+@api_router.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(payload: ChatRequest):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="Chat service not configured")
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=payload.session_id,
+            system_message=CHATBOT_SYSTEM_PROMPT,
+        ).with_model("anthropic", "claude-sonnet-4-6")
+        response = await chat.send_message(UserMessage(text=payload.message))
+        reply_text = response if isinstance(response, str) else str(response)
+        # Persist chat turn
+        await db.chat_messages.insert_one({
+            "session_id": payload.session_id,
+            "user_message": payload.message,
+            "bot_reply": reply_text,
+            "language": payload.language,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return ChatResponse(reply=reply_text, session_id=payload.session_id)
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail="Chat failed")
 
 
 app.include_router(api_router)
@@ -237,6 +395,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 )
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def on_startup():
+    await seed_admin()
 
 
 @app.on_event("shutdown")

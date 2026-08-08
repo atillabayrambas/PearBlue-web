@@ -29,7 +29,7 @@ export const PricingTables = () => {
         ? "Een frisse, moderne website die je merk laat groeien — inclusief design, copy en hosting."
         : "A fresh, modern website that grows your brand — including design, copy and hosting.",
       features: websiteFeatures,
-      accent: false,
+      accent: true,
     },
     {
       key: "ict",
@@ -40,7 +40,7 @@ export const PricingTables = () => {
         ? "Betrouwbare ICT-infrastructuur: van netwerk en cloud tot beheer, monitoring en devices."
         : "Reliable ICT infrastructure: from network and cloud to management, monitoring and devices.",
       features: ictFeatures,
-      accent: true,
+      accent: false,
     },
     {
       key: "cyber",
