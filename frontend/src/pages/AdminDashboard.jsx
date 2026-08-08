@@ -87,7 +87,7 @@ const AdminSidebar = () => {
         <LogOut className="h-4 w-4" /> Uitloggen
       </button>
       <div className="mt-6 pt-4 border-t border-app text-[10px] text-muted-fg text-center">
-        PearBlue CMS · v0.7-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
+        PearBlue CMS · v0.7.1-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
       </div>
     </aside>
   );

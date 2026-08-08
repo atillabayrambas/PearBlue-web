@@ -104,6 +104,47 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **P3** — Volledige EN i18n voor CMS labels
 - **P3** — Refactor `server.py` (1764 regels) naar `routes/*.py`
 
+### Feb 2026 — Iteration 15 (this session, 16/16 pytest + all UI flows green)
+- **Prijslijst fixes**: 'Product-/dienstdetail paginastructuur' verwijderd; 'Adressen & verzending' → flat €10 (was €10-150); nieuw: **Mailbox-integratie (IMAP) €50** eenmalig.
+- **Calculator herwerkt (3 kolommen)**: Eenmalig / Maandelijks (vast) / Uurlijks (los) elk met eigen Subtotaal + BTW + Totaal. Setup-kolom weg (valt onder Eenmalig). Feedback-widget in modal. Wishlist opslaan met info-tooltip over cookies/profiel.
+- **About**: 9 waarden — toegevoegd Transparant, Toekomstgericht, Fris & Fruitig, Duurzaam, Kwaliteit.
+- **Services**: 'Zie prijslijst' knop per dienst met deep-link `/prijslijst?tab=web|ict|cyber`.
+- **Nieuwsbrief-aanmelding** in footer (geen captcha) via `POST /api/newsletter/subscribe`; analytics chart in CMS via `/api/admin/newsletter/stats`. Marketing-mails vanaf `communication-noreply@pearblue.nl`.
+- **CMS Priority balloons**: Major (donkerrood, blijft), P1 (rood, terug elk uur na dismiss), P2 (geel, dismissible zoals changelog) — boven versie-bar, via `/api/admin/priority-alerts`.
+- **Cybersecurity table**: sticky action-kolom (knoppen vielen buiten scherm).
+- **Feedback + Messages**: avatar (pear-gradient initialen) + prettyRole (geen underscores).
+- **Nieuwe CMS-tabs**:
+  - **Mailboxen (IMAP)** — CRUD + RBAC (super_admin/admin/beheerder only) — IMAP-fetch **MOCKED**.
+  - **Mailmarketing (Brevo)** — API-key entry + settings + campaigns lijst (**MOCKED** tot user Brevo-key invoert).
+  - **Virusscanner** — logs + quarantine/restore endpoints, engine **MOCKED**.
+- **User-details endpoints**: GET/PUT `/admin/users/{email}/details` voor adres/KVK/BTW/bedrijf/profielfoto; POST `/admin/users/{email}/reset-password` → reset-mail via Resend. Zoho 2-way sync **MOCKED** (`zoho_synced:false` in response).
+- **Changelog data**: minor version format Vx.x.x nu ondersteund (v0.7.1-Beta live).
+- **Versie sync**: footer + CMS sidebar tonen nu **v0.7.1-Beta**.
+
+## Explicit MOCKED items (waiting on real integration)
+- Brevo campaign send (API key opslag werkt, `/campaigns` retourneert placeholder response)
+- IMAP mailbox fetching (settings storage + RBAC werkt, geen echte inbox-sync)
+- Virus scan engine (logs schema + quarantine/restore werkt, geen scan-uitvoering)
+- Zoho user 2-way sync (backend accepts writes, geen Zoho Books push)
+- Zoho Desk ticket ↔ mail 2-way sync via subject-parsing
+- Password reset UI-pagina (`/admin/reset-password?token=...`) — token verificatie werkt backend-side, UI-form ontbreekt
+
+## Prioritized Backlog (Phase 5/6)
+- **P0** — Wire real Brevo v3 API against api.brevo.com/v3/emailCampaigns + smtp-relay for `/api/newsletter/subscribe`
+- **P0** — Wire real IMAP via aioimaplib; parse ticket-nummer regex `#TKT-\d+` in Subject/Message-ID/References; push to `db.contact_messages` + Zoho Desk via `zoho_portal.add_ticket_thread`
+- **P0** — Fernet-encrypt Brevo api_key + mailbox passwords in db.integrations / db.mailboxes
+- **P1** — Refactor `server.py` (2061 lines) → `routes/priority.py`, `routes/newsletter.py`, `routes/brevo.py`, `routes/mailboxes.py`, `routes/virus_scanner.py`, `routes/user_details.py`
+- **P1** — Build `/admin/reset-password?token=...` page for actual password change
+- **P1** — Wire ClamAV/VirusTotal for virus scanner
+- **P1** — Zoho Books contact 2-way sync daily worker (auto-create client, conflict detect)
+- **P2** — Random pear-thema profielfoto generator (avatar op basis van naam+seed)
+- **P2** — CMS pagination selector (5/10/25/50/100/200) op alle lijsten
+- **P2** — Globale CMS zoekbalk met previews
+- **P2** — Sharing facturen/projecten/tickets met externe email + dual-party confirmatie
+- **P2** — Meta Pixel ID in AI Dashboard
+- **P3** — ICT + Cybersecurity managed prijzen (wacht op user-input)
+- **P3** — Volledige EN i18n voor CMS labels
+
 ## Test Credentials
 - Admin: `admin@pearblue.nl` / `PearBlue2026!` — see `/app/memory/test_credentials.md`.
 - Zoho: end-to-end OAuth requires a real user consent; endpoint contracts + redirect URL tested.
