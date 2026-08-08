@@ -5,6 +5,7 @@ import { X, ExternalLink, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLang } from "../i18n/LanguageContext";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
+import { usePageSeo } from "../hooks/usePageSeo";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -20,6 +21,7 @@ const CATEGORIES = [
 
 export default function Projects() {
   const { t, lang } = useLang();
+  usePageSeo({ title: "Portfolio", description: "Recente PearBlue projecten — van e-commerce webshops tot Bitdefender cybersecurity uitrollen.", path: "/portfolio" });
   const [filter, setFilter] = useState("all");
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);

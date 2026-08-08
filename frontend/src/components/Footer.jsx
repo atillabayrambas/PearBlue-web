@@ -26,6 +26,7 @@ export const Footer = () => {
             <li><Link to="/over-ons" className="hover:text-pear-500" data-testid="footer-link-about">{t("nav.about")}</Link></li>
             <li><Link to="/diensten" className="hover:text-pear-500" data-testid="footer-link-services">{t("nav.services")}</Link></li>
             <li><Link to="/portfolio" className="hover:text-pear-500" data-testid="footer-link-portfolio">{t("nav.portfolio")}</Link></li>
+            <li><Link to="/portal" className="hover:text-pear-500" data-testid="footer-link-portal">Klantportaal</Link></li>
             <li><Link to="/contact" className="hover:text-pear-500" data-testid="footer-link-contact">{t("nav.contact")}</Link></li>
           </ul>
         </div>
@@ -34,7 +35,7 @@ export const Footer = () => {
           <ul className="space-y-2 text-sm text-muted-fg">
             <li className="flex items-center gap-2"><Mail className="h-4 w-4 text-pear-500" /> info@pearblue.nl</li>
             <li className="flex items-center gap-2"><Phone className="h-4 w-4 text-pear-500" /> +31 596 229 030</li>
-            <li className="flex items-center gap-2"><MapPin className="h-4 w-4 text-pear-500" /> Nederland</li>
+            <li className="flex items-center gap-2"><MapPin className="h-4 w-4 text-pear-500" /> Nederland, Delfzijl</li>
           </ul>
         </div>
       </div>

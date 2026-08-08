@@ -12,11 +12,16 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
 import bcrypt
 import jwt
 import resend
 from collections import defaultdict
+from starlette.middleware.sessions import SessionMiddleware
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from zoho_portal import make_router as make_zoho_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -262,8 +267,8 @@ CHATBOT_SYSTEM_PROMPT = (
     "taal van de gebruiker (NL of EN) en antwoord in dezelfde taal.\n\n"
     "Kerninformatie over PearBlue:\n"
     "- 'Jouw Complete Digitale Partner' — innovatief, duurzaam, betaalbaar\n"
-    "- Vestiging: Boekweitkamp 7, 9932MA Delfzijl\n"
-    "- KVK: 87201607 · Eenmanszaak · Handelsnaam PearBlue\n"
+    "- Vestiging: Nederland\n"
+    "- KVK: 87201607 · Vestigingsnummer 000053124294\n"
     "- Contact: info@pearblue.nl · +31 596 229 030\n\n"
     "Drie pakketten:\n"
     "1) Website — vanaf €200. Ontwerp, copywriting, hosting, meertalig (NL/EN), basis SEO.\n"
@@ -374,6 +379,51 @@ async def delete_project(project_id: str, current=Depends(require_admin)):
     return {"status": "deleted", "id": project_id}
 
 
+# ---- Chat stats (admin) ----
+@api_router.get("/chat/stats")
+async def chat_stats(days: int = 30, current=Depends(require_admin)):
+    from datetime import date
+    days = max(1, min(days, 90))
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days - 1)
+    cutoff = since.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    cursor = db.chat_messages.find(
+        {"created_at": {"$gte": cutoff}},
+        {"_id": 0, "created_at": 1, "session_id": 1, "language": 1},
+    )
+    per_day: dict[str, int] = {}
+    sessions: set[str] = set()
+    per_lang: dict[str, int] = defaultdict(int)
+    total = 0
+    async for doc in cursor:
+        total += 1
+        s = doc.get("session_id")
+        if s:
+            sessions.add(s)
+        per_lang[doc.get("language") or "unknown"] += 1
+        ca = doc.get("created_at")
+        try:
+            d = datetime.fromisoformat(ca).date().isoformat() if isinstance(ca, str) else ca.date().isoformat()
+        except Exception:
+            continue
+        per_day[d] = per_day.get(d, 0) + 1
+    # Build a dense series for the last N days
+    series = []
+    for i in range(days):
+        day = (since + timedelta(days=i)).date().isoformat()
+        series.append({"date": day, "count": per_day.get(day, 0)})
+    total_messages_ever = await db.chat_messages.count_documents({})
+    return {
+        "days": days,
+        "total_in_range": total,
+        "total_messages_ever": total_messages_ever,
+        "unique_sessions_in_range": len(sessions),
+        "per_day": series,
+        "per_language": dict(per_lang),
+        "rate_limit_per_hour": CHAT_RATE_LIMIT_PER_HOUR,
+    }
+
+
 # ---- Chatbot ----
 def _chat_rate_check(request: Request) -> int:
     """Return remaining allowance for this IP; raise 429 if exhausted."""
@@ -440,6 +490,18 @@ async def update_settings(payload: SiteSettingsUpdate, current=Depends(require_a
 
 
 app.include_router(api_router)
+app.include_router(make_zoho_router(db))
+
+# Session middleware BEFORE CORS
+SESSION_SECRET = os.environ.get('SESSION_SECRET', 'change-me-in-production-32-bytes-min')
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="pb_session",
+    same_site="lax",
+    https_only=False,
+    max_age=60 * 60 * 8,  # 8 hours
+)
 
 app.add_middleware(
     CORSMiddleware,

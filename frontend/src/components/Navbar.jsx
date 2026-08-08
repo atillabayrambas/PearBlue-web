@@ -98,7 +98,7 @@ export const Navbar = () => {
           <ThemeSwitcher />
           <button
             onClick={() => setLang(lang === "nl" ? "en" : "nl")}
-            className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-fg hover:text-pear-500 border border-app rounded-full px-3 py-1.5"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-fg hover:text-pear-500 border border-app rounded-full px-3 py-1.5"
             data-testid="lang-toggle"
             aria-label="Toggle language"
           >

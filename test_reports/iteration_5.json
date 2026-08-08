@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 5 verified end-to-end. Backend: 10/10 new pytest tests pass (chat stats admin-protected + returns full payload for days=30 and days=7; Zoho OAuth /api/auth/zoho/login returns 307 redirect to accounts.zoho.eu/oauth/v2/auth with scope AaaServer.profile.READ,ZohoBooks.invoices.READ,... and state; /api/auth/portal/me returns {authenticated:false} without session; /api/portal/invoices|projects|tickets all return 401 without session; /robots.txt contains Disallow: /admin + Sitemap; /sitemap.xml contains /over-ons,/diensten,/portfolio,/contact and root <loc>). Frontend Playwright: 30/30 pass — SEO titles + og:title/og:description present on /, /over-ons, /diensten, /portfolio, /contact, /portal; footer has 'Nederland, Delfzijl' + data-testid=footer-link-portal → /portal; Contact page contains 'Nederland, Delfzijl'; /portal shows page-portal-login + portal-zoho-login button (not completing OAuth); admin CMS sidebar has cms-nav-analytics, navigates to /admin/analytics rendering cms-analytics + analytics-chart + range buttons 7/30/90; logo bug fix verified — light theme img src contains 'q9h768hj' (dark-text), dark theme img src contains '0iemi3i5' (white-text); mobile 390px lang-toggle is display:flex and visible.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 529 lines and imports many concerns (auth, chat, projects, settings, contact, chat stats). Consider splitting into routers/*.py modules — /app/backend/zoho_portal.py is a good template.",
+    "GET /api/chat/stats iterates the full window in Python and does another count_documents on the whole collection each request. For higher volume, replace with a MongoDB aggregation pipeline ($match + $group by date) and cache the total_messages_ever counter, otherwise this endpoint will slow down as chat_messages grows.",
+    "chat_stats parses created_at from string with datetime.fromisoformat on every doc — chat_messages should store created_at as native BSON Date (or add a date index) so the range query can use an index; also allows aggregation to work on real dates.",
+    "zoho_portal.py: state token is generated but must be validated against the session on /callback — verify the CSRF check exists there (out of scope for this run; not testable without a real OAuth flow).",
+    "ZOHO_BOOKS_ORG_ID / ZOHO_PROJECTS_PORTAL_ID / ZOHO_DESK_ORG_ID are empty in .env — portal endpoints will 400 even after a successful OAuth login until these are populated. Consider surfacing this in /api/auth/portal/me as a config_ready flag so the UI can show a clearer error than a generic 400.",
+    "Chatbot system prompt still contains legacy Boekweitkamp/Eenmanszaak text (flagged in iteration 4, unresolved). With the new 'Nederland, Delfzijl' branding change this remains inconsistent — chatbot will still spell out the old address.",
+    "usePageSeo.js writes to document.head on every route mount — verify it removes/updates existing tags rather than appending duplicates when navigating between pages (a quick spot-check on multiple navigations would confirm no <meta> pileup).",
+    "public/sitemap.xml is static — will not include future dynamic project pages. Fine for now, but note if project detail routes are added.",
+    "Iteration 4 findings still valid: CORS allow_credentials=True with allow_origins='*'; in-memory chat rate store is per-worker."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {"backend": "100% (10/10 new + iter1-4 regressions unchanged)", "frontend": "100% (30/30)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Left prior iteration 4 settings values untouched as requested.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 5 pytest file at /app/backend/tests/test_iteration5.py covers chat/stats admin gate + payload shape (days=7 and days=30), Zoho login 307 redirect to accounts.zoho.eu with scope+state, /auth/portal/me anonymous, /portal/{invoices,projects,tickets} 401, and static /robots.txt + /sitemap.xml on the public URL. IMPORTANT: The Zoho OAuth callback flow was NOT exercised (no real Zoho account). Portal endpoints returning 401 without a session is verified; behavior AFTER a real OAuth login (or with ZOHO_*_ORG_ID unset) is unverified — expect 400 per feature spec. Logo test must select '[data-testid=brand-logo] img' — data-testid is on the <Link>, not the <img>. usePageSeo sets titles like 'Home · PearBlue', 'Over ons · PearBlue' etc. — all pages verified. Iter 4 fixtures left ga4/hero settings populated with TEST_ values.",
+  "rca of the issue": "N/A — no functional issues found in iteration 5."
+}

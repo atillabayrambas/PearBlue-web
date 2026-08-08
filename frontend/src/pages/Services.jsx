@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Globe, Server, ShieldCheck, Check, ArrowRight } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
+import { usePageSeo } from "../hooks/usePageSeo";
 
 const IMG = {
   ict_hero: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?crop=entropy&cs=srgb&fm=jpg&w=1400&q=85",
@@ -123,6 +124,7 @@ const SERVICES = {
 
 export default function Services() {
   const { t, lang } = useLang();
+  usePageSeo({ title: "Diensten", description: "IT Platform (vanaf €100), Media Website (vanaf €200) en Cybersecurity Bitdefender GravityZone (vanaf €5 p/machine).", path: "/diensten" });
   const services = [SERVICES.ict, SERVICES.media, SERVICES.cyber];
 
   return (

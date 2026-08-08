@@ -4,11 +4,13 @@ import { motion } from "framer-motion";
 import { Mail, Phone, MapPin, Clock, Send, CheckCircle2 } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { toast } from "sonner";
+import { usePageSeo } from "../hooks/usePageSeo";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function Contact() {
   const { t, lang } = useLang();
+  usePageSeo({ title: "Contact", description: "Neem contact op met PearBlue — info@pearblue.nl · +31 596 229 030. We reageren binnen één werkdag.", path: "/contact" });
   const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", subject: "", message: "" });
   const [status, setStatus] = useState("idle"); // idle | submitting | success | error
 
@@ -47,7 +49,7 @@ export default function Contact() {
                 <ul className="space-y-3 text-sm text-strong/85">
                   <li className="flex items-start gap-3"><Mail className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_email")}</strong>info@pearblue.nl</span></li>
                   <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_phone")}</strong>+31 596 229 030</span></li>
-                  <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_address")}</strong>Nederland</span></li>
+                  <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_address")}</strong>Nederland, Delfzijl</span></li>
                 </ul>
               </div>
               <div>

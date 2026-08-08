@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+
+Sitemap: https://sheet-converter-68.preview.emergentagent.com/sitemap.xml

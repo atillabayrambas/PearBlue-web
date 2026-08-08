@@ -2,10 +2,11 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
+import { AnalyticsAdmin } from "./AdminAnalytics";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -20,6 +21,7 @@ const AdminSidebar = () => {
   const { logout, user } = useAuth();
   const items = [
     { to: "/admin", label: "Portfolio", icon: Briefcase, end: true, testid: "cms-nav-projects" },
+    { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
     { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages" },
   ];
@@ -313,6 +315,7 @@ export default function AdminDashboard() {
       <AdminLayout>
         <Routes>
           <Route index element={<ProjectsAdmin />} />
+          <Route path="analytics" element={<AnalyticsAdmin />} />
           <Route path="settings" element={<SettingsAdmin />} />
           <Route path="messages" element={<MessagesAdmin />} />
         </Routes>

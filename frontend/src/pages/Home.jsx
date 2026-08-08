@@ -6,6 +6,7 @@ import { ArrowRight, Sparkles, Star, ChevronRight } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
+import { usePageSeo } from "../hooks/usePageSeo";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -18,6 +19,7 @@ const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 
 export default function Home() {
   const { t } = useLang();
+  usePageSeo({ title: "Home", description: "PearBlue — websites, ICT-diensten en cybersecurity. Fris, modern en betaalbaar voor de nieuwe generatie ondernemers.", path: "/" });
   const [preview, setPreview] = useState(PORTFOLIO_PROJECTS.slice(0, 4));
 
   useEffect(() => {

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Sparkles, Leaf, Wallet, HeartHandshake, ArrowRight } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
+import { usePageSeo } from "../hooks/usePageSeo";
 
 const IMG_OFFICE = "https://images.unsplash.com/photo-1606836591695-4d58a73eba1e?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85";
 const IMG_TEAM = "https://images.unsplash.com/photo-1711558596331-900d9cb71f62?crop=entropy&cs=srgb&fm=jpg&w=900&q=85";
@@ -10,6 +11,7 @@ const IMG_NATURE = "https://images.unsplash.com/photo-1547468243-8839e59a7c54?cr
 
 export default function About() {
   const { t } = useLang();
+  usePageSeo({ title: "Over ons", description: "Wij zijn PearBlue: innovatief, duurzaam en betaalbaar. Ontdek onze waarden en werkwijze.", path: "/over-ons" });
   const values = [
     { icon: Sparkles, title: t("about.v1_title"), desc: t("about.v1_desc") },
     { icon: Leaf, title: t("about.v2_title"), desc: t("about.v2_desc") },
