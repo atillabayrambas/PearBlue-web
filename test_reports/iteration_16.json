@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 16 (v0.5.2-Beta) tested successfully — backend 18/18 pytest cases pass, frontend all targeted UI checks pass. New ROLE_FINANCIEN correctly present in /api/admin/roles (7 roles total, financien has ['analytics','financials']; super_admin/beheerder both include 'financials'). /api/admin/financials returns emergent_ai (messages/estimated_eur/usd/credits), zoho_books (mocked:true, invoiced/paid/outstanding/overdue/top_clients), totals (combined_income_eur/combined_costs_eur/estimated_margin_eur); period=7d→days=7, 30d→30, custom 2025-01-01..01-31→30. Moderator gets 403. /api/quote accepts wishlist_items+wishlist_totals+story and echoes them back. /api/chat/rating {rating:5} returns saved+id; /api/admin/chat/ratings returns total/avg/counts{1..5}/per_day/recent; rating=0 and rating=6 → 422. Brevo api_key stored 'enc:...' (Fernet), GET never exposes raw key. Mailbox password stored 'enc:...'; duplicate email POST → 409. Regressions OK (/api/projects, /api/reviews, /api/admin/counters, /api/chat, /api/newsletter/subscribe, /api/telemetry/captcha-verified). Frontend: /prijslijst has 3 service tabs, calculator modal opens; pricing-calc-service-total-web MID BLOCK REMOVED as spec; category subtotals render when qty>0 (pricing-calc-cat-subtotal-<cat>); pricing-calc-request-quote opens quote-from-calc-modal; submitting name+email+story POSTs /api/quote (200) and shows toast 'Quote request sent'. /admin/financials renders cms-financials, financials-total-income/costs/margin cards, all 9 period buttons (7d/30d/90d/6m/1y/2y/3y/5y/custom) and financials-custom-range date picker. Sidebar has cms-nav-financials. UsersAdmin page renders 'Financiën' role option. /admin/analytics has analytics-ratings block. Top notification bar shows 'v0.5.2-Beta'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sidebar footer / public Footer", "issues": ["Sidebar footer still says 'PearBlue CMS · v0.5-Beta · 2026' (or hardcoded prior label). Confirm dynamic version source; top notification bar correctly shows v0.5.2-Beta. Minor — carry-over from iter 15 action items."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16.py",
+    "/app/test_reports/pytest/iter16.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: unify sidebar/footer version string with backend /api/changelog.current (v0.5.2-Beta). Not blocking.",
+    "OPTIONAL: QuoteCreate.pages is typed 'int' — spec examples pass strings like '5-10' which return 422. Consider Union[int,str] or documenting int-only.",
+    "OPTIONAL/SECURITY: enc_secret Fernet fallback — verify SECRETS_KEY is set in /app/backend/.env; if missing, encryption is a no-op noted only by returned {encrypted:false}."
+  ],
+  "critical_code_review_comments": [
+    "server.py now 2305 lines — exceeds 700-line guideline. Same recommendation to split into routers/{financials,chat_rating,brevo,mailboxes,users}.py.",
+    "/api/admin/financials Emergent-AI cost is a rough heuristic (msg × 800 tokens × pricing). If accuracy matters for finance dashboard, integrate Emergent Universal Key actual usage endpoint instead of local estimate.",
+    "/api/admin/chat/ratings uses require_admin (not require_permission('analytics' or 'financials')). Any CMS-access role can view — intentional? Consider gating behind 'analytics' perm to align with sidebar visibility.",
+    "QuoteCreate.pages accepts int only; frontend calculator passes wishlist with page counts but the offerte-modal skips pages field. OK, but review request examples used a string range.",
+    "MailboxCreate has no email regex validator (EmailStr) — accepts any string. Duplicate check uses lowercased email but MailboxCreate does not enforce email format."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration16.py"],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% of targeted iteration-16 UI checks"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026!",
+  "seed_data_creation": "Created & deleted throwaway users test_financien_<hex>@pearblue.nl and test_mod_<hex>@pearblue.nl; test mailbox test_dup_<hex>@example.com created & deleted; brevo settings set to api_key=test123 (encrypted); one chat_ratings doc with session_id=test_sess_* (rating=5). One QuoteRequest doc with name='TEST_Quote User'.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 16 (v0.5.2-Beta) endpoints all green. Backend testids to remember: /api/admin/financials (period=7d|30d|90d|6m|1y|2y|3y|5y|custom + date_from/date_to), /api/chat/rating POST, /api/admin/chat/ratings?days=N GET (require_admin, not permission-gated), /api/admin/brevo/settings (Fernet-encrypted, api_key never returned), /api/admin/mailboxes (409 on duplicate, password Fernet-encrypted). Frontend testids: cms-nav-financials, cms-financials, financials-period-{7d,30d,90d,6m,1y,2y,3y,5y,custom}, financials-total-{income,costs,margin}, financials-custom-range, financials-date-from/to, financials-apply-range, pricing-calc-cat-subtotal-<catKey>, pricing-calc-request-quote, quote-from-calc-modal, quote-{name,email,company,story,submit,cancel,close,wishlist-preview}, analytics-ratings, chatbot-rating, chatbot-rating-{1..5}. Old MID subtotal pricing-calc-service-total-web is confirmed removed. Note: QuoteCreate.pages is typed int — pass integer, not string range."
+}

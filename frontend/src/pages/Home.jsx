@@ -90,7 +90,7 @@ export default function Home() {
       <section className="border-y border-app surface py-6" data-testid="marquee-section">
         <div className="marquee">
           <div className="marquee-track font-heading text-xl text-muted-fg/70 whitespace-nowrap items-center">
-            {[...Array(2)].flatMap((_, k) => ["Innovatief", "Duurzaam", "Betaalbaar", "Persoonlijk", "Toekomstgericht", "Fris & Fruitig", "Kwaliteit"].map((w, i) => (
+            {[...Array(2)].flatMap((_, k) => ["Innovatief", "Duurzaam", "Betaalbaar", "Persoonlijk", "Transparant", "Toekomstgericht", "Fris & Fruitig", "Kwaliteit"].map((w, i) => (
               <span key={`${k}-${i}`} className="flex items-center gap-12">
                 {w}<span className="text-pear-500">◆</span>
               </span>

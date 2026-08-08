@@ -39,6 +39,7 @@ export default function About() {
               <p dangerouslySetInnerHTML={{ __html: bold(t("about.p1")) }} />
               <p dangerouslySetInnerHTML={{ __html: bold(t("about.p2")) }} />
               <p dangerouslySetInnerHTML={{ __html: bold(t("about.p3")) }} />
+              <p dangerouslySetInnerHTML={{ __html: bold(t("about.p4")) }} />
             </div>
           </div>
           <div className="lg:col-span-5 grid grid-cols-2 gap-4">

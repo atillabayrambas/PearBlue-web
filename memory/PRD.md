@@ -121,12 +121,28 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **Changelog data**: minor version format Vx.x.x nu ondersteund (v0.7.1-Beta live).
 - **Versie sync**: footer + CMS sidebar tonen nu **v0.7.1-Beta**.
 
+### Feb 2026 — Iteration 16 (this session)
+- **P0 fix — 'Financiën' rol** toegevoegd aan backend `ROLE_PERMS` + `ALL_ROLES` + frontend `ROLE_LABELS`; nieuwe permission `financials` toegewezen aan super_admin/admin/beheerder/financien.
+- **Fernet encryptie** — nieuwe helpers `enc_secret()` / `dec_secret()` op basis van `TOKEN_ENCRYPTION_KEY`. Brevo API-key + IMAP mailbox-wachtwoord worden nu versleuteld opgeslagen (prefix `enc:`).
+- **Mailbox dubbele-sync preventie** — POST `/admin/mailboxes` weigert nu een tweede mailbox met hetzelfde e-mailadres (409).
+- **AI Dashboard Financiën** — nieuwe route `/admin/financials` + backend `/api/admin/financials?period=7d|30d|90d|6m|1y..5y|custom`. Emergent AI-kosten berekend via werkelijk aantal `chat_messages`; Zoho Books-cijfers MOCKED (klaar voor Zoho Books API-koppeling).
+- **Chat smiley-rating** — nieuwe endpoints `POST /api/chat/rating` + `GET /api/admin/chat/ratings`; UI in `Chatbot.jsx` (1-5 smileys na 2 exchanges). Analytics-grafiek op AI Dashboard.
+- **Calculator uitgebreid**:
+  - Per-categorie subtotalen (Eenmalig/Maandelijks/Uurlijks) onder elke categorie.
+  - Overbodige middenblok "Setup / Per maand / Uurlijks" verwijderd (staat in de gecombineerde footer).
+  - Submit-knop hernoemd naar "Offerte aanvragen en calculatie en wensen mee verzenden" (Dutch) / "Request quote & send calculation and wishes" (English).
+  - Nieuw QuoteFromCalculator modal met "SFEER EN VERHAAL VAN UW WEBSITE" textarea.
+  - `/api/quote` accepteert nu `wishlist_items`, `wishlist_totals` en `story`. Wishlist + totalen worden meegestuurd in de mail.
+  - Mobiele share-tekst: "Dit is mijn wishlist bij PearBlue voor mijn droom website, IT platform en de beveiliging".
+- **Version bump**: v0.5.1-Beta → **v0.5.2-Beta** (footer + CMS sidebar + changelog).
+
 ## Explicit MOCKED items (waiting on real integration)
-- Brevo campaign send (API key opslag werkt, `/campaigns` retourneert placeholder response)
-- IMAP mailbox fetching (settings storage + RBAC werkt, geen echte inbox-sync)
+- Brevo campaign send (API key opslag Fernet-encrypted, `/campaigns` retourneert placeholder response)
+- IMAP mailbox fetching (settings + password Fernet-encrypted, dubbele-mailbox-preventie actief, geen echte inbox-sync)
 - Virus scan engine (logs schema + quarantine/restore werkt, geen scan-uitvoering)
 - Zoho user 2-way sync (backend accepts writes, geen Zoho Books push)
 - Zoho Desk ticket ↔ mail 2-way sync via subject-parsing
+- **Zoho Books financials** in `/admin/financials` (gefactureerd/betaald/openstaand/top klanten — allemaal MOCKED tot Zoho Books API-koppeling)
 - Password reset UI-pagina (`/admin/reset-password?token=...`) — token verificatie werkt backend-side, UI-form ontbreekt
 
 ## Prioritized Backlog (Phase 5/6)

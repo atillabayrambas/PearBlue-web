@@ -16,6 +16,56 @@ const genSessionId = () => {
   return id;
 };
 
+// Smiley 1-5 rating widget shown inside the chat panel after some exchanges.
+const SMILEYS = ["😞", "🙁", "😐", "🙂", "😄"];
+const ChatbotRating = ({ sessionId, lang }) => {
+  const key = `pb_chat_rating_${sessionId}`;
+  const [done, setDone] = useState(() => localStorage.getItem(key) === "1");
+  const [hover, setHover] = useState(0);
+  const [busy, setBusy] = useState(false);
+  if (done) return null;
+  const rate = async (r) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await axios.post(`${API}/chat/rating`, { session_id: sessionId, rating: r, source: "chat" });
+      localStorage.setItem(key, "1");
+      setDone(true);
+      toast.success(lang === "en" ? "Thanks for your feedback!" : "Bedankt voor je feedback!");
+    } catch {
+      toast.error(lang === "en" ? "Rating failed" : "Beoordelen mislukt");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="px-4 py-2 border-t border-app bg-pear-50/40 dark:bg-pear-500/5 flex items-center justify-between gap-2" data-testid="chatbot-rating">
+      <span className="text-[11px] text-muted-fg">{lang === "en" ? "How's this chat?" : "Hoe was deze chat?"}</span>
+      <div className="flex items-center gap-1">
+        {SMILEYS.map((emo, idx) => {
+          const r = idx + 1;
+          const active = hover >= r;
+          return (
+            <button
+              key={r}
+              type="button"
+              disabled={busy}
+              onMouseEnter={() => setHover(r)}
+              onMouseLeave={() => setHover(0)}
+              onClick={() => rate(r)}
+              className={`text-lg transition-transform ${active ? "scale-125" : "opacity-75 hover:opacity-100"}`}
+              aria-label={`Rate ${r}`}
+              data-testid={`chatbot-rating-${r}`}
+            >
+              {emo}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export const Chatbot = () => {
   const { lang } = useLang();
   const [open, setOpen] = useState(false);
@@ -193,6 +243,11 @@ export const Chatbot = () => {
                 <LocalCaptcha onChange={(ok) => { setCaptchaOk(ok); if (ok) localStorage.setItem("pb_chat_captcha", "ok"); }} />
                 <ConsentText context="chatbot" />
               </div>
+            )}
+
+            {/* Smiley rating — appears after the user has had at least 2 exchanges */}
+            {captchaOk && messages.filter((m) => m.role === "user").length >= 2 && (
+              <ChatbotRating sessionId={sessionId} lang={lang} />
             )}
 
             <form onSubmit={send} className="p-3 border-t border-app flex items-center gap-2" data-testid="chatbot-form">

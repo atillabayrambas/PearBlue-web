@@ -99,7 +99,7 @@ const SERVICES = {
   cyber: {
     key: "cyber",
     icon: ShieldCheck,
-    priceFrom: "€5 p/machine",
+    priceFrom: "€5 p/machine p/maand",
     hero_img: IMG.cyber_hero,
     title_nl: "Cybersecurity — Bitdefender GravityZone",
     title_en: "Cybersecurity — Bitdefender GravityZone",
@@ -126,7 +126,7 @@ const SERVICES = {
 
 export default function Services() {
   const { t, lang } = useLang();
-  usePageSeo({ title: "Diensten", description: "IT Platform (vanaf €100), Media Website (vanaf €200) en Cybersecurity Bitdefender GravityZone (vanaf €5 p/machine).", path: "/diensten" });
+  usePageSeo({ title: "Diensten", description: "IT Platform (vanaf €100), Media Website (vanaf €200) en Cybersecurity Bitdefender GravityZone (vanaf €5 p/machine p/maand).", path: "/diensten" });
   const services = [SERVICES.ict, SERVICES.media, SERVICES.cyber];
 
   return (

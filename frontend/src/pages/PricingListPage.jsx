@@ -159,6 +159,8 @@ function CalculatorModal({ onClose }) {
 
   const totals = useMemo(() => {
     const buckets = { web: { oneOff: 0, monthly: 0, hourly: 0 }, ict: { oneOff: 0, monthly: 0, hourly: 0 }, cyber: { oneOff: 0, monthly: 0, hourly: 0 } };
+    const byCat = {}; // { catKey: { oneOff, monthly, hourly } }
+    const chosen = []; // { id, label, qty, unit, price, cat }
     for (const item of PRICING) {
       if (item.tbd) continue;
       const q = qty[item.id] || 0;
@@ -166,9 +168,11 @@ function CalculatorModal({ onClose }) {
       const base = item.included ? 0 : smartAverage(item.min, item.max);
       const line = base * q;
       const svc = SERVICE_OF_CAT[item.cat] || "web";
-      if (isRecurring(item.unit)) buckets[svc].monthly += line;
-      else if (isHourly(item.unit)) buckets[svc].hourly += line;
-      else buckets[svc].oneOff += line;
+      if (!byCat[item.cat]) byCat[item.cat] = { oneOff: 0, monthly: 0, hourly: 0 };
+      if (isRecurring(item.unit)) { buckets[svc].monthly += line; byCat[item.cat].monthly += line; }
+      else if (isHourly(item.unit)) { buckets[svc].hourly += line; byCat[item.cat].hourly += line; }
+      else { buckets[svc].oneOff += line; byCat[item.cat].oneOff += line; }
+      chosen.push({ id: item.id, label: item.nl, qty: q, unit: item.unit, price: base, cat: item.cat });
     }
     const activeSvcs = Object.entries(buckets).filter(([, b]) => b.oneOff || b.monthly || b.hourly);
     const combined = {
@@ -181,7 +185,7 @@ function CalculatorModal({ onClose }) {
     combined.grandTotal = combined.oneOff + combined.btw;
     combined.monthlyBtw = combined.monthly * VAT_RATE;
     combined.monthlyTotal = combined.monthly + combined.monthlyBtw;
-    return { buckets, activeSvcs: activeSvcs.map(([k]) => k), combined };
+    return { buckets, byCat, chosen, activeSvcs: activeSvcs.map(([k]) => k), combined };
   }, [qty]);
 
   const saveWishlist = () => {
@@ -194,8 +198,12 @@ function CalculatorModal({ onClose }) {
     toast.info(lang === "en" ? "Wishlist cleared" : "Wishlist geleegd");
   };
   const shareLink = () => {
+    const wishlistText = lang === "en"
+      ? "This is my wishlist at PearBlue for my dream website, IT platform and security"
+      : "Dit is mijn wishlist bij PearBlue voor mijn droom website, IT platform en de beveiliging";
     const lines = [
-      lang === "en" ? "My PearBlue estimate:" : "Mijn PearBlue schatting:",
+      wishlistText,
+      "",
       `- ${lang === "en" ? "One-off" : "Eenmalig"}: ${money(totals.combined.oneOff)}`,
       `- ${lang === "en" ? "VAT 21%" : "BTW 21%"}: ${money(totals.combined.btw)}`,
       `- ${lang === "en" ? "Total incl. VAT" : "Totaal incl. btw"}: ${money(totals.combined.grandTotal)}`,
@@ -205,15 +213,16 @@ function CalculatorModal({ onClose }) {
       `${lang === "en" ? "Estimate URL: " : "Schatting URL: "}${window.location.origin}/prijslijst`,
     ].filter(Boolean).join("\n");
     if (navigator.share) {
-      navigator.share({ title: "PearBlue prijs-schatting", text: lines }).catch(() => {});
+      navigator.share({ title: "PearBlue — Wishlist", text: lines }).catch(() => {});
     } else {
       navigator.clipboard?.writeText(lines);
       toast.success(lang === "en" ? "Copied to clipboard" : "Gekopieerd naar klembord");
     }
   };
 
+  const [openQuote, setOpenQuote] = useState(false);
+
   const tabCategories = CATEGORIES.filter((c) => SERVICE_OF_CAT[c.key] === tab);
-  const b = totals.buckets[tab];
 
   return (
     <div
@@ -270,6 +279,8 @@ function CalculatorModal({ onClose }) {
           ) : tabCategories.map((c) => {
             const items = itemsByCat(c.key).filter((i) => !i.tbd && !i.included);
             if (!items.length) return null;
+            const cb = totals.byCat[c.key];
+            const hasCatTotal = cb && (cb.oneOff || cb.monthly || cb.hourly);
             return (
               <div key={c.key}>
                 <h4 className="text-xs uppercase tracking-widest text-muted-fg mb-2">{lang === "en" ? c.en : c.nl}</h4>
@@ -308,25 +319,17 @@ function CalculatorModal({ onClose }) {
                     );
                   })}
                 </ul>
+                {hasCatTotal && (
+                  <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] rounded-lg bg-pear-50/60 dark:bg-pear-500/10 border border-pear-200/60 px-3 py-1.5" data-testid={`pricing-calc-cat-subtotal-${c.key}`}>
+                    <span className="text-muted-fg uppercase tracking-widest text-[10px]">{lang === "en" ? "Subtotal" : "Subtotaal"}</span>
+                    {cb.oneOff > 0 && <span className="text-strong font-mono">{lang === "en" ? "One-off" : "Eenmalig"}: <span className="text-pear-600 font-semibold">{money(cb.oneOff)}</span></span>}
+                    {cb.monthly > 0 && <span className="text-strong font-mono">{lang === "en" ? "Monthly" : "Maandelijks"}: <span className="text-pear-600 font-semibold">{money(cb.monthly)}</span></span>}
+                    {cb.hourly > 0 && <span className="text-strong font-mono">{lang === "en" ? "Hourly" : "Uurlijks"}: <span className="text-pear-600 font-semibold">{money(cb.hourly)}</span></span>}
+                  </div>
+                )}
               </div>
             );
           })}
-
-          {/* Per-service subtotal */}
-          <div className="rounded-xl border border-pear-200 bg-pear-50/40 dark:bg-pear-500/10 p-4 grid grid-cols-3 gap-3 text-sm" data-testid={`pricing-calc-service-total-${tab}`}>
-            <div>
-              <div className="text-[10px] uppercase tracking-widest text-muted-fg">{lang === "en" ? "Setup" : "Setup"}</div>
-              <div className="font-heading font-medium text-strong">{money(b.oneOff)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-widest text-muted-fg">{lang === "en" ? "Monthly" : "Per maand"}</div>
-              <div className="font-heading font-medium text-strong">{money(b.monthly)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-widest text-muted-fg">{lang === "en" ? "Hourly" : "Uurlijks"}</div>
-              <div className="font-heading font-medium text-strong">{money(b.hourly)}</div>
-            </div>
-          </div>
         </div>
 
         {/* Combined totals footer — 3 stacked blocks: One-off / Monthly / Hourly with BTW */}
@@ -377,15 +380,174 @@ function CalculatorModal({ onClose }) {
             <button type="button" onClick={shareLink} className="btn-secondary" data-testid="pricing-calc-share">
               <Share2 className="h-4 w-4" /> {lang === "en" ? "Share" : "Delen"}
             </button>
-            <Link to="/contact" className="btn-primary" data-testid="pricing-calc-request-quote">
-              {lang === "en" ? "Request quote" : "Vraag offerte"} <ArrowRight className="h-4 w-4" />
+            <Link to="/contact" className="btn-secondary hidden sm:inline-flex" data-testid="pricing-calc-plain-contact">
+              {lang === "en" ? "Contact" : "Contact"}
             </Link>
+            <button
+              type="button"
+              onClick={() => setOpenQuote(true)}
+              className="btn-primary"
+              data-testid="pricing-calc-request-quote"
+            >
+              {lang === "en"
+                ? "Request quote & send calculation and wishes"
+                : "Offerte aanvragen en calculatie en wensen mee verzenden"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
           </div>
           {/* Feedback widget inside modal (compact) */}
           <div className="pt-2 mt-2 border-t border-app/40">
             <FeedbackWidget page="calculator" className="!mt-0" />
           </div>
         </footer>
+      </div>
+      {openQuote && (
+        <QuoteFromCalculator
+          onClose={() => setOpenQuote(false)}
+          totals={totals}
+          lang={lang}
+        />
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Quote form modal — pre-fills wishlist + adds a "Sfeer & verhaal" story field
+// -----------------------------------------------------------------------------
+function QuoteFromCalculator({ onClose, totals, lang }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [story, setStory] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const hasSelection = totals.chosen && totals.chosen.length > 0;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name || !email) {
+      toast.error(lang === "en" ? "Fill in your name & email" : "Vul je naam en e-mail in");
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = {
+        name,
+        email,
+        company: company || undefined,
+        language: lang,
+        services: Array.from(new Set(totals.chosen.map((c) => SERVICE_OF_CAT[c.cat] || "web"))),
+        description: story || (lang === "en" ? "Quote request from calculator" : "Offerte-aanvraag via calculator"),
+        story,
+        wishlist_items: totals.chosen,
+        wishlist_totals: {
+          oneOff: Math.round(totals.combined.oneOff * 100) / 100,
+          monthly: Math.round(totals.combined.monthly * 100) / 100,
+          hourly: Math.round(totals.combined.hourly * 100) / 100,
+          btw: Math.round(totals.combined.btw * 100) / 100,
+          grandTotal: Math.round(totals.combined.grandTotal * 100) / 100,
+        },
+      };
+      const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+      const axios = (await import("axios")).default;
+      await axios.post(`${API}/quote`, payload);
+      toast.success(lang === "en" ? "Quote request sent — we'll get back to you soon." : "Offerte-aanvraag verstuurd — we nemen snel contact op.");
+      onClose();
+    } catch (err) {
+      toast.error(lang === "en" ? "Could not send — please try again." : "Verzenden mislukt — probeer opnieuw.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose} data-testid="quote-from-calc-modal">
+      <div
+        className="w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto border border-app bg-white dark:bg-slate-900"
+        onClick={(e) => e.stopPropagation()}
+        style={{ backgroundColor: "var(--pb-bg-solid, white)" }}
+      >
+        <header className="px-6 py-4 border-b border-app flex items-center justify-between">
+          <div>
+            <div className="font-heading text-lg font-semibold text-strong">
+              {lang === "en" ? "Request quote & send calculation" : "Offerte + calculatie versturen"}
+            </div>
+            <p className="text-xs text-muted-fg mt-0.5">
+              {lang === "en"
+                ? "Your wishlist and totals are attached automatically."
+                : "Je wishlist en totalen worden automatisch meegestuurd."}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-muted-fg hover:text-strong" data-testid="quote-from-calc-close"><X className="h-6 w-6" /></button>
+        </header>
+        <form onSubmit={submit} className="p-6 space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-xs uppercase tracking-widest text-muted-fg">{lang === "en" ? "Name" : "Naam"} *</span>
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="quote-name" />
+            </label>
+            <label className="block">
+              <span className="text-xs uppercase tracking-widest text-muted-fg">E-mail *</span>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="quote-email" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-xs uppercase tracking-widest text-muted-fg">{lang === "en" ? "Company" : "Bedrijf"}</span>
+            <input value={company} onChange={(e) => setCompany(e.target.value)} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="quote-company" />
+          </label>
+          <label className="block">
+            <span className="block text-xs uppercase tracking-widest text-muted-fg font-bold">
+              {lang === "en" ? "MOOD & STORY OF YOUR WEBSITE" : "SFEER EN VERHAAL VAN UW WEBSITE"}
+            </span>
+            <span className="block text-[11px] text-muted-fg mt-0.5">
+              {lang === "en"
+                ? "What feeling should the site convey? What's the story behind your brand? Colours, references, examples you love — tell us anything."
+                : "Wat voor gevoel moet de site uitstralen? Wat is het verhaal achter je merk? Kleuren, referenties, mooie voorbeelden — vertel het ons."}
+            </span>
+            <textarea
+              value={story}
+              onChange={(e) => setStory(e.target.value)}
+              rows={5}
+              maxLength={5000}
+              placeholder={lang === "en"
+                ? "e.g. Fresh, modern and playful — with a nod to nature. Similar to X or Y. Target audience: …"
+                : "bijv. Fris, modern en speels — met een knipoog naar de natuur. Vergelijkbaar met X of Y. Doelgroep: …"}
+              className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong resize-y"
+              data-testid="quote-story"
+            />
+          </label>
+          {hasSelection && (
+            <div className="rounded-lg border border-pear-200 bg-pear-50/40 dark:bg-pear-500/10 p-3 text-xs" data-testid="quote-wishlist-preview">
+              <div className="font-heading font-semibold text-strong mb-1">{lang === "en" ? "Attached wishlist" : "Meegestuurde wishlist"}</div>
+              <ul className="space-y-0.5 max-h-32 overflow-y-auto">
+                {totals.chosen.slice(0, 20).map((c) => (
+                  <li key={c.id} className="flex justify-between gap-2">
+                    <span className="text-strong truncate">{c.label} × {c.qty}</span>
+                    <span className="font-mono text-muted-fg">€{c.price * c.qty}</span>
+                  </li>
+                ))}
+                {totals.chosen.length > 20 && <li className="text-muted-fg">+ {totals.chosen.length - 20} more…</li>}
+              </ul>
+              <div className="mt-2 pt-2 border-t border-pear-200/50 flex flex-wrap gap-3 justify-end text-[11px]">
+                {totals.combined.oneOff > 0 && <span>{lang === "en" ? "One-off" : "Eenmalig"}: <b>{money(totals.combined.oneOff)}</b></span>}
+                {totals.combined.monthly > 0 && <span>{lang === "en" ? "Monthly" : "Per maand"}: <b>{money(totals.combined.monthly)}</b></span>}
+                {totals.combined.hourly > 0 && <span>{lang === "en" ? "Hourly" : "Per uur"}: <b>{money(totals.combined.hourly)}</b></span>}
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="text-xs px-4 py-2 rounded-full border border-app hover:border-slate-400" data-testid="quote-cancel">
+              {lang === "en" ? "Cancel" : "Annuleren"}
+            </button>
+            <button type="submit" disabled={busy} className="btn-primary" data-testid="quote-submit">
+              {busy
+                ? (lang === "en" ? "Sending…" : "Bezig met versturen…")
+                : (lang === "en" ? "Send request" : "Verstuur aanvraag")}
+              <Check className="h-4 w-4" />
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

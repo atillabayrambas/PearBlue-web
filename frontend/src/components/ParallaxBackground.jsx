@@ -47,7 +47,7 @@ export const ParallaxBackground = () => {
     >
       <div
         ref={ref}
-        className="absolute inset-0 opacity-[0.05] will-change-transform select-none"
+        className="absolute inset-0 opacity-[0.055] will-change-transform select-none"
         style={{
           backgroundImage: `url("${LOGO_URL}")`,
           backgroundRepeat: "no-repeat",
@@ -57,7 +57,7 @@ export const ParallaxBackground = () => {
         }}
       />
       <div
-        className="absolute -top-16 right-[-6%] w-[55vw] max-w-[600px] aspect-[3/4] opacity-[0.035] select-none"
+        className="absolute -top-16 right-[-6%] w-[55vw] max-w-[600px] aspect-[3/4] opacity-[0.045] select-none"
         style={{
           backgroundImage: `url("${LOGO_URL}")`,
           backgroundRepeat: "no-repeat",

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { MessageCircle, Users, Gauge, Sparkles } from "lucide-react";
+import { MessageCircle, Users, Gauge, Sparkles, Smile } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -22,15 +22,16 @@ const Stat = ({ icon: Icon, label, value, sub }) => (
 export const AnalyticsAdmin = () => {
   const { authHeader } = useAuth();
   const [stats, setStats] = useState(null);
+  const [ratings, setRatings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/chat/stats?days=${days}`, { headers: authHeader() })
-      .then((r) => setStats(r.data))
-      .catch(() => setStats(null))
-      .finally(() => setLoading(false));
+    Promise.all([
+      axios.get(`${API}/chat/stats?days=${days}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
+      axios.get(`${API}/admin/chat/ratings?days=${days}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
+    ]).then(([s, r]) => { setStats(s); setRatings(r); }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
 
@@ -130,6 +131,33 @@ export const AnalyticsAdmin = () => {
                     {k.toUpperCase()} · {v}
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {ratings && ratings.total > 0 && (
+            <div className="mt-6 surface border border-app rounded-2xl p-6" data-testid="analytics-ratings">
+              <div className="flex items-center gap-2 mb-4">
+                <Smile className="h-4 w-4 text-pear-500" />
+                <h3 className="font-heading font-semibold text-strong">Chat-tevredenheid (smileys)</h3>
+                <span className="ml-auto text-xs text-muted-fg">Gemiddeld: <b className="text-strong">{ratings.avg ?? "—"} / 5</b> · {ratings.total} beoordelingen</span>
+              </div>
+              <div className="grid grid-cols-5 gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((r) => {
+                  const c = ratings.counts?.[r] || 0;
+                  const maxCount = Math.max(1, ...Object.values(ratings.counts || {}));
+                  const pct = (c / maxCount) * 100;
+                  const emoji = ["😞", "🙁", "😐", "🙂", "😄"][r - 1];
+                  return (
+                    <div key={r} className="text-center" data-testid={`analytics-rating-bar-${r}`}>
+                      <div className="h-24 flex items-end justify-center">
+                        <div className="w-8 rounded-t-md bg-gradient-to-t from-pear-500 to-pear-300" style={{ height: `${pct}%`, minHeight: c > 0 ? "6px" : "0" }} />
+                      </div>
+                      <div className="text-xl mt-1">{emoji}</div>
+                      <div className="text-[11px] text-muted-fg tabular-nums">{c}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

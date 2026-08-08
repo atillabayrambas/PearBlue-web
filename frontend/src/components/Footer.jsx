@@ -30,8 +30,8 @@ const NewsletterForm = () => {
       <h4 className="font-heading font-semibold mb-2 text-strong">{lang === "en" ? "Newsletter" : "Nieuwsbrief"}</h4>
       <p className="text-xs text-muted-fg mb-3 leading-relaxed">
         {lang === "en"
-          ? "Get product updates and tips — one email/month, from communication-noreply@pearblue.nl. Unsubscribe anytime."
-          : "Krijg product-updates en tips — één mail per maand, vanaf communication-noreply@pearblue.nl. Uitschrijven kan altijd."}
+          ? "Product updates and tips — unsubscribe anytime."
+          : "Product-updates en tips — uitschrijven kan altijd."}
       </p>
       {done ? (
         <div className="flex items-center gap-2 text-sm text-pear-500" data-testid="footer-newsletter-done">
@@ -104,7 +104,7 @@ export const Footer = () => {
       </div>
       <div className="border-t border-app">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-muted-fg">
-          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")} · <span className="text-muted-fg/70">v0.7.1-Beta</span></p>
+          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")} · <span className="text-muted-fg/70">v0.5.2-Beta</span></p>
           <p className="inline-flex items-center gap-1.5" data-testid="footer-made-with-care">
             Made with care in the Netherlands. <span aria-label="Netherlands flag" role="img">🇳🇱</span> <span aria-label="heart" role="img">❤️</span>
           </p>

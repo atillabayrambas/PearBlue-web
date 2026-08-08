@@ -9,7 +9,7 @@ import asyncio
 import time
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 import html as _html
 import re as _re
@@ -28,6 +28,33 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 from zoho_portal import make_router as make_zoho_router
 from review_invites import scan_now as review_scan_now, start_background_poller as review_poller
 from stripe_payments import make_router as make_stripe_router
+from cryptography.fernet import Fernet, InvalidToken
+
+# Fernet cipher for encrypting integration secrets (Brevo API key, IMAP passwords)
+# Uses TOKEN_ENCRYPTION_KEY from env (already used by zoho_portal/stripe_payments)
+_ENC_KEY_RAW = os.environ.get("TOKEN_ENCRYPTION_KEY", "").encode()
+_secret_cipher = Fernet(_ENC_KEY_RAW) if _ENC_KEY_RAW else None
+
+def enc_secret(plaintext: str) -> str:
+    """Encrypt a secret at rest. Returns 'enc:<token>' or raw if cipher unavailable."""
+    if not plaintext:
+        return ""
+    if _secret_cipher is None:
+        return plaintext  # fallback for local dev without key
+    return "enc:" + _secret_cipher.encrypt(plaintext.encode()).decode()
+
+def dec_secret(stored: str) -> str:
+    """Decrypt a secret written with enc_secret. Returns plaintext or empty string on failure."""
+    if not stored:
+        return ""
+    if not stored.startswith("enc:"):
+        return stored  # legacy plaintext
+    if _secret_cipher is None:
+        return ""
+    try:
+        return _secret_cipher.decrypt(stored[4:].encode()).decode()
+    except InvalidToken:
+        return ""
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -108,6 +135,10 @@ class QuoteRequest(BaseModel):
     services: List[str] = []
     description: Optional[str] = None
     language: Optional[str] = "nl"
+    # Extended: wishlist + story from calculator
+    wishlist_items: Optional[List[Dict[str, Any]]] = None
+    wishlist_totals: Optional[Dict[str, Any]] = None
+    story: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -120,6 +151,9 @@ class QuoteCreate(BaseModel):
     services: List[str] = []
     description: Optional[str] = Field(None, max_length=5000)
     language: Optional[str] = "nl"
+    wishlist_items: Optional[List[Dict[str, Any]]] = Field(None, description="[{id,label,qty,unit,price}]")
+    wishlist_totals: Optional[Dict[str, Any]] = None
+    story: Optional[str] = Field(None, max_length=5000)
 
 
 class Project(BaseModel):
@@ -281,18 +315,20 @@ ROLE_BEHEERDER = "beheerder"
 ROLE_ANALIST = "analist"
 ROLE_MODERATOR = "moderator"
 ROLE_CHAT_SUPPORT = "chat_support"
+ROLE_FINANCIEN = "financien"
 ROLE_GEBRUIKER = "gebruiker"
 
-ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_GEBRUIKER]
-ROLES_WITH_CMS_ACCESS = {"admin", ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT}
+ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_FINANCIEN, ROLE_GEBRUIKER]
+ROLES_WITH_CMS_ACCESS = {"admin", ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_FINANCIEN}
 
 ROLE_PERMS = {
-    ROLE_SUPER_ADMIN: {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing"},
-    "admin": {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing"},
-    ROLE_BEHEERDER: {"users", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing"},
+    ROLE_SUPER_ADMIN: {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing", "financials"},
+    "admin": {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing", "financials"},
+    ROLE_BEHEERDER: {"users", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "messages", "cybersecurity", "feedback", "changelog", "mailmarketing", "financials"},
     ROLE_ANALIST: {"analytics", "cybersecurity"},
     ROLE_MODERATOR: {"content", "portfolio", "reviews", "messages", "feedback"},
     ROLE_CHAT_SUPPORT: {"chat", "tickets", "messages"},
+    ROLE_FINANCIEN: {"financials", "analytics"},
     ROLE_GEBRUIKER: set(),
 }
 
@@ -491,12 +527,38 @@ async def create_quote(payload: QuoteCreate):
     doc['created_at'] = doc['created_at'].isoformat()
     await db.quote_requests.insert_one(doc)
     if RESEND_API_KEY:
+        # Build wishlist section for the email
+        wishlist_lines: List[str] = []
+        if payload.wishlist_items:
+            wishlist_lines.append("\n\n--- Wishlist / Calculator ---")
+            for it in payload.wishlist_items:
+                qty = it.get("qty") or 1
+                label = it.get("label") or it.get("id") or "item"
+                unit = it.get("unit") or ""
+                price = it.get("price")
+                price_s = f" — €{price}" if price is not None else ""
+                wishlist_lines.append(f"• {label} × {qty} {unit}{price_s}")
+        if payload.wishlist_totals:
+            t = payload.wishlist_totals
+            wishlist_lines.append(
+                f"\nTotalen (excl. btw): eenmalig €{t.get('oneOff', 0)}, per maand €{t.get('monthly', 0)}, per uur €{t.get('hourly', 0)}"
+            )
+            if t.get("grandTotal") is not None:
+                wishlist_lines.append(f"Eindtotaal (incl. 21% btw): €{t.get('grandTotal')}")
+
+        story_block = f"\n\n--- Sfeer & verhaal van de website ---\n{payload.story}" if payload.story else ""
+
         contact_like = ContactCreate(
             name=payload.name,
             email=payload.email,
             company=payload.company,
             subject=f"Offerte-aanvraag — {payload.company or payload.name}",
-            message=f"Pagina's: {payload.pages}\nBudget: {payload.budget}\nDiensten: {', '.join(payload.services)}\n\n{payload.description or ''}",
+            message=(
+                f"Pagina's: {payload.pages}\nBudget: {payload.budget}\nDiensten: {', '.join(payload.services)}\n\n"
+                f"{payload.description or ''}"
+                f"{story_block}"
+                + ("\n" + "\n".join(wishlist_lines) if wishlist_lines else "")
+            ),
             language=payload.language,
         )
         await _send_contact_email(contact_like)
@@ -1593,96 +1655,120 @@ async def captcha_stats(current=Depends(require_permission("cybersecurity"))):
 # ---- Changelog ----
 @api_router.get("/changelog")
 async def public_changelog():
-    """Public JSON of released versions — kept in-code so devops changes stay in git history."""
+    """Public JSON of released versions.
+
+    Semver-like schema for a Beta site:
+      * X.0.0-Beta  → Major release (large batch of features / architecture)
+      * 0.X.0-Beta  → Feature release (a themed feature set — content, calc, security)
+      * 0.0.X-Beta  → Minor release (bug-fix / copy-tweak / polish)
+
+    v1.0 will be the official launch, dropping the -Beta suffix.
+    """
     entries = [
         {
-            "version": "0.7.1-Beta",
+            "version": "0.5.2-Beta",
             "date": "2026-02-08",
+            "type": "feature",
             "highlights": [
-                "Prijslijst-fixes: adressen +€10 flat, product-detail regel verwijderd",
-                "Calculator: aparte kolommen Eenmalig / Maandelijks / Uurlijks met eigen BTW-berekening",
-                "About-pagina: 9 waarden incl. Transparant / Toekomstgericht / Fris & Fruitig / Duurzaam / Kwaliteit",
-                "Footer nieuwsbrief-aanmelding (via communication-noreply@pearblue.nl) + analytics chart in CMS",
-                "Services-pagina: 'Zie prijslijst' knoppen per dienst met deep-link naar juiste tab",
-                "CMS: mailboxen (IMAP MOCKED), Brevo mailmarketing (MOCKED), virusscanner tab (MOCKED)",
-                "CMS: prioriteits-balloons (Major/P1/P2) boven changelog-balloon",
-                "Feedback/Messages/Cybersecurity: avatar + prettyRole (geen underscores)",
-                "Cybersecurity-tabel: sticky action-kolom (knoppen vielen buiten scherm)",
-                "Wishlist-opslaan: info-tooltip over cookies/profiel",
+                "Nieuwe rol 'Financiën' toegevoegd — volledige financiële toegang",
+                "AI Dashboard uitgebreid met Financiën-sectie (Emergent AI-kosten + Zoho Books, MOCKED)",
+                "Filters 7d / 30d / 90d / 6m / 1-5j / custom in Financiën-dashboard",
+                "Chat-rating (1-5 smileys) toegevoegd + analytics grafiek in AI Dashboard",
+                "Fernet-encryptie voor Brevo API-key en IMAP-wachtwoorden in de database",
+                "Calculator: per-categorie subtotalen (Eenmalig/Maandelijks/Uurlijks)",
+                "Calculator: 'Offerte aanvragen en calculatie en wensen mee verzenden' knop met dedicated formulier",
+                "Nieuwe 'SFEER EN VERHAAL VAN UW WEBSITE' textarea in offerte-flow",
+                "Wishlist + totalen worden meegestuurd in de offerte-mail",
+                "Mobiele share-tekst: 'Dit is mijn wishlist bij PearBlue voor mijn droom website, IT platform en de beveiliging'",
+                "Mailbox-duplicaat-check om dubbele IMAP-sync te voorkomen",
             ],
         },
         {
-            "version": "0.7-Beta",
+            "version": "0.5.1-Beta",
             "date": "2026-02-08",
+            "type": "minor",
             "highlights": [
-                "3-tab prijslijst per dienst met gecombineerde calculator",
-                "Kostencalculator: subtotaal + 21% BTW + totaal + Wishlist opslaan/delen",
-                "Volledige parallax pear-achtergrond",
-                "Kruisrol-toewijzing (Berichten / Reviews / Portaal / Feedback)",
-                "Portfolio-import van bestaande case-studies naar CMS met archiveer-functie",
-                "Berichten: prioriteit P1-P4 + Major, sub-tabs, spam bulk-actions",
-                "Cybersecurity: land / OS / browser / device verrijking + captcha-verificaties chart",
-                "CMS versie-toolbar met dismiss + changelog-pagina",
+                "Parallax pear-achtergrond zichtbaarder (5,5% opacity + 4,5% accent)",
+                "Homepage-scroller: 'Transparant' toegevoegd tussen de kernwaarden",
+                "About: extra paragraaf over transparantie in uren/projecten/prijzen",
+                "Diensten: Cybersecurity prijs €5 p/machine → €5 p/machine p/maand",
+                "Newsletter footer-tekst ingekort (geen frequentie-belofte meer)",
+                "Calculator: onderste doublet 'Setup/Per maand/Uurlijks €0' verwijderd",
+                "Offerte-knop hernoemd + calculator-inhoud gaat mee in het offerte-verzoek",
+                "Sfeer & Verhaal veld toegevoegd aan Contact/Offerte-formulier",
+                "Ratings 1-5 met emoji op chat + support-tickets",
+                "Nieuwe rol 'Financien' voor toegang tot AI Dashboard financials",
+                "AI Dashboard uitgebreid met (MOCKED) Zoho Books financials + Emergent build-cost trackers",
             ],
         },
         {
-            "version": "0.6-Beta",
+            "version": "0.5.0-Beta",
             "date": "2026-02-08",
+            "type": "feature",
+            "highlights": [
+                "Nieuwe CMS-tabs: Mailboxen (IMAP) + Mailmarketing (Brevo) + Virusscanner — alle MOCKED",
+                "Priority-balloons Major/P1/P2 boven changelog-balloon",
+                "User-details endpoints (adres/KVK/BTW/wachtwoord-reset)",
+                "Avatar + prettyRole in Feedback/Messages/Cybersecurity",
+                "Sticky action-kolom in Cybersecurity table",
+                "Nieuwsbrief-aanmelding in footer + analytics chart in CMS",
+            ],
+        },
+        {
+            "version": "0.4.0-Beta",
+            "date": "2026-02-08",
+            "type": "feature",
+            "highlights": [
+                "3-tab prijslijst (Website / ICT / Cybersecurity) met combined calculator",
+                "Kostencalculator: subtotaal + BTW 21% + totaal + Wishlist + Delen",
+                "Full-viewport parallax pear-achtergrond",
+                "Kruisrol-toewijzing op Feedback + Messages",
+                "Portfolio-import van 6 curated cases + archive-functie",
+                "Messages: sub-tabs Postvak IN / Spam / Archief, prioriteit P1-P4/Major, bulk-delete",
+                "Cybersecurity: OS/browser/device/land verrijking + captcha-verified chart",
+                "Changelog-pagina + CMS version-bar",
+            ],
+        },
+        {
+            "version": "0.3.0-Beta",
+            "date": "2026-02-08",
+            "type": "feature",
             "highlights": [
                 "Volledige `/prijslijst` (Excel-bron) + calculator met smart average",
                 "LocalCaptcha + akkoord-tekst op contact/portal/reviews/chatbot",
-                "IP-rate-limits + block-logging",
-                "Cybersecurity CMS met deblokkeren/reblokkeren + daily chart",
-                "Feedback-widget + Feedback CMS",
-                "Sidebar-badges peer-blauw",
+                "IP-rate-limits + block-logging in Cybersecurity CMS",
+                "Feedback-widget + Feedback CMS met status/toewijzing",
                 "Mobiele header (thema/taal in hamburger)",
                 "Privacy pagina + Google Maps (Delfzijl)",
-                "5-revisies clause in Terms + PricingTables",
+                "Terms Artikel 5.4 '5 revisierondes'",
             ],
         },
         {
-            "version": "0.5-Beta",
+            "version": "0.2.0-Beta",
             "date": "2026-02-08",
+            "type": "feature",
             "highlights": [
-                "AI Chat anti-spam + agent-handoff (Zoho Desk-mail flow)",
+                "AI Chat anti-spam + agent-handoff",
                 "Ticket-bijlagen (client → Zoho Desk multipart)",
-                "Trustpilot script bugfix (SSR-injectie in index.html)",
-            ],
-        },
-        {
-            "version": "0.4-Beta",
-            "date": "2026-02-07",
-            "highlights": [
-                "Gebruikersbeheer CMS (6 rollen)",
+                "Trustpilot script bugfix (SSR-injectie)",
+                "Gebruikersbeheer CMS met 6 rollen",
                 "Custom scripts CMS (header/footer)",
                 "Algemene voorwaarden pagina",
                 "Portal ticket detail met replies",
             ],
         },
         {
-            "version": "0.3-Beta",
-            "date": "2026-02-06",
+            "version": "0.1.0-Beta",
+            "date": "2026-02-07",
+            "type": "major",
             "highlights": [
                 "Stripe iDEAL Betaal Nu op Zoho-facturen",
                 "Review invitations + Trust-stats UI",
-                "Portal Zoho project-detail (in-app)",
-                "Portal i18n (NL/EN)",
-            ],
-        },
-        {
-            "version": "0.2-Beta",
-            "date": "2026-02-05",
-            "highlights": [
+                "Portal Zoho project-detail (in-app) + i18n",
                 "Zoho OAuth portaal (Books / Projects / Desk)",
                 "Klantreviews met CMS-moderatie",
                 "Cookie-banner + GA4 opt-in",
                 "AI Dashboard (Claude 4.6 chatbot analytics)",
-            ],
-        },
-        {
-            "version": "0.1-Beta",
-            "date": "2026-02-04",
-            "highlights": [
                 "5-pagina site (Home/Over ons/Diensten/Portfolio/Contact)",
                 "NL/EN i18n + donker/licht thema",
                 "Contact-formulier + admin CMS (portfolio, messages, settings)",
@@ -1810,12 +1896,12 @@ async def brevo_settings(current=Depends(require_admin)):
 @api_router.put("/admin/brevo/settings")
 async def save_brevo_settings(payload: BrevoSettings, current=Depends(require_admin)):
     upd = {"key": "brevo", "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": current.get("email")}
-    if payload.api_key: upd["api_key"] = payload.api_key.strip()
+    if payload.api_key: upd["api_key"] = enc_secret(payload.api_key.strip())
     if payload.from_email: upd["from_email"] = payload.from_email.strip()
     if payload.from_name: upd["from_name"] = payload.from_name.strip()
     if payload.enabled is not None: upd["enabled"] = bool(payload.enabled)
     await db.integrations.update_one({"key": "brevo"}, {"$set": upd}, upsert=True)
-    return {"status": "saved"}
+    return {"status": "saved", "encrypted": _secret_cipher is not None}
 
 
 @api_router.get("/admin/brevo/campaigns")
@@ -1857,14 +1943,19 @@ async def add_mailbox(payload: MailboxCreate, current=Depends(require_admin)):
     # Only super_admin + beheerder can add mailboxes
     if current.get("role") not in {"super_admin", "admin", "beheerder"}:
         raise HTTPException(403, "Alleen beheerders en super admins mogen mailboxen toevoegen")
+    email_norm = payload.email.strip().lower()
+    # Prevent duplicate mailboxes to avoid double IMAP sync of the same account
+    existing = await db.mailboxes.find_one({"email": email_norm})
+    if existing:
+        raise HTTPException(409, f"Mailbox met e-mail {email_norm} bestaat al — dubbele sync voorkomen.")
     doc = {
         "id": str(uuid.uuid4()),
         "label": payload.label.strip(),
-        "email": payload.email.strip().lower(),
+        "email": email_norm,
         "host": payload.host.strip(),
         "port": payload.port,
         "username": payload.username.strip(),
-        "password": payload.password,  # NOTE: MOCKED — production must encrypt with fernet
+        "password": enc_secret(payload.password),  # Fernet-encrypted at rest
         "use_ssl": payload.use_ssl,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current.get("email"),
@@ -1980,6 +2071,158 @@ async def send_password_reset(email: str, current=Depends(require_admin)):
     except Exception as e:
         logger.warning(f"Reset mail failed: {e}")
     return {"status": "sent", "email": email_l, "note": "Reset URL page is MOCKED — token verifies correctly on backend"}
+
+
+# ---------------------------------------------------------------------------
+# Financials Dashboard (Emergent AI costs + Zoho Books stats)
+# Access: super_admin, admin (legacy), beheerder, financien
+# Everything is currently MOCKED / stubbed until Zoho Books credentials are wired.
+# ---------------------------------------------------------------------------
+def _range_from_period(period: str, custom_from: Optional[str], custom_to: Optional[str]):
+    now = datetime.now(timezone.utc)
+    end = now
+    if period == "custom" and custom_from and custom_to:
+        try:
+            start = datetime.fromisoformat(custom_from).replace(tzinfo=timezone.utc)
+            end = datetime.fromisoformat(custom_to).replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(400, "Ongeldige custom datumreeks (gebruik ISO-8601)")
+    else:
+        mapping = {
+            "7d": 7, "30d": 30, "90d": 90,
+            "6m": 183, "1y": 365, "2y": 730,
+            "3y": 1095, "4y": 1460, "5y": 1825,
+        }
+        days = mapping.get(period, 30)
+        start = now - timedelta(days=days)
+    return start, end
+
+
+@api_router.get("/admin/financials")
+async def financials_dashboard(
+    period: str = "30d",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current=Depends(require_permission("financials")),
+):
+    start, end = _range_from_period(period, date_from, date_to)
+
+    # ---- Emergent AI costs — real message count, estimated cost like /chat/stats ----
+    chat_q = {
+        "created_at": {"$gte": start.isoformat(), "$lte": end.isoformat()},
+    }
+    # count messages in range; the DB stores created_at as ISO string
+    total_msgs = await db.chat_messages.count_documents(chat_q)
+    # Approx: 1 message ≈ ~800 tokens combined I/O (rough estimate)
+    avg_tokens_per_msg = 800
+    input_cost_per_mtok = 3.0  # USD per 1M input tokens (Claude Sonnet 4.6)
+    output_cost_per_mtok = 15.0
+    # 30% input 70% output split (typical chat)
+    total_tokens = total_msgs * avg_tokens_per_msg
+    input_tokens = total_tokens * 0.3
+    output_tokens = total_tokens * 0.7
+    est_usd = (input_tokens * input_cost_per_mtok + output_tokens * output_cost_per_mtok) / 1_000_000
+    est_eur = est_usd * 0.92  # rough FX
+    est_credits = est_usd * 100  # 1 credit ≈ $0.01
+
+    # ---- Zoho Books stats — MOCKED until credentials + endpoint wiring ----
+    days_span = max(1, (end - start).days or 1)
+    mocked_zoho = {
+        "mocked": True,
+        "reason": "zoho_books_not_wired",
+        "invoiced_total_eur": round(days_span * 145.0, 2),
+        "paid_total_eur": round(days_span * 118.0, 2),
+        "outstanding_eur": round(days_span * 27.0, 2),
+        "overdue_eur": round(days_span * 8.5, 2),
+        "invoices_sent": days_span * 3,
+        "invoices_paid": days_span * 2,
+        "top_clients": [
+            {"name": "Voorbeeld Klant BV", "total_eur": round(days_span * 45.0, 2)},
+            {"name": "Demo Stichting", "total_eur": round(days_span * 32.0, 2)},
+            {"name": "Testbedrijf", "total_eur": round(days_span * 24.0, 2)},
+        ],
+    }
+
+    return {
+        "period": period,
+        "range": {"from": start.isoformat(), "to": end.isoformat(), "days": days_span},
+        "emergent_ai": {
+            "messages": total_msgs,
+            "estimated_input_tokens": int(input_tokens),
+            "estimated_output_tokens": int(output_tokens),
+            "estimated_usd": round(est_usd, 4),
+            "estimated_eur": round(est_eur, 4),
+            "estimated_credits": round(est_credits, 2),
+            "note": "Schatting op basis van $3/1M input + $15/1M output tokens (Claude Sonnet 4.6). Werkelijke Emergent-verbruik zichtbaar in Emergent Profile → Universal Key.",
+        },
+        "zoho_books": mocked_zoho,
+        "totals": {
+            "combined_costs_eur": round(est_eur, 2),
+            "combined_income_eur": mocked_zoho["paid_total_eur"],
+            "estimated_margin_eur": round(mocked_zoho["paid_total_eur"] - est_eur, 2),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Chat / Ticket smiley rating (1-5) + analytics
+# ---------------------------------------------------------------------------
+class ChatRating(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=200)
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = Field(None, max_length=1000)
+    source: Optional[str] = Field("chat", pattern="^(chat|ticket|handoff)$")
+
+
+@api_router.post("/chat/rating")
+async def submit_chat_rating(payload: ChatRating, request: Request):
+    doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": payload.session_id,
+        "rating": payload.rating,
+        "comment": (payload.comment or "").strip(),
+        "source": payload.source or "chat",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "ip": _client_ip(request) if request else "",
+    }
+    await db.chat_ratings.insert_one(doc)
+    doc.pop("_id", None)
+    return {"status": "saved", "id": doc["id"]}
+
+
+@api_router.get("/admin/chat/ratings")
+async def chat_ratings_stats(days: int = 30, current=Depends(require_admin)):
+    start = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+    docs = await db.chat_ratings.find(
+        {"created_at": {"$gte": start.isoformat()}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(1000)
+    counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    total = 0
+    total_score = 0
+    per_day = defaultdict(int)
+    per_day_score = defaultdict(lambda: [0, 0])  # [total, count]
+    for d in docs:
+        r = int(d.get("rating") or 0)
+        if r < 1 or r > 5: continue
+        counts[r] += 1
+        total += 1
+        total_score += r
+        day = (d.get("created_at") or "")[:10]
+        per_day[day] += 1
+        per_day_score[day][0] += r
+        per_day_score[day][1] += 1
+    avg = round(total_score / total, 2) if total else None
+    return {
+        "days": days,
+        "total": total,
+        "avg": avg,
+        "counts": counts,
+        "per_day": [
+            {"date": d, "count": per_day[d], "avg": round(per_day_score[d][0] / per_day_score[d][1], 2) if per_day_score[d][1] else 0}
+            for d in sorted(per_day.keys())
+        ],
+        "recent": docs[:25],
+    }
 
 
 app.include_router(api_router)

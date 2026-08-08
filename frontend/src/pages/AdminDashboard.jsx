@@ -2,11 +2,12 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert, Euro } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
 import { AnalyticsAdmin } from "./AdminAnalytics";
+import { FinancialsAdmin } from "./AdminFinancials";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -33,9 +34,12 @@ const AdminSidebar = () => {
     return () => { alive = false; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const role = user?.role || "";
+  const canSeeFinancials = ["super_admin", "admin", "beheerder", "financien"].includes(role);
   const items = [
     { to: "/admin", label: "Portfolio", icon: Briefcase, end: true, testid: "cms-nav-projects" },
     { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
+    ...(canSeeFinancials ? [{ to: "/admin/financials", label: "Financiën", icon: Euro, testid: "cms-nav-financials" }] : []),
     { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations", badge: counters.portal },
     { to: "/admin/reviews", label: "Klantreviews", icon: Star, testid: "cms-nav-reviews", badge: counters.reviews },
     { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages", badge: counters.messages },
@@ -87,7 +91,7 @@ const AdminSidebar = () => {
         <LogOut className="h-4 w-4" /> Uitloggen
       </button>
       <div className="mt-6 pt-4 border-t border-app text-[10px] text-muted-fg text-center">
-        PearBlue CMS · v0.7.1-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
+        PearBlue CMS · v0.5.2-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
       </div>
     </aside>
   );
@@ -976,6 +980,7 @@ const ROLE_LABELS = {
   analist: "Analist",
   moderator: "Moderator",
   chat_support: "Chat support",
+  financien: "Financiën",
   gebruiker: "Gebruiker",
   admin: "Beheerder (legacy)",
 };
@@ -2002,6 +2007,7 @@ export default function AdminDashboard() {
         <Routes>
           <Route index element={<ProjectsAdmin />} />
           <Route path="analytics" element={<AnalyticsAdmin />} />
+          <Route path="financials" element={<FinancialsAdmin />} />
           <Route path="registrations" element={<RegistrationsAdmin />} />
           <Route path="reviews" element={<ReviewsAdmin />} />
           <Route path="users" element={<UsersAdmin />} />
