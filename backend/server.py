@@ -51,6 +51,7 @@ CHAT_RATE_LIMIT_PER_HOUR = int(os.environ.get('CHAT_RATE_LIMIT_PER_HOUR', '20'))
 
 # In-memory chat rate-limit store: ip -> list[datetime]
 _chat_rate_store: dict = defaultdict(list)
+_register_rate_store: dict = defaultdict(list)
 
 app = FastAPI(title="PearBlue API")
 api_router = APIRouter(prefix="/api")
@@ -307,7 +308,9 @@ CHATBOT_SYSTEM_PROMPT = (
     "3) Cybersecurity — vanaf €5 per actieve machine. Bitdefender GravityZone Elite met EDR, "
     "firewall, encryptie en risk management. Beheerd of onbeheerd. Geen langlopende contracten.\n\n"
     "Voor concrete offertes of afspraken: verwijs beleefd naar de contact-pagina "
-    "(/contact) of info@pearblue.nl. Verzin nooit prijzen of feiten die niet in deze "
+    "(/contact) of info@pearblue.nl. Als een klant naar het klantportaal vraagt "
+    "(facturen, projecten, tickets), verwijs naar /portal — daar kunnen ze inloggen "
+    "met Zoho of toegang aanvragen. Verzin nooit prijzen of feiten die niet in deze "
     "context staan — zeg dan dat je het navraagt of verwijs naar contact."
 )
 
@@ -593,7 +596,17 @@ async def _send_email(to_email: str, subject: str, html: str, reply_to: Optional
 
 
 @api_router.post("/portal/register", response_model=PortalRegistration)
-async def register_portal(payload: PortalRegistrationCreate):
+async def register_portal(payload: PortalRegistrationCreate, request: Request):
+    # Per-IP rate limit: 5 registrations per hour
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(hours=1)
+    hits = [t for t in _register_rate_store[ip] if t > window_start]
+    if len(hits) >= 5:
+        raise HTTPException(status_code=429, detail="Te veel aanvragen. Probeer het over een uur opnieuw.")
+    hits.append(now)
+    _register_rate_store[ip] = hits
+
     reg = PortalRegistration(**payload.model_dump())
     doc = reg.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
