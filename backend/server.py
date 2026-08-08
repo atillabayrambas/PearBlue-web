@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
+import html as _html
 from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
@@ -697,20 +698,16 @@ async def create_review(payload: ReviewCreate):
     # Notify admin
     await _send_email(
         CONTACT_RECIPIENT_EMAIL,
-        f"[PearBlue] Nieuwe klantbeoordeling — {r.rating}★ van {r.name}",
-        f"<p>{r.name}{' · ' + r.company if r.company else ''} heeft een {r.rating}-sterren review achtergelaten:</p><blockquote>{r.quote}</blockquote><p>Open het CMS om deze te publiceren.</p>",
+        f"[PearBlue] Nieuwe klantbeoordeling — {r.rating}★ van {_html.escape(r.name)}",
+        f"<p>{_html.escape(r.name)}{' · ' + _html.escape(r.company) if r.company else ''} heeft een {r.rating}-sterren review achtergelaten:</p><blockquote>{_html.escape(r.quote)}</blockquote><p>Open het CMS om deze te publiceren.</p>",
     )
     return r
 
 
 @api_router.get("/reviews", response_model=List[Review])
-async def list_reviews(featured: Optional[bool] = None, approved: Optional[bool] = None):
-    """Public list — by default only approved reviews. Pass featured=true for homepage picks."""
-    q: dict = {}
-    if approved is None:
-        q["approved"] = True
-    else:
-        q["approved"] = approved
+async def list_reviews(featured: Optional[bool] = None):
+    """Public list — always only approved reviews. Pass featured=true for homepage picks."""
+    q: dict = {"approved": True}
     if featured is not None:
         q["featured"] = featured
     items = await db.reviews.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)

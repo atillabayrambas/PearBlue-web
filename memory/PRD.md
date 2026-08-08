@@ -3,42 +3,51 @@
 ## Original Problem Statement
 "Make a website based on everything described in the excel file" — Reference: `Website_Offerte_Template_Sociaal_NL.xlsx` (PearBlue quote template).
 
-PearBlue is a Dutch ICT & Media Design agency: "Your Complete Digital Partner". Brand positioning: innovative, sustainable, quality-at-affordable-price, "the new generation of website creation". Symbolism: pear (fruit), leaves, tree — fresh, fruity, modern, sleek. Target: business starters + older generation.
+PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner"). Brand: pear + leaves, fresh/fruity/modern. Target: business starters + older-generation entrepreneurs.
 
 ## Architecture
-- **Frontend**: React 19 + React Router + Tailwind + shadcn/ui + framer-motion. Multi-language (NL/EN) via context + localStorage with browser auto-detect.
-- **Backend**: FastAPI + Motor (MongoDB async). Routes prefixed `/api`. Resend integration ready but inactive (no API key yet); backend gracefully returns `email_sent:false`.
-- **Design**: Light theme, primary `#02C0FF`, typography Outfit (headings) + Manrope (body), glass-nav, framer-motion staggered reveals, blob background, marquee.
+- **Frontend**: React 19 + React Router + Tailwind + shadcn/ui + framer-motion. NL/EN via LanguageContext.
+- **Backend**: FastAPI + Motor (MongoDB async). All routes prefixed `/api`. Starlette `SessionMiddleware` for Zoho OAuth state.
+- **Integrations**: Claude Sonnet 4.6 (Emergent LLM key) chatbot, Resend (transactional email), Zoho OAuth 2.0 (Books/Projects/Desk EU DC).
+- **Design**: primary `#02C0FF`, Outfit (headings) + Manrope (body).
 
-## User Personas
-1. **Prospective client** — SMB owner exploring digital services.
-2. **Older generation entrepreneur** — needs clear, readable, trustworthy layout.
-3. **Startup founder** — expects modern aesthetic + fast contact.
+## Core Requirements
+- 5 pages: Home, About, Services, Portfolio, Contact
+- Multi-language NL/EN with browser auto-detect
+- Contact form + quote endpoints (Resend delivery)
+- Admin CMS for portfolio, messages, GA settings, registrations, reviews
+- Zoho-connected client portal (invoices/projects/tickets)
+- AI chatbot with rate limiting + analytics dashboard
+- Cookie/GDPR banner + GA4 opt-in
 
-## Core Requirements (static)
-- 5 pages: Home, Over ons, Diensten, Portfolio, Contact
-- Contact form + quote request endpoints
-- Multi-language NL/EN (browser detection)
-- Portfolio grid with example placeholder cases
-- Clear branding around PearBlue values
+## Implemented
+### Feb 2026 — Iterations 1–6
+- 5-page site, NL/EN switcher, dark/light theme
+- Admin CMS (projects, messages, settings, GA4 config)
+- Claude 4.6 chatbot (`/api/chat`) with rate limiting + admin AI-cost dashboard
+- Cookie banner, GA4 loader (`AnalyticsLoader`), robots.txt, sitemap.xml
+- Resend contact + portal notifications
+- Zoho OAuth 2.0 portal (Books invoices, Projects, Desk tickets) with token encryption (Fernet)
+- Portal client registration flow + admin approve/reject with automated email
 
-## Implemented (2026-02)
-- [x] Home page with hero, marquee, services bento grid, portfolio preview, CTA banner
-- [x] About page with brand story + values grid
-- [x] Services page with 4 detailed services (IT Infra, Media, Security, AI) + pricing indications
-- [x] Portfolio page with filterable grid (6 example projects)
-- [x] Contact page with validated form, success state, and DB persistence
-- [x] Backend `/api/contact` (POST + GET), `/api/quote` (POST), `/api/health`
-- [x] NL/EN language switcher with browser detect + persistence
-- [x] Resend integration wired (dormant — needs `RESEND_API_KEY` in `/app/backend/.env`)
-- [x] Test coverage: 100% backend + frontend (iteration_1)
+### Feb 2026 — Iteration 7 (this session)
+- **Client Reviews / Testimonials** — public POST `/api/reviews`, admin CMS tab (`/admin/reviews`) with approve / feature / delete, featured reviews render on the homepage (`FeaturedReviews`), `ReviewForm` exposed inside authenticated `/portal`.
+- **Zoho OAuth Redirect URI fix** — frontend callback route `/oauth/zoho/callback` + `POST /api/auth/zoho/exchange` endpoint so the URI matches the Zoho console entries (`http://localhost:3000/oauth/zoho/callback`, `https://pearblue.nl/oauth/zoho/callback`, and the preview URL).
+- **Privacy fix** — `GET /api/reviews` no longer accepts `approved` query param; public route always returns only approved reviews. Admin uses `GET /api/reviews/all`.
+- **CORS hardening** — replaced wildcard `*` with explicit allow-list (preview URL + pearblue.nl + localhost) so `withCredentials` cookies (Zoho session) actually get set in the browser.
+- **XSS-in-admin-email hardening** — HTML-escape user-submitted review name/company/quote in the notification email body.
+- **Login-page logo** — Admin + Portal login pages both render `PearBlue logo-10.webp` via the icon-only Logo variant (theme-independent, as requested).
+- Testing: pytest 28/28 pass, Playwright frontend end-to-end pass (`/app/test_reports/iteration_7.json`).
 
 ## Prioritized Backlog
-- **P1** — Activate email delivery: user supplies `RESEND_API_KEY`; verify sender domain in Resend.
-- **P1** — Real portfolio content (replace placeholder cases with actual PearBlue projects).
-- **P2** — Interactive multi-step quote wizard mirroring the Excel template (modules, price ranges).
-- **P2** — Admin panel to view/manage contact & quote submissions.
-- **P2** — Blog/News section for SEO.
-- **P2** — Cookie banner + GDPR compliance page (privacy/impressum in NL).
-- **P3** — Google Analytics 4 + Search Console integration.
-- **P3** — Newsletter signup (Mailchimp/Resend audiences).
+- **P1** — "Betaal Nu" (Pay Now) button in the Zoho portal: Stripe/iDEAL to pay open Zoho Books invoices directly.
+- **P2** — Extract `reviews` and Zoho helpers out of `server.py` (now ~790 lines) into dedicated routers.
+- **P2** — Rate-limit / captcha on public `POST /api/reviews` and `POST /api/portal/register` (same spam vector as `/api/contact`).
+- **P2** — Pagination on `/api/reviews` and `/api/reviews/all` (currently truncates at 200/500).
+- **P2** — Attach `pearblue.nl` domain to Resend sender for deliverability.
+- **P3** — Blog/news section for SEO.
+- **P3** — Newsletter signup (Resend audiences).
+
+## Test Credentials
+- Admin: `admin@pearblue.nl` / `PearBlue2026!` — see `/app/memory/test_credentials.md`.
+- Zoho: end-to-end OAuth requires a real user consent; endpoint contracts + redirect URL tested.
