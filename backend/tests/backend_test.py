@@ -169,6 +169,63 @@ def test_chat_multi_turn_context(session):
     assert any(t in reply2 for t in ["200", "€", "website", "vanaf", "prijs", "ja", "eerder"])
 
 
+# ---- Settings ----
+def test_settings_get_public(session):
+    r = session.get(f"{API}/settings", timeout=15)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    for k in ["ga4_measurement_id", "search_console_verification", "hero_headline_nl", "hero_headline_en"]:
+        assert k in body
+
+
+def test_settings_put_unauthenticated(session):
+    r = session.put(f"{API}/settings", json={"ga4_measurement_id": "G-NOPE"}, timeout=15)
+    assert r.status_code == 401
+
+
+def test_settings_put_with_admin_and_persistence(session, auth_headers):
+    payload = {
+        "ga4_measurement_id": "G-TEST123",
+        "search_console_verification": "sc-token-test",
+        "hero_headline_nl": "TEST_NL_headline",
+        "hero_headline_en": "TEST_EN_headline",
+    }
+    r = session.put(f"{API}/settings", json=payload, headers=auth_headers, timeout=15)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    for k, v in payload.items():
+        assert body[k] == v
+
+    # persistence
+    r2 = session.get(f"{API}/settings", timeout=15)
+    assert r2.status_code == 200
+    body2 = r2.json()
+    for k, v in payload.items():
+        assert body2[k] == v
+
+
+# ---- Chat rate limiting ----
+def test_chat_returns_remaining_and_rate_limits(session):
+    # Send short messages until we get a 429 or hit safety limit
+    sid = f"rl-{uuid.uuid4().hex[:8]}"
+    got_429 = False
+    last_remaining = None
+    for i in range(25):
+        r = session.post(f"{API}/chat", json={
+            "session_id": f"{sid}-{i}",
+            "message": "hi",
+            "language": "nl",
+        }, timeout=45)
+        if r.status_code == 429:
+            got_429 = True
+            break
+        assert r.status_code == 200, f"iter {i}: {r.status_code} {r.text}"
+        body = r.json()
+        assert "remaining" in body and isinstance(body["remaining"], int)
+        last_remaining = body["remaining"]
+    assert got_429, f"Expected 429 after CHAT_RATE_LIMIT_PER_HOUR, last remaining={last_remaining}"
+
+
 # ---- Contact regression ----
 def test_contact_create(session):
     payload = {

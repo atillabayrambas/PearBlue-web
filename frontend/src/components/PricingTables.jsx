@@ -21,17 +21,6 @@ export const PricingTables = () => {
 
   const tiers = [
     {
-      key: "web",
-      icon: Globe,
-      title: t("pricing.web_title"),
-      from: t("pricing.web_from"),
-      description: lang === "nl"
-        ? "Een frisse, moderne website die je merk laat groeien — inclusief design, copy en hosting."
-        : "A fresh, modern website that grows your brand — including design, copy and hosting.",
-      features: websiteFeatures,
-      accent: true,
-    },
-    {
       key: "ict",
       icon: Server,
       title: t("pricing.ict_title"),
@@ -41,6 +30,17 @@ export const PricingTables = () => {
         : "Reliable ICT infrastructure: from network and cloud to management, monitoring and devices.",
       features: ictFeatures,
       accent: false,
+    },
+    {
+      key: "web",
+      icon: Globe,
+      title: t("pricing.web_title"),
+      from: t("pricing.web_from"),
+      description: lang === "nl"
+        ? "Een frisse, moderne website die je merk laat groeien — inclusief design, copy en hosting."
+        : "A fresh, modern website that grows your brand — including design, copy and hosting.",
+      features: websiteFeatures,
+      accent: true,
     },
     {
       key: "cyber",

@@ -8,12 +8,15 @@ import { Toaster } from "@/components/ui/sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Chatbot } from "@/components/Chatbot";
+import { CookieBanner } from "@/components/CookieBanner";
+import { AnalyticsLoader } from "@/components/AnalyticsLoader";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Services from "@/pages/Services";
 import Projects from "@/pages/Projects";
 import Contact from "@/pages/Contact";
 import AdminLogin from "@/pages/AdminLogin";
+import AdminDashboard from "@/pages/AdminDashboard";
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -21,10 +24,16 @@ const ScrollToTop = () => {
   return null;
 };
 
+const useIsAdminRoute = () => {
+  const { pathname } = useLocation();
+  return pathname.startsWith("/admin");
+};
+
 function Shell() {
+  const isAdmin = useIsAdminRoute();
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      {!isAdmin && <Navbar />}
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Home />} />
@@ -34,11 +43,14 @@ function Shell() {
           <Route path="/projecten" element={<Projects />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>
-      <Footer />
-      <Chatbot />
+      {!isAdmin && <Footer />}
+      {!isAdmin && <Chatbot />}
+      {!isAdmin && <CookieBanner />}
+      <AnalyticsLoader />
     </div>
   );
 }

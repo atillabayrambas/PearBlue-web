@@ -47,7 +47,7 @@ export default function Contact() {
                 <ul className="space-y-3 text-sm text-strong/85">
                   <li className="flex items-start gap-3"><Mail className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_email")}</strong>info@pearblue.nl</span></li>
                   <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_phone")}</strong>+31 596 229 030</span></li>
-                  <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_address")}</strong>Boekweitkamp 7, 9932MA Delfzijl</span></li>
+                  <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-pear-500 mt-0.5" /><span><strong className="block text-xs uppercase tracking-widest text-muted-fg mb-0.5">{t("contact.info_address")}</strong>Nederland</span></li>
                 </ul>
               </div>
               <div>
@@ -56,12 +56,9 @@ export default function Contact() {
               </div>
               <div className="rounded-2xl border border-app surface-2 p-5 text-xs text-muted-fg space-y-1" data-testid="contact-kvk">
                 <p className="font-semibold text-strong text-sm mb-1">{t("kvk.title")}</p>
-                <p>{t("kvk.line1")}</p>
-                <p>{t("kvk.kvk")}: <span className="font-mono">87201607</span></p>
-                <p>{t("kvk.form")}: {t("kvk.form_val")} · {t("kvk.location")}</p>
-                <p>{t("kvk.loc_nr")}: <span className="font-mono">000053124294</span></p>
-                <p>{t("kvk.address")}: Boekweitkamp 7, 9932MA Delfzijl</p>
-                <p>{t("kvk.brand")}: PearBlue</p>
+                <p>ICT- en mediavormgeving.</p>
+                <p>KVK-nummer: <span className="font-mono">87201607</span></p>
+                <p>Vestigingsnummer: <span className="font-mono">000053124294</span></p>
               </div>
             </div>
           </div>

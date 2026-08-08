@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
 import resend
+from collections import defaultdict
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
@@ -41,6 +42,10 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
 # LLM configuration
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+CHAT_RATE_LIMIT_PER_HOUR = int(os.environ.get('CHAT_RATE_LIMIT_PER_HOUR', '20'))
+
+# In-memory chat rate-limit store: ip -> list[datetime]
+_chat_rate_store: dict = defaultdict(list)
 
 app = FastAPI(title="PearBlue API")
 api_router = APIRouter(prefix="/api")
@@ -140,6 +145,22 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     session_id: str
+    remaining: int
+
+
+class SiteSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ga4_measurement_id: Optional[str] = ""
+    search_console_verification: Optional[str] = ""
+    hero_headline_nl: Optional[str] = ""
+    hero_headline_en: Optional[str] = ""
+
+
+class SiteSettingsUpdate(BaseModel):
+    ga4_measurement_id: Optional[str] = Field(None, max_length=40)
+    search_console_verification: Optional[str] = Field(None, max_length=200)
+    hero_headline_nl: Optional[str] = Field(None, max_length=200)
+    hero_headline_en: Optional[str] = Field(None, max_length=200)
 
 
 # ---------- Auth helpers ----------
@@ -354,10 +375,28 @@ async def delete_project(project_id: str, current=Depends(require_admin)):
 
 
 # ---- Chatbot ----
+def _chat_rate_check(request: Request) -> int:
+    """Return remaining allowance for this IP; raise 429 if exhausted."""
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(hours=1)
+    hits = [t for t in _chat_rate_store[ip] if t > window_start]
+    if len(hits) >= CHAT_RATE_LIMIT_PER_HOUR:
+        raise HTTPException(status_code=429, detail={
+            "message": "Te veel berichten. Probeer het later opnieuw.",
+            "message_en": "Too many messages. Please try again later.",
+            "retry_after_minutes": 60,
+        })
+    hits.append(now)
+    _chat_rate_store[ip] = hits
+    return max(0, CHAT_RATE_LIMIT_PER_HOUR - len(hits))
+
+
 @api_router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(payload: ChatRequest):
+async def chat_endpoint(payload: ChatRequest, request: Request):
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=503, detail="Chat service not configured")
+    remaining = _chat_rate_check(request)
     try:
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
@@ -366,7 +405,6 @@ async def chat_endpoint(payload: ChatRequest):
         ).with_model("anthropic", "claude-sonnet-4-6")
         response = await chat.send_message(UserMessage(text=payload.message))
         reply_text = response if isinstance(response, str) else str(response)
-        # Persist chat turn
         await db.chat_messages.insert_one({
             "session_id": payload.session_id,
             "user_message": payload.message,
@@ -374,10 +412,31 @@ async def chat_endpoint(payload: ChatRequest):
             "language": payload.language,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
-        return ChatResponse(reply=reply_text, session_id=payload.session_id)
+        return ChatResponse(reply=reply_text, session_id=payload.session_id, remaining=remaining)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail="Chat failed")
+
+
+# ---- Site settings ----
+@api_router.get("/settings", response_model=SiteSettings)
+async def get_settings():
+    doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0})
+    return SiteSettings(**(doc or {}))
+
+
+@api_router.put("/settings", response_model=SiteSettings)
+async def update_settings(payload: SiteSettingsUpdate, current=Depends(require_admin)):
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    await db.site_settings.update_one(
+        {"_id": "singleton"},
+        {"$set": updates},
+        upsert=True,
+    )
+    doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0})
+    return SiteSettings(**(doc or {}))
 
 
 app.include_router(api_router)

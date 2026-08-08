@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, ExternalLink, Trash2, Link as LinkIcon, ArrowRight, Lock } from "lucide-react";
+import { X, ExternalLink, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLang } from "../i18n/LanguageContext";
-import { useAuth } from "../auth/AuthContext";
-import { toast } from "sonner";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -20,86 +18,28 @@ const CATEGORIES = [
   { key: "corp", nl: "Corporate", en: "Corporate" },
 ];
 
-const emptyForm = { title: "", category: "media", tag: "", description: "", image_url: "", external_url: "" };
-
 export default function Projects() {
   const { t, lang } = useLang();
-  const { isAdmin, authHeader } = useAuth();
   const [filter, setFilter] = useState("all");
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
 
-  const load = async () => {
-    try {
-      const res = await axios.get(`${API}/projects`);
-      setItems([...(res.data || []), ...PORTFOLIO_PROJECTS]);
-    } catch (e) {
-      console.error(e);
-      setItems(PORTFOLIO_PROJECTS);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    axios.get(`${API}/projects`)
+      .then((res) => setItems([...(res.data || []), ...PORTFOLIO_PROJECTS]))
+      .catch(() => setItems(PORTFOLIO_PROJECTS));
+  }, []);
 
   const visible = filter === "all" ? items : items.filter((i) => i.category === filter);
-  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-
-  const submitProject = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await axios.post(`${API}/projects`, form, { headers: authHeader() });
-      toast.success(lang === "nl" ? "Project toegevoegd!" : "Project added!");
-      setShowForm(false);
-      setForm(emptyForm);
-      load();
-    } catch (err) {
-      const code = err?.response?.status;
-      toast.error(code === 401 ? (lang === "nl" ? "Log eerst in als admin." : "Please log in as admin.") : (lang === "nl" ? "Kon project niet opslaan." : "Could not save project."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const isSeeded = (p) => typeof p.id === "string" && p.id.startsWith("case-");
-
-  const deleteProject = async (p) => {
-    if (isSeeded(p)) return;
-    if (!window.confirm(t("projects.confirm_delete"))) return;
-    try {
-      await axios.delete(`${API}/projects/${p.id}`, { headers: authHeader() });
-      toast.success(lang === "nl" ? "Verwijderd." : "Deleted.");
-      setSelected(null);
-      load();
-    } catch (err) {
-      toast.error(lang === "nl" ? "Verwijderen mislukt." : "Delete failed.");
-    }
-  };
 
   return (
     <div data-testid="page-projects">
       <section className="max-w-7xl mx-auto px-6 lg:px-10 pt-16 lg:pt-24 pb-10">
         <p className="overline mb-4">{t("portfolio.eyebrow")}</p>
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-          <div>
-            <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-light tracking-tighter text-strong leading-[1.05] max-w-3xl" data-testid="projects-title">
-              {t("portfolio.title")}
-            </h1>
-            <p className="mt-5 text-lg text-muted-fg max-w-2xl">{t("portfolio.subtitle")}</p>
-          </div>
-          {isAdmin ? (
-            <button onClick={() => setShowForm(true)} className="btn-primary self-start lg:self-auto" data-testid="projects-add-button">
-              <Plus className="h-4 w-4" /> {t("projects.add")}
-            </button>
-          ) : (
-            <Link to="/admin/login" className="btn-secondary self-start lg:self-auto" data-testid="projects-admin-login-link">
-              <Lock className="h-4 w-4" /> Admin
-            </Link>
-          )}
-        </div>
+        <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-light tracking-tighter text-strong leading-[1.05] max-w-3xl" data-testid="projects-title">
+          {t("portfolio.title")}
+        </h1>
+        <p className="mt-5 text-lg text-muted-fg max-w-2xl">{t("portfolio.subtitle")}</p>
 
         <div className="mt-8 flex flex-wrap gap-2">
           {CATEGORIES.map((f) => (
@@ -152,7 +92,6 @@ export default function Projects() {
         )}
       </section>
 
-      {/* DETAIL MODAL */}
       <AnimatePresence>
         {selected && (
           <motion.div
@@ -187,84 +126,8 @@ export default function Projects() {
                   <button onClick={() => setSelected(null)} className="btn-secondary" data-testid="project-modal-close-btn">
                     {t("projects.close")}
                   </button>
-                  {isAdmin && !isSeeded(selected) && (
-                    <button onClick={() => deleteProject(selected)} className="ml-auto inline-flex items-center gap-2 text-red-500 text-sm font-semibold hover:text-red-600" data-testid="project-modal-delete">
-                      <Trash2 className="h-4 w-4" /> {t("projects.delete")}
-                    </button>
-                  )}
                 </div>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ADD FORM MODAL */}
-      <AnimatePresence>
-        {showForm && isAdmin && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-pear-900/70 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setShowForm(false)}
-            data-testid="project-form-overlay"
-          >
-            <motion.div
-              initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.94, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              className="surface rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-[0_40px_100px_rgba(0,0,0,0.35)] p-8"
-              onClick={(e) => e.stopPropagation()}
-              data-testid="project-form"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="font-heading text-2xl font-semibold text-strong">{t("projects.form_title")}</h3>
-                <button onClick={() => setShowForm(false)} className="w-9 h-9 rounded-full border border-app flex items-center justify-center text-strong" data-testid="project-form-close">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <form onSubmit={submitProject} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block md:col-span-2">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("projects.form_name")} *</span>
-                  <input required value={form.title} onChange={change("title")} type="text" data-testid="project-input-title"
-                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none text-strong" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("projects.form_cat")} *</span>
-                  <select required value={form.category} onChange={change("category")} data-testid="project-input-category"
-                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none text-strong">
-                    {CATEGORIES.filter((c) => c.key !== "all").map((c) => (
-                      <option key={c.key} value={c.key}>{lang === "nl" ? c.nl : c.en}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("projects.form_tag")}</span>
-                  <input value={form.tag} onChange={change("tag")} type="text" placeholder="E-commerce, AI, ..." data-testid="project-input-tag"
-                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none text-strong" />
-                </label>
-                <label className="block md:col-span-2">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("projects.form_img")} *</span>
-                  <input required value={form.image_url} onChange={change("image_url")} type="url" placeholder="https://..." data-testid="project-input-image"
-                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none text-strong" />
-                </label>
-                <label className="block md:col-span-2">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("projects.form_link")}</span>
-                  <input value={form.external_url} onChange={change("external_url")} type="url" placeholder="https://..." data-testid="project-input-link"
-                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none text-strong" />
-                </label>
-                <label className="block md:col-span-2">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("projects.form_desc")}</span>
-                  <textarea value={form.description} onChange={change("description")} rows={4} data-testid="project-input-description"
-                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-3 text-sm outline-none resize-none text-strong" />
-                </label>
-                <div className="md:col-span-2 flex items-center gap-3 mt-2">
-                  <button type="submit" disabled={saving} className="btn-primary" data-testid="project-form-submit">
-                    {saving ? "…" : t("projects.save")}
-                  </button>
-                  <button type="button" onClick={() => setShowForm(false)} className="btn-secondary" data-testid="project-form-cancel">
-                    {t("projects.cancel")}
-                  </button>
-                </div>
-              </form>
             </motion.div>
           </motion.div>
         )}
@@ -279,7 +142,7 @@ export default function Projects() {
               <p className="mt-3 text-white/70 max-w-md">{t("cta.subtitle")}</p>
             </div>
             <Link to="/contact" className="btn-primary self-start" data-testid="projects-cta">
-              {t("cta.button")} <LinkIcon className="h-4 w-4" />
+              {t("cta.button")}
             </Link>
           </div>
         </div>

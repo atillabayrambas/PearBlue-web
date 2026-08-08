@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Menu, X, Globe, Sun, Moon, Monitor, LogOut, ChevronDown } from "lucide-react";
+import { Menu, X, Globe, Sun, Moon, Monitor, ChevronDown } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
@@ -57,7 +57,7 @@ const ThemeSwitcher = () => {
 
 export const Navbar = () => {
   const { lang, setLang, t } = useLang();
-  const { isAdmin, logout } = useAuth();
+  const { isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
@@ -73,8 +73,8 @@ export const Navbar = () => {
 
   return (
     <header className="glass-nav sticky top-0 z-50" data-testid="site-navbar">
-      <div className="max-w-7xl mx-auto px-6 lg:px-10 h-20 flex items-center justify-between gap-6">
-        <Logo size={38} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-20 flex items-center justify-between gap-3 sm:gap-6">
+        <Logo size={44} className="shrink-0" />
 
         <nav className="hidden lg:flex items-center gap-8">
           {links.map((l) => (
@@ -106,11 +106,11 @@ export const Navbar = () => {
             {lang.toUpperCase()}
           </button>
           {isAdmin && (
-            <button onClick={logout} className="hidden md:inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-3 py-1.5" data-testid="nav-logout">
-              <LogOut className="h-3.5 w-3.5" /> Uitloggen
-            </button>
+            <Link to="/admin" className="hidden md:inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-3 py-1.5" data-testid="nav-cms">
+              CMS
+            </Link>
           )}
-          <Link to="/contact" className="btn-primary hidden md:inline-flex ml-1" data-testid="nav-cta">
+          <Link to="/contact" className="btn-primary ml-1 !hidden lg:!inline-flex" data-testid="nav-cta">
             {t("nav.cta")}
           </Link>
           <button

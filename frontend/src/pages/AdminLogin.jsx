@@ -13,7 +13,7 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  if (isAdmin) return <Navigate to="/projecten" replace />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -21,7 +21,7 @@ export default function AdminLogin() {
     try {
       await login(email, password);
       toast.success("Welkom terug, Admin.");
-      navigate("/projecten");
+      navigate("/admin");
     } catch (err) {
       toast.error("Onjuiste inloggegevens.");
     } finally {

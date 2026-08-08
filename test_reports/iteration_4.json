@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 4 end-to-end verification: chat rate limiting (20/hr per IP with 'remaining' field + 429 after limit), GDPR cookie banner (accept persists to localStorage 'pb_cookie_consent', no reappear on reload), Site Settings GET/PUT API with admin JWT (ga4_measurement_id, search_console_verification, hero_headline_nl/en) + persistence, Full CMS at /admin/* (Projects/Settings/Messages tabs, sidebar, logout), Public Navbar/Footer/Chatbot/CookieBanner correctly suppressed on /admin/*, Public /portfolio has no admin buttons (regression: project cards + modal still work), Footer & Contact KVK block trimmed to 3 lines (no Muzikant/Boekweitkamp/Eenmanszaak/Handelsnamen), footer-made-with-care has 🇳🇱 + ❤️, address = Nederland only. Mobile 390px: nav-cta display:none, brand-logo height=44px, hamburger present. Desktop nav-cta visible. Backend pytest 18/18 pass. Playwright 51/51 pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py CHATBOT_SYSTEM_PROMPT still contains outdated business info that was intentionally removed from Footer/Contact: 'Vestiging: Boekweitkamp 7, 9932MA Delfzijl' and 'KVK: 87201607 · Eenmanszaak · Handelsnaam PearBlue'. The chatbot may still surface the full address/Eenmanszaak text when a visitor asks about the company — inconsistent with the requested GDPR/branding cleanup. Recommend updating the system prompt to 'Vestiging: Nederland' and dropping 'Eenmanszaak · Handelsnaam' lines.",
+    "In-memory _chat_rate_store is per-worker and not shared across processes/replicas — if backend scales horizontally the effective rate limit can be N * 20/hr. For a single-worker preview this works, but for prod consider Redis-backed sliding window.",
+    "AdminDashboard SettingsAdmin useEffect uses `setForm({ ...form, ...(r.data || {}) })` while eslint-disabling exhaustive-deps — fine but can silently drop the fetched value if form state has been touched before the resolve. Consider setForm(prev => ({ ...prev, ...(r.data || {}) })).",
+    "PUT /api/settings uses `_id: 'singleton'` in MongoDB — string _id works but breaks the '_id excluded' pattern used elsewhere; the projection {_id:0} correctly hides it in responses so OK, just note for consistency.",
+    "CORS still allow_credentials=True with default allow_origins='*' — same finding as iter 3, tighten for prod.",
+    "Chat rate limiter keys on x-forwarded-for.split(',')[0] — behind Emergent ingress this correctly identifies the client. Consider trimming and validating IP format."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/test_reports/iteration_4.json"],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% (51/51)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created + deleted TEST_UI_CMS_* project via admin CMS. PUT /api/settings values remain (ga4_measurement_id='G-UI-TEST', search_console_verification='uitesttoken', hero_headline_nl='TEST_NL_headline', hero_headline_en='TEST_EN_headline') — main agent may want to clear these before demo.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest suite in /app/backend/tests/backend_test.py covers 18 tests including new: test_settings_get_public, test_settings_put_unauthenticated, test_settings_put_with_admin_and_persistence, test_chat_returns_remaining_and_rate_limits (drains rate limit — subsequent chat tests within 1 hour on same source IP will 429 until window rolls). Frontend Playwright verified: cookie banner accept flow + reload persistence, cms sidebar/tabs/settings/messages/projects create+delete, admin routes suppress public chrome, pricing order [ict, web(popular), cyber], mobile nav-cta display:none & logo 44px, footer & contact KVK trimmed with 🇳🇱❤️. Note: chatbot system prompt still contains legacy Boekweitkamp/Eenmanszaak text — not caught by current tests but flagged in critical_code_review_comments.",
+  "rca of the issue": "N/A — no functional issues found."
+}
