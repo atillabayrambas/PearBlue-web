@@ -57,14 +57,37 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **CustomScriptsInjector polish** — client-side fallback now uses `DOMParser` so `<meta>`/`<link>` tags survive runtime injection (SSR path was already fine).
 - **Testing**: pytest 17/17 pass + Playwright frontend flows all green (`/app/test_reports/iteration_12.json`).
 
-## Prioritized Backlog
-- **P1** — Zoho bidirectional sync: daily worker to pull new Zoho Books contacts into DB + auto-create Zoho Books contacts when CMS users are added; duplicate-email conflict detection.
-- **P2** — Refactor `server.py` (>1200 lines) into `routes/` (auth, admin, chat, users, analytics).
-- **P2** — Two-way review sync with Google/Trustpilot (currently pull + invite only).
-- **P2** — Rate-limit / captcha on public `POST /api/reviews` and `POST /api/portal/register`.
-- **P2** — Pagination on `/api/reviews` and `/api/reviews/all`.
-- **P2** — Attach `pearblue.nl` domain to Resend for deliverability.
-- **P3** — Blog/news section for SEO; Newsletter signup (Resend audiences).
+### Feb 2026 — Iteration 13 (this session, tested 21/21 + frontend green)
+- **Prijslijst** (`/prijslijst`) — volledige categorie-tabellen uit Excel + ankers + revisies-callout.
+- **Kostencalculator** — modal met smartAverage (bias tegen extreme ranges) + één-malig/maandelijks/uurlijks apart.
+- **Privacybeleid** (`/privacybeleid`, `/privacy`) — 10 artikelen NL+EN.
+- **Google Maps** op Contactpagina (Delfzijl embed).
+- **LocalCaptcha + ConsentText** — checkbox + honeypot + timing-gate op contact/portal-register/reviews/chatbot.
+- **IP-rate-limiter + block-logging** — contact/portal/reviews/chat hits worden gelogd in `cybersec_blocks` bij spam/rate-limit; manual reblock schrijft naar `cybersec_manual_blocks`.
+- **Cybersecurity CMS** — wie/wat/waar/hoe/wanneer tabel, deblokkeren/opnieuw-blokkeren, daily chart, top-oorzaken.
+- **Feedback-widget** + **Feedback CMS** — per pagina, status (nieuw/in behandeling/hold/afgerond), toewijzen, interne notities.
+- **Sidebar-badges** peer-blauw (Berichten / Portaal / Reviews / Feedback / Cybersecurity) via `/api/admin/counters`.
+- **MessagesAdmin uitgebreid** — status, toewijzen, notities, "Antwoord via e-mail" button.
+- **Cybersecurity prijs** €5 p/machine → **€5 p/machine p/maand** (translations + PricingTables bullets).
+- **Terms** — Artikel 5 clause 4 "5 revisierondes" toegevoegd (NL+EN).
+- **Mobiele header fix** — thema + taal in hamburger; CMS-knop blijft in top bar.
+- **Parallax pear-achtergrond** — fixed, 4,5% opacity, subtiele scroll drift, verborgen op /admin.
+- **Versie 1.2** in footer + Terms.
+- Testing: pytest 21/21 pass + Playwright all flows green (`/app/test_reports/iteration_13.json`).
+
+## Prioritized Backlog (Phase 4 & beyond)
+- **P1** — Zoho bidirectionele contact-sync (daily worker, Zoho Books ↔ CMS gebruikers).
+- **P1** — Review autopilot (invite dag na paid Zoho invoice).
+- **P1** — Brevo mailmarketing integratie + CMS-tab (campaigns, lists, tracking).
+- **P1** — Uitgebreid Gebruikersbeheer: adres/postcode/KVK/BTW/bedrijfsnaam velden, wachtwoord wijzigen / reset-mail knop, profielfoto randomizer (pear/robot thema), 2-way Zoho-sync in-place.
+- **P1** — Berichten↔Zoho Desk 2-way koppeling (subject/header ticket-nummer parse; reply-in-CMS pusht naar Zoho; Zoho reply pusht naar berichten).
+- **P2** — Sharing (facturen/projecten/tickets) met externe email, dubbele bevestiging via mail.
+- **P2** — Changelog CMS-pagina + versies zichtbaar in footer + Terms.
+- **P2** — Meta Pixel ID in Site Settings + toevoegen aan AI Dashboard.
+- **P2** — CMS EN i18n compleet — audit alle statische strings in `AdminDashboard.jsx` (nu hardcoded NL).
+- **P2** — Refactor `server.py` (>1500 lines) naar `routes/` en `AdminDashboard.jsx` naar `admin/tabs/*.jsx`.
+- **P3** — ICT + Cybersecurity prijzen (wachten op user-input).
+- **P3** — Twee-weg review-sync (Google/Trustpilot API-limitaties).
 
 ## Test Credentials
 - Admin: `admin@pearblue.nl` / `PearBlue2026!` — see `/app/memory/test_credentials.md`.
