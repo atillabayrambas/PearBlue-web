@@ -729,7 +729,7 @@ const UsersAdmin = () => {
           <h3 className="font-heading font-semibold text-strong mb-3">Rollen &amp; rechten</h3>
           <ul className="space-y-2 text-xs" data-testid="cms-roles-list">
             {roles.map((r) => (
-              <li key={r.key} className="flex flex-wrap items-center gap-2 rounded-xl surface-2 p-3">
+              <li key={r.key} className="flex flex-wrap items-center gap-2 rounded-xl surface-2 p-3" data-testid={`role-row-${r.key}`}>
                 <span className="font-semibold text-strong text-sm">{ROLE_LABELS[r.key] || r.key}</span>
                 {r.permissions.length === 0 && <span className="text-muted-fg">— geen CMS rechten</span>}
                 {r.permissions.map((p) => (
