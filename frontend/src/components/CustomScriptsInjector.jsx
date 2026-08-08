@@ -23,19 +23,23 @@ export const CustomScriptsInjector = () => {
       const injectInto = (parent, html, marker) => {
         if (!html || !parent) return;
         if (parent.querySelector(`[data-pb-script="${marker}"]`)) return;
-        const wrap = document.createElement("div");
-        wrap.setAttribute("data-pb-script", marker);
-        wrap.innerHTML = html;
-        Array.from(wrap.childNodes).forEach((node) => {
+        // Use DOMParser so <meta>/<link>/<script> tags survive parsing
+        // (a plain <div>.innerHTML strips head-only elements).
+        const doc = new DOMParser().parseFromString(
+          `<!doctype html><html><head>${html}</head><body>${html}</body></html>`,
+          "text/html",
+        );
+        const source = parent === document.head ? doc.head : doc.body;
+        Array.from(source.childNodes).forEach((node) => {
           if (node.tagName === "SCRIPT") {
             const s = document.createElement("script");
             for (const attr of node.attributes) s.setAttribute(attr.name, attr.value);
             s.text = node.textContent;
             s.setAttribute("data-pb-script", marker);
             parent.appendChild(s);
-          } else {
+          } else if (node.nodeType === 1) {
             const clone = node.cloneNode(true);
-            if (clone.setAttribute) clone.setAttribute("data-pb-script", marker);
+            clone.setAttribute("data-pb-script", marker);
             parent.appendChild(clone);
           }
         });

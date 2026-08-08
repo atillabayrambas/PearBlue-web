@@ -39,14 +39,32 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **Login-page logo** — Admin + Portal login pages both render `PearBlue logo-10.webp` via the icon-only Logo variant (theme-independent, as requested).
 - Testing: pytest 28/28 pass, Playwright frontend end-to-end pass (`/app/test_reports/iteration_7.json`).
 
+### Feb 2026 — Iterations 8–11
+- Stripe iDEAL "Betaal Nu" on open Zoho Books invoices (`stripe_payments.py`, `PaymentSuccess.jsx`).
+- Review invitations + Trust-stats (Trustpilot/Google) UI.
+- Portal in-app Zoho Project detail page, i18n for portal.
+- User Management CMS (6 roles: super_admin/beheerder/analist/moderator/chat_support/gebruiker).
+- Custom Scripts CMS (header + footer) with public `/api/site/scripts`.
+- Algemene Voorwaarden / Terms & Conditions page (`/voorwaarden`, `/terms`).
+- Portal ticket detail (thread view + reply).
+- Super-admin via Zoho OAuth (`beheer@multibay.eu`) with `admin_token` handoff.
+
+### Feb 2026 — Iteration 12 (this session, tested)
+- **AI Chat anti-spam** — regex spam detection on `/api/chat`; blocked messages return 400 with inline notice (`Chatbot.jsx`).
+- **"Vraag een agent" handoff** — `POST /api/chat/agent-handoff` logs to `db.chat_handoffs`, emails support with recent chat history, schedules a 2-min fallback reminder if unacknowledged. Admin ack via `POST /api/chat/agent-handoff/{id}/ack`.
+- **Ticket attachments** — client → Zoho Desk multipart upload via `POST /api/portal/tickets/{id}/attachments` (20 MB cap, uses `python-multipart`).
+- **Trustpilot script bugfix** — `PUT /api/admin/scripts` now writes scripts directly into `public/index.html` between `<!-- PB_HEADER_START -->` / `<!-- PB_FOOTER_START -->` markers so third-party crawlers see them at HTML level.
+- **CustomScriptsInjector polish** — client-side fallback now uses `DOMParser` so `<meta>`/`<link>` tags survive runtime injection (SSR path was already fine).
+- **Testing**: pytest 17/17 pass + Playwright frontend flows all green (`/app/test_reports/iteration_12.json`).
+
 ## Prioritized Backlog
-- **P1** — "Betaal Nu" (Pay Now) button in the Zoho portal: Stripe/iDEAL to pay open Zoho Books invoices directly.
-- **P2** — Extract `reviews` and Zoho helpers out of `server.py` (now ~790 lines) into dedicated routers.
-- **P2** — Rate-limit / captcha on public `POST /api/reviews` and `POST /api/portal/register` (same spam vector as `/api/contact`).
-- **P2** — Pagination on `/api/reviews` and `/api/reviews/all` (currently truncates at 200/500).
-- **P2** — Attach `pearblue.nl` domain to Resend sender for deliverability.
-- **P3** — Blog/news section for SEO.
-- **P3** — Newsletter signup (Resend audiences).
+- **P1** — Zoho bidirectional sync: daily worker to pull new Zoho Books contacts into DB + auto-create Zoho Books contacts when CMS users are added; duplicate-email conflict detection.
+- **P2** — Refactor `server.py` (>1200 lines) into `routes/` (auth, admin, chat, users, analytics).
+- **P2** — Two-way review sync with Google/Trustpilot (currently pull + invite only).
+- **P2** — Rate-limit / captcha on public `POST /api/reviews` and `POST /api/portal/register`.
+- **P2** — Pagination on `/api/reviews` and `/api/reviews/all`.
+- **P2** — Attach `pearblue.nl` domain to Resend for deliverability.
+- **P3** — Blog/news section for SEO; Newsletter signup (Resend audiences).
 
 ## Test Credentials
 - Admin: `admin@pearblue.nl` / `PearBlue2026!` — see `/app/memory/test_credentials.md`.
