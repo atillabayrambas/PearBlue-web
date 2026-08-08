@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Menu, X, Globe, Sun, Moon, Monitor, ChevronDown } from "lucide-react";
+import { Menu, X, Globe, Sun, Moon, Monitor, ChevronDown, User, LogIn } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
+import { usePortalAuth } from "../auth/PortalAuthContext";
 import { Logo } from "./Logo";
 
 const ThemeSwitcher = () => {
@@ -58,10 +59,13 @@ const ThemeSwitcher = () => {
 export const Navbar = () => {
   const { lang, setLang, t } = useLang();
   const { isAdmin } = useAuth();
+  const { authenticated: portalAuth, user: portalUser } = usePortalAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => setOpen(false), [location.pathname]);
+
+  const firstName = portalUser?.display_name ? portalUser.display_name.split(" ")[0] : (portalUser?.email ? portalUser.email.split("@")[0] : "");
 
   const links = [
     { to: "/", label: t("nav.home"), testid: "nav-home" },
@@ -105,6 +109,24 @@ export const Navbar = () => {
             <Globe className="h-3.5 w-3.5" />
             {lang.toUpperCase()}
           </button>
+          <Link
+            to="/portal"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-strong border border-app rounded-full px-3 py-1.5 hover:border-pear-500 hover:text-pear-500 max-w-[9rem]"
+            data-testid="nav-portal"
+            aria-label={portalAuth ? "Klantportaal" : "Login"}
+          >
+            {portalAuth ? (
+              <>
+                <User className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{firstName || "Portaal"}</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="h-3.5 w-3.5 shrink-0" />
+                <span>{lang === "nl" ? "Login" : "Login"}</span>
+              </>
+            )}
+          </Link>
           {isAdmin && (
             <Link to="/admin" className="hidden md:inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-3 py-1.5" data-testid="nav-cms">
               CMS

@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 6 tested end-to-end. Backend pytest 15/15 pass (portal register public → 200 pending; missing email → 422; list unauth → 401; list admin → returns created entry; ?status=pending filter works; PATCH unauth → 401; PATCH invalid status → 422; PATCH non-existent id → 404; PATCH approve → 200 with status='approved' and reviewed_at set, admin_note persisted; regression: /api/settings public GET + admin-only PUT, /api/chat/stats admin-only, /api/contact public, POST /api/projects admin-only, /api/auth/zoho/login 307). Frontend Playwright: nav-portal visible on desktop 1920x1080 with text 'Login', clicks navigate to /portal; nav-portal also visible on mobile 390x844 with text 'Login'; /portal anon shows both cards portal-zoho-login + portal-register-form; filling name/email/company/phone/message + portal-reg-submit posts to /api/portal/register and portal-register-success shown; admin login → sidebar link cms-nav-registrations → cms-registrations page renders with all 4 filter buttons (all/pending/approved/rejected); clicking Approve on the freshly-created pending entry triggers PATCH, toast 'Goedgekeurd — e-mail verstuurd' appears, approve/reject buttons disappear from list. Resend integration confirmed (backend logged send success on admin notification + approval mail).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~687 lines with 3 more HTML email builders + 2 new endpoints inline. Strongly recommend extracting portal_registrations into a router module (e.g. /app/backend/portal_registrations.py) similar to zoho_portal.py — this file has grown 30% in one iteration.",
+    "_send_email (server.py:579) duplicates the shape of _send_contact_email (server.py:272). Consolidate into one email helper that takes an html builder callable — otherwise every new email flow will fork the helper again.",
+    "RegistrationReview validates pattern='^(approved|rejected|pending)$' but the PATCH handler still writes reviewed_at even when status='pending' (line 630). If admin re-opens an approved registration by setting status back to pending, reviewed_at would remain set from the earlier decision — semantics unclear; consider clearing reviewed_at when status=='pending'.",
+    "PATCH /api/portal/registrations/{id}: on approved/rejected the customer email is sent AFTER the DB write is committed but the endpoint still returns 200 even if _send_email raises inside asyncio.to_thread (caught inside helper). Good for UX resilience, but the response does not include a boolean like email_sent — the UI toast 'e-mail verstuurd' currently lies when Resend rejects the recipient. Consider returning `{..., email_sent: bool}` and reflecting that in the toast.",
+    "Admin notification email on /api/portal/register uses CONTACT_RECIPIENT_EMAIL — same address as contact form. If admin wants separate routing for portal-request notifications, add a REGISTRATION_ADMIN_EMAIL env var.",
+    "portal_registrations collection has no unique index on `email` — the same email can create unlimited pending entries (spam vector on public endpoint). Recommend either a unique index on (email, status='pending') or in-code duplicate check.",
+    "POST /api/portal/register has no rate limiting — public endpoint that triggers an outbound email on each call. Should share the same in-memory rate limit pattern used by /api/chat, or better, add IP-based throttling middleware.",
+    "Chatbot system prompt still says 'Nederland, Delfzijl' (fixed in iter5) but no mention of the new customer portal / registration path — Pear won't know how to guide users to /portal → Register.",
+    "Prior code-review comments from iteration 5 still stand (large server.py, chat_stats python-side loop, in-memory rate store per-worker, CORS allow_credentials=True with allow_origins='*' risk)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (all critical flows: nav-portal desktop+mobile, portal register form, admin approve)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created 1 TEST_ portal registration + UI-created TEST registration + a few TEST regression contact messages. All cleaned up post-run via MongoDB delete_many. Prior 'Test Klant' approved entry left untouched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 6 backend test file: /app/backend/tests/test_iteration6.py (15 tests, all pass, includes automatic MongoDB cleanup of registrations it creates via the fixture). Portal registration API path: POST /api/portal/register (public, no rate limit), GET /api/portal/registrations?status=... (admin, filter values: pending|approved|rejected), PATCH /api/portal/registrations/{id} with {status, admin_note}. Admin CMS URL /admin/registrations, testids: cms-nav-registrations, cms-registrations, registrations-filter-{all|pending|approved|rejected}, registration-approve-{id}, registration-reject-{id}. Navbar testid: nav-portal (visible both desktop AND mobile, shows first name when portal-authenticated else 'Login'). Portal form testids: portal-register-form, portal-reg-{name|email|company|phone|message|submit}, portal-register-success. Resend key is real — approvals actually send email; backend catches exceptions silently. To avoid polluting inbox/registration list, use TEST_ prefix and clean up.",
+  "rca of the issue": "N/A — all iteration 6 functionality works as specified."
+}

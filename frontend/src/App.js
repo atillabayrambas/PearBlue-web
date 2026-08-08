@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ThemeProvider } from "@/theme/ThemeContext";
 import { AuthProvider } from "@/auth/AuthContext";
+import { PortalAuthProvider } from "@/auth/PortalAuthContext";
 import { Toaster } from "@/components/ui/sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -62,11 +63,13 @@ function App() {
     <ThemeProvider>
       <LanguageProvider>
         <AuthProvider>
-          <BrowserRouter>
-            <ScrollToTop />
-            <Shell />
-            <Toaster position="top-right" richColors />
-          </BrowserRouter>
+          <PortalAuthProvider>
+            <BrowserRouter>
+              <ScrollToTop />
+              <Shell />
+              <Toaster position="top-right" richColors />
+            </BrowserRouter>
+          </PortalAuthProvider>
         </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>

@@ -13,6 +13,68 @@ const startLogin = () => {
   window.location.href = `${API}/auth/zoho/login`;
 };
 
+const RegistrationForm = () => {
+  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "" });
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const submit = async (e) => {
+    e.preventDefault();
+    setSending(true);
+    try {
+      await axios.post(`${API}/portal/register`, { ...form, language: "nl" });
+      setDone(true);
+      toast.success("Aanvraag ontvangen! We nemen zo snel mogelijk contact op.");
+    } catch (err) {
+      toast.error("Aanvraag mislukt. Probeer het later opnieuw.");
+    } finally {
+      setSending(false);
+    }
+  };
+  if (done) {
+    return (
+      <div className="text-center py-6" data-testid="portal-register-success">
+        <p className="font-heading text-lg text-strong mb-2">Bedankt!</p>
+        <p className="text-sm text-muted-fg">We beoordelen je aanvraag en sturen je een e-mail zodra je toegang hebt.</p>
+      </div>
+    );
+  }
+  return (
+    <form onSubmit={submit} className="space-y-3" data-testid="portal-register-form">
+      <label className="block">
+        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Naam *</span>
+        <input required value={form.name} onChange={change("name")} type="text" data-testid="portal-reg-name"
+          className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+      </label>
+      <label className="block">
+        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">E-mail *</span>
+        <input required value={form.email} onChange={change("email")} type="email" data-testid="portal-reg-email"
+          className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Bedrijf</span>
+          <input value={form.company} onChange={change("company")} type="text" data-testid="portal-reg-company"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Telefoon</span>
+          <input value={form.phone} onChange={change("phone")} type="tel" data-testid="portal-reg-phone"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+        </label>
+      </div>
+      <label className="block">
+        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Bericht</span>
+        <textarea rows={3} value={form.message} onChange={change("message")} data-testid="portal-reg-message"
+          className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none resize-none text-strong" />
+      </label>
+      <button type="submit" disabled={sending} className="btn-primary w-full justify-center" data-testid="portal-reg-submit">
+        {sending ? "Bezig…" : "Toegang aanvragen"}
+      </button>
+    </form>
+  );
+};
+
 const useSection = (name, when) => {
   const [state, setState] = useState({ loading: false, data: null, error: null });
   useEffect(() => {
@@ -82,18 +144,24 @@ export default function Portal() {
   if (!me.authenticated) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-6 py-16" data-testid="page-portal-login">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-          className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10 max-w-md w-full text-center">
-          <div className="flex justify-center mb-6"><Logo size={44} showText={false} /></div>
-          <h1 className="font-heading text-3xl font-semibold text-strong mb-2">Klantportaal</h1>
-          <p className="text-sm text-muted-fg mb-8">Log in met je Zoho-account om je facturen, projecten en support-tickets te bekijken.</p>
-          <button onClick={startLogin} className="btn-primary w-full justify-center" data-testid="portal-zoho-login">
-            <LogIn className="h-4 w-4" /> Inloggen met Zoho
-          </button>
-          <p className="text-[11px] text-muted-fg mt-6">
-            Nog geen Zoho-account? Vraag ons om toegang via <Link to="/contact" className="text-pear-500 underline">/contact</Link>.
-          </p>
-        </motion.div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+            className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10 text-center">
+            <div className="flex justify-center mb-6"><Logo size={44} showText={false} /></div>
+            <h1 className="font-heading text-2xl sm:text-3xl font-semibold text-strong mb-2">Bestaande klant?</h1>
+            <p className="text-sm text-muted-fg mb-8">Log in met je Zoho-account om je facturen, projecten en support-tickets te bekijken.</p>
+            <button onClick={startLogin} className="btn-primary w-full justify-center" data-testid="portal-zoho-login">
+              <LogIn className="h-4 w-4" /> Inloggen met Zoho
+            </button>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
+            className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10">
+            <h2 className="font-heading text-2xl font-semibold text-strong mb-2">Nog geen toegang?</h2>
+            <p className="text-sm text-muted-fg mb-6">Vraag toegang aan tot het klantportaal — we bekijken je aanvraag en sturen instructies binnen 1 werkdag.</p>
+            <RegistrationForm />
+          </motion.div>
+        </div>
       </div>
     );
   }

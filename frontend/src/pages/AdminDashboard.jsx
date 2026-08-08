@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3 } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
@@ -22,6 +22,7 @@ const AdminSidebar = () => {
   const items = [
     { to: "/admin", label: "Portfolio", icon: Briefcase, end: true, testid: "cms-nav-projects" },
     { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
+    { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
     { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages" },
   ];
@@ -294,6 +295,108 @@ const MessagesAdmin = () => {
   );
 };
 
+// --- Registrations tab ---
+const STATUS_STYLE = {
+  pending: "bg-amber-100 text-amber-700",
+  approved: "bg-pear-100 text-pear-700",
+  rejected: "bg-red-100 text-red-700",
+};
+
+const RegistrationsAdmin = () => {
+  const { authHeader } = useAuth();
+  const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    axios.get(`${API}/portal/registrations`, { headers: authHeader() })
+      .then((r) => setItems(r.data || []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const review = async (id, status) => {
+    const note = status === "rejected"
+      ? window.prompt("Reden voor afwijzing (optioneel, wordt in e-mail meegestuurd):", "") ?? ""
+      : "";
+    setBusy(id);
+    try {
+      await axios.patch(`${API}/portal/registrations/${id}`, { status, admin_note: note || null }, { headers: authHeader() });
+      toast.success(status === "approved" ? "Goedgekeurd — e-mail verstuurd" : "Afgewezen — e-mail verstuurd");
+      load();
+    } catch { toast.error("Kon status niet bijwerken"); } finally { setBusy(null); }
+  };
+
+  const visible = filter === "all" ? items : items.filter((i) => i.status === filter);
+
+  return (
+    <div data-testid="cms-registrations">
+      <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-3xl font-medium text-strong">Portaal-aanvragen</h1>
+          <p className="text-sm text-muted-fg mt-1">Beoordeel nieuwe klantregistraties. Goedgekeurde klanten krijgen automatisch een e-mail met inloginstructies.</p>
+        </div>
+        <div className="flex gap-2">
+          {[
+            { k: "all", l: "Alles" },
+            { k: "pending", l: "Openstaand" },
+            { k: "approved", l: "Goedgekeurd" },
+            { k: "rejected", l: "Afgewezen" },
+          ].map((f) => (
+            <button key={f.k} onClick={() => setFilter(f.k)}
+              data-testid={`registrations-filter-${f.k}`}
+              className={`text-xs rounded-full px-3 py-1.5 border transition-colors ${
+                filter === f.k ? "bg-pear-500 text-white border-pear-500" : "surface text-strong border-app hover:border-pear-500"
+              }`}>{f.l}</button>
+          ))}
+        </div>
+      </header>
+      {loading ? (
+        <p className="text-muted-fg">Laden…</p>
+      ) : visible.length === 0 ? (
+        <div className="surface border border-app rounded-2xl p-10 text-center text-muted-fg">Geen aanvragen in deze filter.</div>
+      ) : (
+        <div className="surface border border-app rounded-2xl divide-y divide-app">
+          {visible.map((r, i) => (
+            <div key={r.id || i} className="p-4" data-testid={`cms-registration-${r.id}`}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-strong truncate">{r.name}</p>
+                    <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold ${STATUS_STYLE[r.status] || "bg-slate-200 text-slate-700"}`}>{r.status}</span>
+                  </div>
+                  <p className="text-xs text-muted-fg mt-0.5">
+                    {r.email}{r.company ? ` · ${r.company}` : ""}{r.phone ? ` · ${r.phone}` : ""} · {new Date(r.created_at).toLocaleString("nl-NL")}
+                  </p>
+                  {r.message && <p className="text-sm text-strong/80 mt-2 whitespace-pre-wrap">{r.message}</p>}
+                  {r.admin_note && <p className="text-xs text-muted-fg italic mt-2">Notitie: {r.admin_note}</p>}
+                </div>
+                {r.status === "pending" && (
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => review(r.id, "approved")} disabled={busy === r.id}
+                      className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-pear-500 text-white px-3 py-1.5 hover:bg-pear-600 disabled:opacity-50"
+                      data-testid={`registration-approve-${r.id}`}>
+                      <Check className="h-3.5 w-3.5" /> Goedkeuren
+                    </button>
+                    <button onClick={() => review(r.id, "rejected")} disabled={busy === r.id}
+                      className="inline-flex items-center gap-1 text-xs font-semibold rounded-full surface-2 text-red-500 border border-red-200 px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+                      data-testid={`registration-reject-${r.id}`}>
+                      <XCircle className="h-3.5 w-3.5" /> Afwijzen
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Layout ---
 const AdminLayout = ({ children }) => (
   <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
@@ -316,6 +419,7 @@ export default function AdminDashboard() {
         <Routes>
           <Route index element={<ProjectsAdmin />} />
           <Route path="analytics" element={<AnalyticsAdmin />} />
+          <Route path="registrations" element={<RegistrationsAdmin />} />
           <Route path="settings" element={<SettingsAdmin />} />
           <Route path="messages" element={<MessagesAdmin />} />
         </Routes>

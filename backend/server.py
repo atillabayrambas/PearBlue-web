@@ -168,6 +168,36 @@ class SiteSettingsUpdate(BaseModel):
     hero_headline_en: Optional[str] = Field(None, max_length=200)
 
 
+class PortalRegistration(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    email: EmailStr
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    message: Optional[str] = None
+    language: Optional[str] = "nl"
+    status: str = "pending"  # pending | approved | rejected
+    admin_note: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reviewed_at: Optional[datetime] = None
+
+
+class PortalRegistrationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    email: EmailStr
+    company: Optional[str] = Field(None, max_length=120)
+    phone: Optional[str] = Field(None, max_length=40)
+    message: Optional[str] = Field(None, max_length=2000)
+    language: Optional[str] = "nl"
+
+
+class RegistrationReview(BaseModel):
+    status: str = Field(..., pattern="^(approved|rejected|pending)$")
+    admin_note: Optional[str] = Field(None, max_length=1000)
+
+
 # ---------- Auth helpers ----------
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -487,6 +517,134 @@ async def update_settings(payload: SiteSettingsUpdate, current=Depends(require_a
     )
     doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0})
     return SiteSettings(**(doc or {}))
+
+
+# ---- Portal registrations ----
+def _reg_admin_html(r: PortalRegistration) -> str:
+    return f"""
+    <div style="font-family: Arial, sans-serif; max-width:600px; margin:0 auto; color:#0A192F;">
+      <div style="background:#02C0FF; color:#fff; padding:24px; border-radius:12px 12px 0 0;">
+        <h2 style="margin:0;">Nieuwe klantportaal-aanvraag</h2>
+      </div>
+      <table style="width:100%; background:#fff; padding:24px;">
+        <tr><td><strong>Naam:</strong></td><td>{r.name}</td></tr>
+        <tr><td><strong>E-mail:</strong></td><td>{r.email}</td></tr>
+        <tr><td><strong>Bedrijf:</strong></td><td>{r.company or '-'}</td></tr>
+        <tr><td><strong>Telefoon:</strong></td><td>{r.phone or '-'}</td></tr>
+        <tr><td style="vertical-align:top;"><strong>Bericht:</strong></td><td style="white-space:pre-wrap;">{r.message or '-'}</td></tr>
+      </table>
+      <p style="text-align:center; color:#0A192F;">Log in op het CMS om deze aanvraag goed te keuren of af te wijzen.</p>
+    </div>
+    """
+
+
+def _reg_approved_html(r: PortalRegistration) -> str:
+    return f"""
+    <div style="font-family: Arial, sans-serif; max-width:600px; margin:0 auto; color:#0A192F;">
+      <div style="background:#02C0FF; color:#fff; padding:24px; border-radius:12px 12px 0 0;">
+        <h2 style="margin:0;">Welkom bij het PearBlue klantportaal, {r.name}!</h2>
+      </div>
+      <div style="background:#fff; padding:24px;">
+        <p>Je aanvraag is goedgekeurd. Je hebt vanaf nu toegang tot ons klantportaal.</p>
+        <p><strong>Zo log je in:</strong></p>
+        <ol>
+          <li>Ga naar <a href="https://sheet-converter-68.preview.emergentagent.com/portal">het klantportaal</a>.</li>
+          <li>Klik op <strong>Inloggen met Zoho</strong>.</li>
+          <li>Gebruik je Zoho-account ({r.email}) om in te loggen.</li>
+        </ol>
+        <p>Nog geen Zoho account? We nodigen je binnenkort uit via Zoho.</p>
+        {f'<p style="background:#F0FBFF; padding:12px; border-radius:8px;"><em>Opmerking van onze kant:</em><br/>{r.admin_note}</p>' if r.admin_note else ''}
+        <p>Vragen? Mail ons op <a href="mailto:info@pearblue.nl">info@pearblue.nl</a>.</p>
+      </div>
+    </div>
+    """
+
+
+def _reg_rejected_html(r: PortalRegistration) -> str:
+    return f"""
+    <div style="font-family: Arial, sans-serif; max-width:600px; margin:0 auto; color:#0A192F;">
+      <div style="background:#0A192F; color:#fff; padding:24px; border-radius:12px 12px 0 0;">
+        <h2 style="margin:0;">Update over je portaal-aanvraag</h2>
+      </div>
+      <div style="background:#fff; padding:24px;">
+        <p>Hi {r.name}, bedankt voor je interesse in het PearBlue klantportaal.</p>
+        <p>Op dit moment kunnen we je aanvraag helaas niet goedkeuren.</p>
+        {f'<p style="background:#FEF2F2; padding:12px; border-radius:8px;"><em>Toelichting:</em><br/>{r.admin_note}</p>' if r.admin_note else ''}
+        <p>Neem contact op via <a href="mailto:info@pearblue.nl">info@pearblue.nl</a> als je vragen hebt.</p>
+      </div>
+    </div>
+    """
+
+
+async def _send_email(to_email: str, subject: str, html: str, reply_to: Optional[str] = None) -> bool:
+    if not RESEND_API_KEY:
+        logger.info("RESEND not configured — skipping email.")
+        return False
+    params = {"from": SENDER_EMAIL, "to": [to_email], "subject": subject, "html": html}
+    if reply_to:
+        params["reply_to"] = reply_to
+    try:
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Email sent: {result}")
+        return True
+    except Exception as e:
+        logger.error(f"Email send failed: {e}")
+        return False
+
+
+@api_router.post("/portal/register", response_model=PortalRegistration)
+async def register_portal(payload: PortalRegistrationCreate):
+    reg = PortalRegistration(**payload.model_dump())
+    doc = reg.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    if doc.get('reviewed_at'):
+        doc['reviewed_at'] = doc['reviewed_at'].isoformat()
+    await db.portal_registrations.insert_one(doc)
+    # Notify admin
+    await _send_email(
+        CONTACT_RECIPIENT_EMAIL,
+        f"[PearBlue] Nieuwe portaal-aanvraag — {reg.name}",
+        _reg_admin_html(reg),
+        reply_to=reg.email,
+    )
+    return reg
+
+
+@api_router.get("/portal/registrations", response_model=List[PortalRegistration])
+async def list_registrations(status: Optional[str] = None, current=Depends(require_admin)):
+    q: dict = {}
+    if status:
+        q["status"] = status
+    items = await db.portal_registrations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    for i in items:
+        if isinstance(i.get('created_at'), str):
+            i['created_at'] = datetime.fromisoformat(i['created_at'])
+        if isinstance(i.get('reviewed_at'), str):
+            i['reviewed_at'] = datetime.fromisoformat(i['reviewed_at'])
+    return items
+
+
+@api_router.patch("/portal/registrations/{reg_id}", response_model=PortalRegistration)
+async def review_registration(reg_id: str, payload: RegistrationReview, current=Depends(require_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    updates = {"status": payload.status, "reviewed_at": now}
+    if payload.admin_note is not None:
+        updates["admin_note"] = payload.admin_note
+    result = await db.portal_registrations.update_one({"id": reg_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    doc = await db.portal_registrations.find_one({"id": reg_id}, {"_id": 0})
+    if isinstance(doc.get('created_at'), str):
+        doc['created_at'] = datetime.fromisoformat(doc['created_at'])
+    if isinstance(doc.get('reviewed_at'), str):
+        doc['reviewed_at'] = datetime.fromisoformat(doc['reviewed_at'])
+    reg = PortalRegistration(**doc)
+    # Notify customer
+    if payload.status == "approved":
+        await _send_email(reg.email, "Je PearBlue klantportaal is klaar", _reg_approved_html(reg))
+    elif payload.status == "rejected":
+        await _send_email(reg.email, "Update over je portaal-aanvraag", _reg_rejected_html(reg))
+    return reg
 
 
 app.include_router(api_router)
