@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Sparkles } from "lucide-react";
+import { MessageCircle, X, Send, Sparkles, User, ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -21,6 +22,10 @@ export const Chatbot = () => {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [sessionId] = useState(genSessionId);
+  const [showHandoff, setShowHandoff] = useState(false);
+  const [handoffForm, setHandoffForm] = useState({ name: "", email: "", message: "" });
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffDone, setHandoffDone] = useState(false);
   const scrollerRef = useRef(null);
 
   const welcome = lang === "nl"
@@ -49,9 +54,47 @@ export const Chatbot = () => {
       const res = await axios.post(`${API}/chat`, { session_id: sessionId, message: text, language: lang });
       setMessages((m) => [...m, { role: "assistant", content: res.data.reply }]);
     } catch (err) {
-      setMessages((m) => [...m, { role: "assistant", content: lang === "nl" ? "Sorry, ik kan even niet reageren. Probeer het zo opnieuw of mail info@pearblue.nl." : "Sorry, I can't respond right now. Please try again shortly or email info@pearblue.nl." }]);
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 400 && detail?.reason) {
+        const msg = lang === "en" ? detail.message_en : detail.message;
+        setMessages((m) => [...m, { role: "assistant", content: msg || "" }]);
+      } else if (status === 429) {
+        const msg = lang === "en" ? detail?.message_en : detail?.message;
+        setMessages((m) => [...m, { role: "assistant", content: msg || "" }]);
+      } else {
+        setMessages((m) => [...m, { role: "assistant", content: lang === "nl" ? "Sorry, ik kan even niet reageren. Probeer het zo opnieuw of vraag een medewerker onder in het scherm." : "Sorry, I can't respond right now. Please try again shortly or request an agent below." }]);
+      }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitHandoff = async (e) => {
+    e?.preventDefault();
+    if (handoffBusy) return;
+    setHandoffBusy(true);
+    try {
+      // Prefill message with last user turn if empty
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      const msg = handoffForm.message.trim() || (lastUser ? lastUser.content : "");
+      if (!msg || msg.length < 5) {
+        toast.error(lang === "en" ? "Please describe your question first." : "Beschrijf eerst je vraag.");
+        setHandoffBusy(false);
+        return;
+      }
+      await axios.post(`${API}/chat/agent-handoff`, {
+        session_id: sessionId,
+        name: handoffForm.name.trim(),
+        email: handoffForm.email.trim(),
+        message: msg,
+      });
+      setHandoffDone(true);
+      toast.success(lang === "en" ? "An agent is on the way!" : "Een medewerker komt eraan!");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail?.message || (lang === "en" ? "Could not connect to an agent" : "Kon geen agent bereiken"));
+    } finally {
+      setHandoffBusy(false);
     }
   };
 
@@ -154,6 +197,69 @@ export const Chatbot = () => {
                 <Send className="h-4 w-4" />
               </button>
             </form>
+
+            <div className="px-3 pb-3 -mt-1">
+              <button
+                type="button"
+                onClick={() => setShowHandoff(true)}
+                data-testid="chatbot-request-agent"
+                className="w-full inline-flex items-center justify-center gap-1.5 text-[11px] text-muted-fg hover:text-pear-500 py-1"
+              >
+                <User className="h-3 w-3" />
+                {lang === "en" ? "Talk to a real person" : "Vraag een medewerker"}
+              </button>
+            </div>
+
+            {/* Handoff overlay */}
+            <AnimatePresence>
+              {showHandoff && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 surface rounded-2xl z-10 flex flex-col p-5"
+                  data-testid="chatbot-handoff-panel"
+                >
+                  <button
+                    onClick={() => setShowHandoff(false)}
+                    className="self-start inline-flex items-center gap-1 text-xs text-muted-fg hover:text-pear-500 mb-3"
+                    data-testid="chatbot-handoff-back"
+                  >
+                    <ArrowLeft className="h-3 w-3" /> {lang === "en" ? "Back to chat" : "Terug naar chat"}
+                  </button>
+                  {handoffDone ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center" data-testid="chatbot-handoff-done">
+                      <div className="w-12 h-12 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center mb-3"><Sparkles className="h-6 w-6" /></div>
+                      <p className="font-heading text-lg text-strong">{lang === "en" ? "Thanks — an agent is on the way!" : "Bedankt — een medewerker komt eraan!"}</p>
+                      <p className="text-xs text-muted-fg mt-2 max-w-xs">
+                        {lang === "en"
+                          ? "We'll reply by email within 2 minutes during business hours."
+                          : "We reageren binnen 2 minuten per e-mail tijdens werktijden."}
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={submitHandoff} className="flex flex-col gap-2.5 flex-1 overflow-y-auto">
+                      <p className="text-xs text-muted-fg mb-1">
+                        {lang === "en" ? "Give us your details and we'll email you back within 2 min." : "Laat je gegevens achter en we mailen je binnen 2 minuten."}
+                      </p>
+                      <input required minLength={2} value={handoffForm.name} onChange={(e) => setHandoffForm({ ...handoffForm, name: e.target.value })}
+                        placeholder={lang === "en" ? "Your name" : "Jouw naam"} data-testid="chatbot-handoff-name"
+                        className="rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none text-strong" />
+                      <input required type="email" value={handoffForm.email} onChange={(e) => setHandoffForm({ ...handoffForm, email: e.target.value })}
+                        placeholder="you@example.com" data-testid="chatbot-handoff-email"
+                        className="rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none text-strong" />
+                      <textarea rows={3} value={handoffForm.message} onChange={(e) => setHandoffForm({ ...handoffForm, message: e.target.value })}
+                        placeholder={lang === "en" ? "How can we help? (optional — we'll use your last message)" : "Waarmee kunnen we helpen? (optioneel — anders gebruiken we je laatste bericht)"}
+                        data-testid="chatbot-handoff-message"
+                        className="rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none resize-none text-strong" />
+                      <button type="submit" disabled={handoffBusy} className="btn-primary justify-center mt-1" data-testid="chatbot-handoff-submit">
+                        {handoffBusy ? "…" : (lang === "en" ? "Send" : "Versturen")}
+                      </button>
+                    </form>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

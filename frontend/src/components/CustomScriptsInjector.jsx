@@ -4,11 +4,20 @@ import axios from "axios";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
- * Fetches custom header/footer scripts configured by super-admins and injects them
- * into the DOM. Runs once on app mount.
+ * Client-side fallback injector for header/footer scripts.
+ * PREFERRED path is SSR: the backend writes the scripts directly into
+ * public/index.html between <!-- PB_HEADER_START --> ... <!-- PB_HEADER_END -->
+ * markers (so third-party crawlers like Trustpilot can find them).
+ * This component only runs when those markers are still empty.
  */
 export const CustomScriptsInjector = () => {
   useEffect(() => {
+    // Detect if SSR already placed scripts — if so, skip client-side injection.
+    const headHtml = document.head.innerHTML;
+    const bodyHtml = document.body.innerHTML;
+    const headerPlaceholderEmpty = /<!-- PB_HEADER_START --><!-- PB_HEADER_END -->/.test(headHtml);
+    const footerPlaceholderEmpty = /<!-- PB_FOOTER_START --><!-- PB_FOOTER_END -->/.test(bodyHtml);
+
     axios.get(`${API}/site/scripts`).then((r) => {
       const { header_scripts, footer_scripts } = r.data || {};
       const injectInto = (parent, html, marker) => {
@@ -17,7 +26,6 @@ export const CustomScriptsInjector = () => {
         const wrap = document.createElement("div");
         wrap.setAttribute("data-pb-script", marker);
         wrap.innerHTML = html;
-        // Move each element into the parent so <script> tags execute
         Array.from(wrap.childNodes).forEach((node) => {
           if (node.tagName === "SCRIPT") {
             const s = document.createElement("script");
@@ -32,8 +40,8 @@ export const CustomScriptsInjector = () => {
           }
         });
       };
-      injectInto(document.head, header_scripts, "header");
-      injectInto(document.body, footer_scripts, "footer");
+      if (headerPlaceholderEmpty) injectInto(document.head, header_scripts, "header");
+      if (footerPlaceholderEmpty) injectInto(document.body, footer_scripts, "footer");
     }).catch(() => {});
   }, []);
   return null;

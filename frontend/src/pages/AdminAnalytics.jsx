@@ -66,6 +66,38 @@ export const AnalyticsAdmin = () => {
             <Stat icon={Gauge} label="Rate limit" value={`${stats.rate_limit_per_hour}/u`} sub="Per bezoeker (IP)" />
           </div>
 
+          {stats.cost && (
+            <div className="mb-8 surface border border-app rounded-2xl p-6" data-testid="analytics-cost">
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-4 w-4 text-pear-500" />
+                <h3 className="font-heading font-semibold text-strong">Geschatte AI-kosten</h3>
+                <span className="text-[10px] uppercase tracking-widest bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-bold">schatting</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="surface-2 rounded-xl p-4 text-center" data-testid="cost-credits">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-fg">Emergent credits</p>
+                  <p className="mt-1 font-heading text-3xl font-medium text-strong tabular-nums">{stats.cost.estimated_credits}</p>
+                  <p className="text-[11px] text-muted-fg mt-1">1 credit ≈ $0.01</p>
+                </div>
+                <div className="surface-2 rounded-xl p-4 text-center" data-testid="cost-eur">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-fg">In euro</p>
+                  <p className="mt-1 font-heading text-3xl font-medium text-strong tabular-nums">€{stats.cost.estimated_eur}</p>
+                  <p className="text-[11px] text-muted-fg mt-1">≈ ${stats.cost.estimated_usd} USD</p>
+                </div>
+                <div className="surface-2 rounded-xl p-4 text-center" data-testid="cost-per-msg">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-fg">Per bericht</p>
+                  <p className="mt-1 font-heading text-3xl font-medium text-strong tabular-nums">
+                    €{stats.total_in_range > 0 ? (stats.cost.estimated_eur / stats.total_in_range).toFixed(4) : "0.0000"}
+                  </p>
+                  <p className="text-[11px] text-muted-fg mt-1">gemiddeld</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-fg mt-4">
+                {stats.cost.note} Prijs op basis van Emergent LLM key ≈ $3/1M input + $15/1M output tokens (Claude Sonnet 4.6).
+              </p>
+            </div>
+          )}
+
           <div className="surface border border-app rounded-2xl p-6" data-testid="analytics-chart">
             <h3 className="font-heading font-semibold text-strong mb-4">Berichten per dag</h3>
             <div className="flex items-end gap-1 h-40">

@@ -11,7 +11,9 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
 import html as _html
+import re as _re
 from datetime import datetime, timezone, timedelta
+from pathlib import Path as _Path
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -524,6 +526,15 @@ async def chat_stats(days: int = 30, current=Depends(require_admin)):
         day = (since + timedelta(days=i)).date().isoformat()
         series.append({"date": day, "count": per_day.get(day, 0)})
     total_messages_ever = await db.chat_messages.count_documents({})
+    # Cost estimate — Claude Sonnet 4.6 approximate token usage per turn + Emergent LLM pricing
+    # Assumption: avg ~500 input + ~350 output tokens per user message.
+    # Emergent LLM Key charges roughly $3 / 1M input + $15 / 1M output (Anthropic passthrough).
+    input_toks = total * 500
+    output_toks = total * 350
+    est_usd = (input_toks / 1_000_000) * 3.0 + (output_toks / 1_000_000) * 15.0
+    est_eur = est_usd * 0.92  # rough USD→EUR
+    # Emergent LLM Key credit: 1 credit = $0.01 (matches Emergent portal display)
+    est_credits = round(est_usd * 100, 1)
     return {
         "days": days,
         "total_in_range": total,
@@ -532,14 +543,58 @@ async def chat_stats(days: int = 30, current=Depends(require_admin)):
         "per_day": series,
         "per_language": dict(per_lang),
         "rate_limit_per_hour": CHAT_RATE_LIMIT_PER_HOUR,
+        "cost": {
+            "estimated_credits": est_credits,
+            "estimated_eur": round(est_eur, 2),
+            "estimated_usd": round(est_usd, 2),
+            "avg_input_tokens_per_msg": 500,
+            "avg_output_tokens_per_msg": 350,
+            "note": "Schatting op basis van gemiddelde tokenverbruik per bericht.",
+        },
     }
 
 
 # ---- Chatbot ----
+# Simple regex-based spam signals (fast, no LLM cost)
+_SPAM_PATTERNS = [
+    _re.compile(r"https?://\S+", _re.I),                           # URL spam
+    _re.compile(r"\b(bitcoin|forex|crypto pump|onlyfans|xxx)\b", _re.I),
+    _re.compile(r"(.)\1{9,}"),                                     # 10+ repeated chars
+    _re.compile(r"\b\d{10,}\b"),                                   # long digit runs (phone spam)
+]
+
+_MIN_INTERVAL_SECONDS = 2  # anti-flood: 2s between messages per IP
+_last_chat_ts: dict = defaultdict(float)
+
+
+def _detect_spam(text: str) -> tuple[bool, str]:
+    if not text or len(text.strip()) < 2:
+        return True, "empty"
+    if len(text) > 2000:
+        return True, "too_long"
+    for pat in _SPAM_PATTERNS:
+        if pat.search(text):
+            return True, f"pattern:{pat.pattern[:30]}"
+    # simple caps-shout detection (all uppercase + long)
+    alpha = [c for c in text if c.isalpha()]
+    if len(alpha) > 40 and sum(1 for c in alpha if c.isupper()) / len(alpha) > 0.85:
+        return True, "shout"
+    return False, ""
+
+
 def _chat_rate_check(request: Request) -> int:
     """Return remaining allowance for this IP; raise 429 if exhausted."""
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
     now = datetime.now(timezone.utc)
+    # Anti-flood: 2 seconds between messages
+    prev_ts = _last_chat_ts.get(ip, 0.0)
+    if prev_ts and (now.timestamp() - prev_ts) < _MIN_INTERVAL_SECONDS:
+        raise HTTPException(status_code=429, detail={
+            "message": "Rustig aan — wacht 2 seconden.",
+            "message_en": "Slow down — wait 2 seconds.",
+            "retry_after_seconds": _MIN_INTERVAL_SECONDS,
+        })
+    _last_chat_ts[ip] = now.timestamp()
     window_start = now - timedelta(hours=1)
     hits = [t for t in _chat_rate_store[ip] if t > window_start]
     if len(hits) >= CHAT_RATE_LIMIT_PER_HOUR:
@@ -557,6 +612,23 @@ def _chat_rate_check(request: Request) -> int:
 async def chat_endpoint(payload: ChatRequest, request: Request):
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=503, detail="Chat service not configured")
+    # Spam gate — reject before hitting the LLM
+    is_spam, reason = _detect_spam(payload.message)
+    if is_spam:
+        await db.chat_messages.insert_one({
+            "session_id": payload.session_id,
+            "user_message": payload.message[:200],
+            "bot_reply": None,
+            "spam": True,
+            "spam_reason": reason,
+            "language": payload.language,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        raise HTTPException(status_code=400, detail={
+            "message": "Je bericht is als spam gedetecteerd. Herformuleer zonder links of speciale tekens.",
+            "message_en": "Your message was flagged as spam. Please rephrase without links or special characters.",
+            "reason": reason,
+        })
     remaining = _chat_rate_check(request)
     try:
         chat = LlmChat(
@@ -579,6 +651,83 @@ async def chat_endpoint(payload: ChatRequest, request: Request):
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail="Chat failed")
+
+
+# ---- Agent handoff (from chat "Vraag een agent" button) ----
+class AgentHandoffPayload(BaseModel):
+    session_id: str = Field(..., min_length=3)
+    name: str = Field(..., min_length=2, max_length=100)
+    email: str = Field(..., min_length=3, max_length=200)
+    subject: Optional[str] = None
+    message: str = Field(..., min_length=5, max_length=2000)
+
+
+@api_router.post("/chat/agent-handoff")
+async def chat_agent_handoff(payload: AgentHandoffPayload, request: Request):
+    """Client asked for a human. Log request, email support, schedule fallback if unanswered."""
+    _chat_rate_check(request)  # same rate limit
+    # Grab recent chat history from this session (last 20 exchanges) as context for the agent
+    history = await db.chat_messages.find(
+        {"session_id": payload.session_id, "spam": {"$ne": True}},
+        {"_id": 0, "user_message": 1, "bot_reply": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(20)
+    history.reverse()
+    history_html = "".join([
+        f"<p><strong>{_html.escape(payload.name)}:</strong> {_html.escape(m.get('user_message') or '')}</p>"
+        f"<p style='color:#64748b'><em>PearBlue AI:</em> {_html.escape((m.get('bot_reply') or '')[:600])}</p><hr/>"
+        for m in history[-10:]
+    ]) or "<p><em>Geen recente chat-historie.</em></p>"
+
+    subject = payload.subject or f"Chat handoff — {payload.name}"
+    body = f"""
+    <h2>Nieuwe agent-handoff vanuit chatbot</h2>
+    <p><strong>Naam:</strong> {_html.escape(payload.name)}<br/>
+       <strong>E-mail:</strong> <a href="mailto:{_html.escape(payload.email)}">{_html.escape(payload.email)}</a><br/>
+       <strong>Sessie:</strong> <code>{_html.escape(payload.session_id)}</code></p>
+    <h3>Vraag</h3>
+    <p style="white-space:pre-wrap">{_html.escape(payload.message)}</p>
+    <h3>Laatste chat-uitwisseling</h3>
+    {history_html}
+    <p style="color:#94a3b8; font-size:12px">Antwoord binnen 2 minuten of er volgt automatisch een reminder.</p>
+    """
+    handoff_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": payload.session_id,
+        "name": payload.name,
+        "email": payload.email,
+        "message": payload.message,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "acknowledged": False,
+        "reminder_sent": False,
+    }
+    await db.chat_handoffs.insert_one(handoff_doc)
+    await _send_email(CONTACT_RECIPIENT_EMAIL, f"[Chat] {subject}", body,
+                      reply_to=payload.email)
+    # Schedule fallback: 2 minutes later, send a "still waiting" reminder if not acknowledged
+    async def fallback():
+        await asyncio.sleep(120)
+        doc = await db.chat_handoffs.find_one({"id": handoff_doc["id"]})
+        if doc and not doc.get("acknowledged") and not doc.get("reminder_sent"):
+            await db.chat_handoffs.update_one({"id": handoff_doc["id"]}, {"$set": {"reminder_sent": True}})
+            await _send_email(
+                CONTACT_RECIPIENT_EMAIL,
+                f"[URGENT · Chat] Geen antwoord op {payload.name}",
+                f"<p>Al 2 minuten geen antwoord op de chat-vraag van <strong>{_html.escape(payload.name)}</strong> "
+                f"(<a href='mailto:{_html.escape(payload.email)}'>{_html.escape(payload.email)}</a>).</p>"
+                f"<p>Bericht: {_html.escape(payload.message)}</p>"
+                f"<p style='color:#94a3b8; font-size:12px'>Handoff-ID: {handoff_doc['id']}</p>",
+                reply_to=payload.email,
+            )
+    asyncio.create_task(fallback())
+    return {"status": "queued", "handoff_id": handoff_doc["id"]}
+
+
+@api_router.post("/chat/agent-handoff/{handoff_id}/ack")
+async def ack_handoff(handoff_id: str, current=Depends(require_admin)):
+    res = await db.chat_handoffs.update_one({"id": handoff_id}, {"$set": {"acknowledged": True, "acknowledged_by": current.get("email")}})
+    if res.modified_count == 0:
+        raise HTTPException(404, "Handoff not found")
+    return {"status": "acknowledged"}
 
 
 # ---- Site settings ----
@@ -988,6 +1137,24 @@ async def update_scripts(payload: CustomScripts, current=Depends(require_permiss
                   "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": current.get("email")}},
         upsert=True,
     )
+    # Also persist to public/index.html for SSR crawlers (Trustpilot verification, GTB, Facebook debugger)
+    try:
+        idx_path = _Path("/app/frontend/public/index.html")
+        if idx_path.exists():
+            html_text = idx_path.read_text(encoding="utf-8")
+            html_text = _re.sub(
+                r"<!-- PB_HEADER_START -->.*?<!-- PB_HEADER_END -->",
+                f"<!-- PB_HEADER_START -->{payload.header_scripts}<!-- PB_HEADER_END -->",
+                html_text, flags=_re.DOTALL,
+            )
+            html_text = _re.sub(
+                r"<!-- PB_FOOTER_START -->.*?<!-- PB_FOOTER_END -->",
+                f"<!-- PB_FOOTER_START -->{payload.footer_scripts}<!-- PB_FOOTER_END -->",
+                html_text, flags=_re.DOTALL,
+            )
+            idx_path.write_text(html_text, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to write scripts into index.html: {e}")
     await _log_activity(current.get("email"), "scripts.update", None,
                         {"header_len": len(payload.header_scripts), "footer_len": len(payload.footer_scripts)})
     return {"status": "saved"}

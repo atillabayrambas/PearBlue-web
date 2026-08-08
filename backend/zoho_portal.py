@@ -10,7 +10,7 @@ from typing import Optional
 import httpx
 import jwt
 from cryptography.fernet import Fernet
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import RedirectResponse
 
 ZOHO_CLIENT_ID = os.environ.get("ZOHO_CLIENT_ID", "")
@@ -435,5 +435,42 @@ def make_router(db) -> APIRouter:
         if r.status_code >= 400:
             raise HTTPException(r.status_code, f"Zoho reply failed: {r.text[:200]}")
         return r.json() if r.text else {"status": "sent"}
+
+    @router.post("/portal/tickets/{ticket_id}/attachments")
+    async def upload_attachment(request: Request, ticket_id: str, file: UploadFile = File(...)):
+        uid = _require_portal_user(request)
+        if not DESK_ORG_ID:
+            raise HTTPException(400, "ZOHO_DESK_ORG_ID not configured")
+        # Enforce a soft 20 MB limit
+        max_bytes = 20 * 1024 * 1024
+        content = await file.read()
+        if len(content) > max_bytes:
+            raise HTTPException(413, "Bestand is te groot (max 20 MB)")
+        token, u = await _access_token(uid)
+        url = f"https://desk.zoho.eu/api/v1/tickets/{ticket_id}/attachments"
+        headers = {"Authorization": f"Zoho-oauthtoken {token}", "orgId": DESK_ORG_ID}
+        files = {"file": (file.filename, content, file.content_type or "application/octet-stream")}
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(url, headers=headers, files=files)
+        if r.status_code == 401 and u.get("refresh_token"):
+            async with httpx.AsyncClient(timeout=20) as client:
+                rt = await client.post(f"{ACCOUNTS}/oauth/v2/token", data={
+                    "refresh_token": _dec(u["refresh_token"]),
+                    "client_id": ZOHO_CLIENT_ID,
+                    "client_secret": ZOHO_CLIENT_SECRET,
+                    "grant_type": "refresh_token",
+                })
+                new_token = rt.json().get("access_token")
+            if new_token:
+                await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": {
+                    "access_token": _enc(new_token),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }})
+                headers["Authorization"] = f"Zoho-oauthtoken {new_token}"
+                async with httpx.AsyncClient(timeout=60) as client:
+                    r = await client.post(url, headers=headers, files=files)
+        if r.status_code >= 400:
+            raise HTTPException(r.status_code, f"Zoho upload failed: {r.text[:200]}")
+        return r.json() if r.text else {"status": "uploaded"}
 
     return router
