@@ -9,13 +9,16 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 // Public share targets. Fill in the Google Place ID + Trustpilot review URL via env
 // to activate one-click cross-posting to those platforms.
 const GOOGLE_PLACE_ID = process.env.REACT_APP_GOOGLE_PLACE_ID || "";
+const GOOGLE_REVIEW_URL = process.env.REACT_APP_GOOGLE_REVIEW_URL || "";
 const TRUSTPILOT_REVIEW_URL = process.env.REACT_APP_TRUSTPILOT_REVIEW_URL || "";
 const FACEBOOK_PAGE_URL = process.env.REACT_APP_FACEBOOK_PAGE_URL || "";
 
+const _google_url = GOOGLE_REVIEW_URL || (GOOGLE_PLACE_ID ? `https://search.google.com/local/writereview?placeid=${GOOGLE_PLACE_ID}` : "");
+
 const SHARE_TARGETS = [
-  GOOGLE_PLACE_ID && {
+  _google_url && {
     key: "google", label: "Google",
-    url: `https://search.google.com/local/writereview?placeid=${GOOGLE_PLACE_ID}`,
+    url: _google_url,
     bg: "bg-white text-slate-800 border border-slate-200 hover:bg-slate-50",
   },
   TRUSTPILOT_REVIEW_URL && {

@@ -322,6 +322,27 @@ def make_router(db) -> APIRouter:
             f"https://projectsapi.zoho.eu/restapi/portal/{PROJECTS_PORTAL_ID}/projects/{project_id}/",
         )
 
+    @router.get("/portal/projects/{project_id}/tasks")
+    async def project_tasks(request: Request, project_id: str):
+        uid = _require_portal_user(request)
+        if not PROJECTS_PORTAL_ID:
+            raise HTTPException(400, "ZOHO_PROJECTS_PORTAL_ID not configured")
+        return await _zoho_get(
+            uid,
+            f"https://projectsapi.zoho.eu/restapi/portal/{PROJECTS_PORTAL_ID}/projects/{project_id}/tasks/",
+            params={"index": 1, "range": 200},
+        )
+
+    @router.get("/portal/projects/{project_id}/milestones")
+    async def project_milestones(request: Request, project_id: str):
+        uid = _require_portal_user(request)
+        if not PROJECTS_PORTAL_ID:
+            raise HTTPException(400, "ZOHO_PROJECTS_PORTAL_ID not configured")
+        return await _zoho_get(
+            uid,
+            f"https://projectsapi.zoho.eu/restapi/portal/{PROJECTS_PORTAL_ID}/projects/{project_id}/milestones/",
+        )
+
     @router.get("/portal/tickets")
     async def tickets(request: Request, from_: int = 1, limit: int = 50):
         uid = _require_portal_user(request)

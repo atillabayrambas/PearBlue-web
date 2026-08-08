@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 10 (i18n + project details + all-three share buttons) tested end-to-end. Backend: 9/9 pytest PASS — new GET /api/portal/projects/{id}/tasks & /milestones return 401 without portal session; regression clean (/api/health, /api/reviews approved-only, /api/stats/trust, /api/admin/reviews/scan-invites requires admin, /api/payments/invoice-checkout requires portal). review_invites._bilingual_invite_html now embeds all three platforms (g.page, trustpilot.com/review/pearblue.nl, facebook.com/pearbluenl). Frontend: Portal /portal renders correctly with `pb_lang=nl` (Bestaande klant / Inloggen met Zoho / Nog geen toegang / Toegang aanvragen) and `pb_lang=en` (Existing customer / Sign in with Zoho / No access yet / Request access; form labels Name/Email/Company/Phone/Message). ProjectDetail /portal/project/:id renders page-project-detail + project-back; anonymous session shows error card ('Could not open project' EN / 'Kon project niet openen' NL) — no runtime errors despite API 401. Review submission on /review shows review-share-panel with review-share-google (g.page/r/CQ2QmMJGm01kEAE/review), review-share-trustpilot (trustpilot.com/review/pearblue.nl), and review-share-facebook (facebook.com/pearbluenl/reviews). NOTE: I had to restart the frontend supervisor process to bake the newly-added REACT_APP_GOOGLE_REVIEW_URL / REACT_APP_FACEBOOK_PAGE_URL into the CRA bundle — this is a normal side-effect of adding .env vars and is now applied.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration10.py",
+    "/app/test_reports/pytest/iteration10.xml"
+  ],
+  "action_items": [
+    "No blocking issues. FYI to main agent: whenever REACT_APP_* env vars change, frontend supervisor must be restarted so CRA inlines the new values into bundle.js (I did this during testing)."
+  ],
+  "critical_code_review_comments": [
+    "Portal.jsx: PT dictionary is well-scoped and defaults to NL when key/lang missing. LanguageContext falls back to browser locale when localStorage empty — which means non-NL browsers see EN by default; this is a design choice, not a bug (user spec says 'default NL' but code prefers navigator locale).",
+    "ProjectDetail.jsx: tasks + milestones fetched independently with .catch(()=>) that silently swallows the error; the error state is only set for the project detail call. This is acceptable UX (page still renders project+meta if only tasks/milestones fail), but tasks/milestones will show empty state on any error, hiding potential 4xx/5xx from Zoho. Consider surfacing tasks/milestones errors as a small inline warning.",
+    "Reviews.jsx: SHARE_TARGETS is computed at module load with process.env — this ties activation to build-time env. Documented behavior, but a redeploy/frontend-restart is needed after env changes.",
+    "review_invites.py _share_buttons_html: correctly opt-in per-platform via env var presence; final label check (>Google< / >Trustpilot< / >Facebook<) verified.",
+    "zoho_portal.py: new /tasks and /milestones endpoints correctly gated by _require_portal_user and share the same _zoho_get refresh-on-401 semantics."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration10.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of testable flows (Zoho-authenticated project/tasks/milestones fetch skipped — no real Zoho session available in test env; anonymous 401 path verified)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (JWT for cleanup). Super-admin Zoho beheer@multibay.eu tokens in db.zoho_users untouched.",
+  "seed_data_creation": "2 unapproved TEST Iter10Share reviews created during share-panel test — both deleted afterwards via /api/reviews/{id} with admin JWT.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Frontend was restarted once at start of this iteration to pick up new REACT_APP_GOOGLE_REVIEW_URL + REACT_APP_FACEBOOK_PAGE_URL. Tests import review_invites in-process using importlib.reload after overriding os.environ from /app/backend/.env. i18n uses useLang() from /app/frontend/src/i18n/LanguageContext.jsx — set localStorage.pb_lang='nl'|'en' + reload to switch. ProjectDetail.jsx renders empty-error card when auth 401s; only project_detail sets error state (tasks/milestones fail silently). STATUS_ICON dictionary maps closed/completed/archived/active/open/in_progress/overdue statuses.",
+  "rca of the issue": "N/A — no bugs found in iteration 10 scope. Only environmental caveat: the newly-added REACT_APP_GOOGLE_REVIEW_URL and REACT_APP_FACEBOOK_PAGE_URL initially were NOT in the running bundle (bundle.js showed only NODE_ENV in process.env). Root cause: CRA reads .env at process start; supervisor's hot-reload rebuilds JS on source change but does not re-read .env until the dev server itself restarts. Mitigation: `sudo supervisorctl restart frontend` after .env changes — this has been executed and verified (bundle now inlines all three URLs)."
+}

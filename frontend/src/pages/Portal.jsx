@@ -8,14 +8,55 @@ import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
 import { ReviewForm } from "../components/Reviews";
 import { useAuth } from "../auth/AuthContext";
+import { useLang } from "../i18n/LanguageContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const PT = {
+  loading: { nl: "Klantportaal laden…", en: "Loading client portal…" },
+  sectionLoading: { nl: "Laden…", en: "Loading…" },
+  sectionError: { nl: "Kon gegevens niet ophalen.", en: "Could not load data." },
+  existingCustomer: { nl: "Bestaande klant?", en: "Existing customer?" },
+  existingIntro: { nl: "Log in met je Zoho-account om je facturen, projecten en support-tickets te bekijken.", en: "Sign in with your Zoho account to view your invoices, projects and support tickets." },
+  loginZoho: { nl: "Inloggen met Zoho", en: "Sign in with Zoho" },
+  noAccessTitle: { nl: "Nog geen toegang?", en: "No access yet?" },
+  noAccessIntro: { nl: "Vraag toegang aan tot je klantportaal — wij nemen contact op zodra je account klaarstaat.", en: "Request access to your client portal — we'll be in touch as soon as your account is ready." },
+  headerHi: { nl: "Hallo", en: "Hi" },
+  logout: { nl: "Uitloggen", en: "Sign out" },
+  manage: { nl: "Beheer", en: "Manage" },
+  invoices: { nl: "Facturen", en: "Invoices" },
+  projects: { nl: "Projecten", en: "Projects" },
+  tickets: { nl: "Support tickets", en: "Support tickets" },
+  view: { nl: "Bekijken", en: "View" },
+  pdf: { nl: "PDF", en: "PDF" },
+  print: { nl: "Print", en: "Print" },
+  payNow: { nl: "Betaal nu", en: "Pay now" },
+  open: { nl: "open", en: "open" },
+  noInvoices: { nl: "Geen facturen gevonden.", en: "No invoices found." },
+  noProjects: { nl: "Geen projecten gevonden.", en: "No projects found." },
+  noTickets: { nl: "Geen tickets gevonden.", en: "No tickets found." },
+  leaveReview: { nl: "Laat een review achter", en: "Leave a review" },
+  reviewIntro: { nl: "Tevreden over ons werk? We waarderen je feedback enorm — na goedkeuring plaatsen we hem op de site.", en: "Happy with our work? We'd love your feedback — once approved we'll feature it on the site." },
+  regName: { nl: "Naam", en: "Name" },
+  regEmail: { nl: "E-mailadres", en: "Email" },
+  regCompany: { nl: "Bedrijfsnaam", en: "Company" },
+  regPhone: { nl: "Telefoon", en: "Phone" },
+  regMessage: { nl: "Bericht", en: "Message" },
+  regSubmit: { nl: "Toegang aanvragen", en: "Request access" },
+  regBusy: { nl: "Bezig…", en: "Sending…" },
+  regThanks: { nl: "Bedankt!", en: "Thanks!" },
+  regThanksIntro: { nl: "We beoordelen je aanvraag en sturen je een e-mail zodra je toegang hebt.", en: "We'll review your request and email you as soon as you have access." },
+  regSuccessToast: { nl: "Aanvraag ontvangen! We nemen zo snel mogelijk contact op.", en: "Request received! We'll be in touch soon." },
+  regErrorToast: { nl: "Aanvraag mislukt. Probeer het later opnieuw.", en: "Request failed. Please try again later." },
+};
 
 const startLogin = () => {
   window.location.href = `${API}/auth/zoho/login`;
 };
 
 const RegistrationForm = () => {
+  const { lang } = useLang();
+  const t = (k) => PT[k]?.[lang] || PT[k]?.nl || k;
   const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
@@ -24,11 +65,11 @@ const RegistrationForm = () => {
     e.preventDefault();
     setSending(true);
     try {
-      await axios.post(`${API}/portal/register`, { ...form, language: "nl" });
+      await axios.post(`${API}/portal/register`, { ...form, language: lang });
       setDone(true);
-      toast.success("Aanvraag ontvangen! We nemen zo snel mogelijk contact op.");
+      toast.success(t("regSuccessToast"));
     } catch (err) {
-      toast.error("Aanvraag mislukt. Probeer het later opnieuw.");
+      toast.error(t("regErrorToast"));
     } finally {
       setSending(false);
     }
@@ -36,42 +77,42 @@ const RegistrationForm = () => {
   if (done) {
     return (
       <div className="text-center py-6" data-testid="portal-register-success">
-        <p className="font-heading text-lg text-strong mb-2">Bedankt!</p>
-        <p className="text-sm text-muted-fg">We beoordelen je aanvraag en sturen je een e-mail zodra je toegang hebt.</p>
+        <p className="font-heading text-lg text-strong mb-2">{t("regThanks")}</p>
+        <p className="text-sm text-muted-fg">{t("regThanksIntro")}</p>
       </div>
     );
   }
   return (
     <form onSubmit={submit} className="space-y-3" data-testid="portal-register-form">
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Naam *</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regName")} *</span>
         <input required value={form.name} onChange={change("name")} type="text" data-testid="portal-reg-name"
           className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
       </label>
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">E-mail *</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regEmail")} *</span>
         <input required value={form.email} onChange={change("email")} type="email" data-testid="portal-reg-email"
           className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
       </label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Bedrijf</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regCompany")}</span>
           <input value={form.company} onChange={change("company")} type="text" data-testid="portal-reg-company"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Telefoon</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regPhone")}</span>
           <input value={form.phone} onChange={change("phone")} type="tel" data-testid="portal-reg-phone"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>
       </div>
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Bericht</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regMessage")}</span>
         <textarea rows={3} value={form.message} onChange={change("message")} data-testid="portal-reg-message"
           className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none resize-none text-strong" />
       </label>
       <button type="submit" disabled={sending} className="btn-primary w-full justify-center" data-testid="portal-reg-submit">
-        {sending ? "Bezig…" : "Toegang aanvragen"}
+        {sending ? t("regBusy") : t("regSubmit")}
       </button>
     </form>
   );
@@ -89,29 +130,39 @@ const useSection = (name, when) => {
   return state;
 };
 
-const SectionCard = ({ icon: Icon, title, subtitle, state, empty, children }) => (
-  <section className="surface border border-app rounded-3xl p-6" data-testid={`portal-section-${title.toLowerCase()}`}>
-    <div className="flex items-center gap-3 mb-5">
-      <div className="w-10 h-10 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center"><Icon className="h-5 w-5" /></div>
-      <div>
-        <h3 className="font-heading text-lg font-semibold text-strong">{title}</h3>
-        <p className="text-xs text-muted-fg">{subtitle}</p>
+const SectionCard = ({ icon: Icon, title, subtitle, state, empty, children }) => {
+  const { lang } = useLang();
+  const t = (k) => PT[k]?.[lang] || PT[k]?.nl || k;
+  return (
+    <section className="surface border border-app rounded-3xl p-6" data-testid={`portal-section-${title.toLowerCase()}`}>
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center"><Icon className="h-5 w-5" /></div>
+        <div>
+          <h3 className="font-heading text-lg font-semibold text-strong">{title}</h3>
+          <p className="text-xs text-muted-fg">{subtitle}</p>
+        </div>
       </div>
-    </div>
-    {state.loading && <div className="flex items-center gap-2 text-muted-fg text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Laden…</div>}
-    {state.error && (
-      <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-500/10 rounded-xl p-3">
-        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-        <span>{typeof state.error === "string" ? state.error : "Kon gegevens niet ophalen."}</span>
-      </div>
-    )}
-    {!state.loading && !state.error && state.data && children}
-    {!state.loading && !state.error && !state.data && empty}
-  </section>
-);
+      {state.loading && <div className="flex items-center gap-2 text-muted-fg text-sm"><Loader2 className="h-4 w-4 animate-spin" /> {t("sectionLoading")}</div>}
+      {state.error && (
+        <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-500/10 rounded-xl p-3">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{typeof state.error === "string" ? state.error : t("sectionError")}</span>
+        </div>
+      )}
+      {!state.loading && !state.error && state.data && children}
+      {!state.loading && !state.error && !state.data && empty}
+    </section>
+  );
+};
 
 export default function Portal() {
-  usePageSeo({ title: "Klantportaal", description: "Bekijk je facturen, projecten en support tickets bij PearBlue.", path: "/portal" });
+  const { lang } = useLang();
+  const t = (k) => PT[k]?.[lang] || PT[k]?.nl || k;
+  usePageSeo({
+    title: lang === "en" ? "Client portal" : "Klantportaal",
+    description: lang === "en" ? "View your invoices, projects and support tickets at PearBlue." : "Bekijk je facturen, projecten en support tickets bij PearBlue.",
+    path: "/portal",
+  });
   const [me, setMe] = useState({ loading: true, authenticated: false, user: null });
   const location = useLocation();
   const { isAdmin } = useAuth();
@@ -127,13 +178,13 @@ export default function Portal() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const err = params.get("error");
-    if (err) toast.error(`Zoho login niet gelukt: ${err}`);
+    if (err) toast.error(`${lang === "en" ? "Zoho login failed" : "Zoho login niet gelukt"}: ${err}`);
   }, [location.search]);
 
   const logout = async () => {
     await axios.post(`${API}/auth/portal/logout`, {}, { withCredentials: true });
     setMe({ loading: false, authenticated: false, user: null });
-    toast.success("Uitgelogd");
+    toast.success(lang === "en" ? "Signed out" : "Uitgelogd");
   };
 
   const invoices = useSection("invoices", me.authenticated);
@@ -141,7 +192,7 @@ export default function Portal() {
   const tickets = useSection("tickets", me.authenticated);
 
   if (me.loading) {
-    return <div className="min-h-[60vh] flex items-center justify-center text-muted-fg"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Klantportaal laden…</div>;
+    return <div className="min-h-[60vh] flex items-center justify-center text-muted-fg"><Loader2 className="h-5 w-5 animate-spin mr-2" /> {t("loading")}</div>;
   }
 
   if (!me.authenticated) {
@@ -151,17 +202,17 @@ export default function Portal() {
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
             className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10 text-center">
             <div className="flex justify-center mb-6"><Logo size={72} iconOnly showText={false} /></div>
-            <h1 className="font-heading text-2xl sm:text-3xl font-semibold text-strong mb-2">Bestaande klant?</h1>
-            <p className="text-sm text-muted-fg mb-8">Log in met je Zoho-account om je facturen, projecten en support-tickets te bekijken.</p>
+            <h1 className="font-heading text-2xl sm:text-3xl font-semibold text-strong mb-2">{t("existingCustomer")}</h1>
+            <p className="text-sm text-muted-fg mb-8">{t("existingIntro")}</p>
             <button onClick={startLogin} className="btn-primary w-full justify-center" data-testid="portal-zoho-login">
-              <LogIn className="h-4 w-4" /> Inloggen met Zoho
+              <LogIn className="h-4 w-4" /> {t("loginZoho")}
             </button>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
             className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10">
-            <h2 className="font-heading text-2xl font-semibold text-strong mb-2">Nog geen toegang?</h2>
-            <p className="text-sm text-muted-fg mb-6">Vraag toegang aan tot het klantportaal — we bekijken je aanvraag en sturen instructies binnen 1 werkdag.</p>
+            <h2 className="font-heading text-2xl font-semibold text-strong mb-2">{t("noAccessTitle")}</h2>
+            <p className="text-sm text-muted-fg mb-6">{t("noAccessIntro")}</p>
             <RegistrationForm />
           </motion.div>
         </div>
@@ -173,27 +224,27 @@ export default function Portal() {
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-12" data-testid="page-portal">
       <div className="flex items-center justify-between gap-4 mb-10">
         <div>
-          <p className="overline mb-2">Klantportaal</p>
-          <h1 className="font-heading text-3xl sm:text-4xl font-medium text-strong">Welkom{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
+          <p className="overline mb-2">{lang === "en" ? "Client portal" : "Klantportaal"}</p>
+          <h1 className="font-heading text-3xl sm:text-4xl font-medium text-strong">{t("headerHi")}{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
           {me.user?.email && <p className="text-sm text-muted-fg mt-1">{me.user.email}</p>}
         </div>
         <div className="flex gap-2">
           {isAdmin && (
             <Link to="/admin" className="btn-primary" data-testid="portal-admin-shortcut">
-              <ShieldCheck className="h-4 w-4" /> Beheer
+              <ShieldCheck className="h-4 w-4" /> {t("manage")}
             </Link>
           )}
           <button onClick={logout} className="btn-secondary" data-testid="portal-logout">
-            <LogOut className="h-4 w-4" /> Uitloggen
+            <LogOut className="h-4 w-4" /> {t("logout")}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <SectionCard icon={FileText} title="Facturen" subtitle="Zoho Books" state={invoices} empty={<p className="text-sm text-muted-fg">Geen facturen gevonden.</p>}>
+        <SectionCard icon={FileText} title={t("invoices")} subtitle="Zoho Books" state={invoices} empty={<p className="text-sm text-muted-fg">{t("noInvoices")}</p>}>
           {(() => {
             const list = invoices.data?.invoices || invoices.data?.data || [];
-            if (!list.length) return <p className="text-sm text-muted-fg">Geen facturen gevonden.</p>;
+            if (!list.length) return <p className="text-sm text-muted-fg">{t("noInvoices")}</p>;
             const payInvoice = async (invoice_id) => {
               try {
                 const r = await axios.post(
@@ -203,7 +254,7 @@ export default function Portal() {
                 );
                 if (r.data?.checkout_url) window.location.href = r.data.checkout_url;
               } catch (e) {
-                toast.error(e?.response?.data?.detail || "Kon Stripe checkout niet starten");
+                toast.error(e?.response?.data?.detail || (lang === "en" ? "Could not start Stripe checkout" : "Kon Stripe checkout niet starten"));
               }
             };
             const fmtAmount = (val, currency = "EUR") => {
@@ -241,13 +292,13 @@ export default function Portal() {
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         <button onClick={() => openPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-view-invoice-${inv.invoice_id}`}>
-                          <Eye className="h-3 w-3" /> Bekijken
+                          <Eye className="h-3 w-3" /> {t("view")}
                         </button>
                         <button onClick={() => openPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-pdf-invoice-${inv.invoice_id}`}>
-                          <Download className="h-3 w-3" /> PDF
+                          <Download className="h-3 w-3" /> {t("pdf")}
                         </button>
                         <button onClick={() => printPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-print-invoice-${inv.invoice_id}`}>
-                          <Printer className="h-3 w-3" /> Print
+                          <Printer className="h-3 w-3" /> {t("print")}
                         </button>
                         {canPay && (
                           <button
@@ -255,7 +306,7 @@ export default function Portal() {
                             data-testid={`portal-pay-invoice-${inv.invoice_id}`}
                             className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-pear-500 text-white px-2.5 py-1 hover:bg-pear-600 ml-auto"
                           >
-                            <CreditCard className="h-3 w-3" /> Betaal nu
+                            <CreditCard className="h-3 w-3" /> {t("payNow")}
                           </button>
                         )}
                       </div>
@@ -267,10 +318,10 @@ export default function Portal() {
           })()}
         </SectionCard>
 
-        <SectionCard icon={FolderKanban} title="Projecten" subtitle="Zoho Projects" state={projects} empty={<p className="text-sm text-muted-fg">Geen projecten gevonden.</p>}>
+        <SectionCard icon={FolderKanban} title={t("projects")} subtitle="Zoho Projects" state={projects} empty={<p className="text-sm text-muted-fg">{t("noProjects")}</p>}>
           {(() => {
             const list = projects.data?.projects || [];
-            if (!list.length) return <p className="text-sm text-muted-fg">Geen projecten gevonden.</p>;
+            if (!list.length) return <p className="text-sm text-muted-fg">{t("noProjects")}</p>;
             const openProject = (pid) => window.location.assign(`/portal/project/${pid}`);
             return (
               <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-projects-list">
@@ -291,10 +342,10 @@ export default function Portal() {
           })()}
         </SectionCard>
 
-        <SectionCard icon={LifeBuoy} title="Support tickets" subtitle="Zoho Desk" state={tickets} empty={<p className="text-sm text-muted-fg">Geen tickets gevonden.</p>}>
+        <SectionCard icon={LifeBuoy} title={t("tickets")} subtitle="Zoho Desk" state={tickets} empty={<p className="text-sm text-muted-fg">{t("noTickets")}</p>}>
           {(() => {
             const list = tickets.data?.data || [];
-            if (!list.length) return <p className="text-sm text-muted-fg">Geen tickets gevonden.</p>;
+            if (!list.length) return <p className="text-sm text-muted-fg">{t("noTickets")}</p>;
             return (
               <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-tickets-list">
                 {list.slice(0, 20).map((tk, i) => (
@@ -315,8 +366,8 @@ export default function Portal() {
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-full bg-pear-100 text-pear-500 flex items-center justify-center"><Star className="h-5 w-5" /></div>
           <div>
-            <h3 className="font-heading text-lg font-semibold text-strong">Laat een review achter</h3>
-            <p className="text-xs text-muted-fg">Tevreden over ons werk? We waarderen je feedback enorm — na goedkeuring plaatsen we hem op de site.</p>
+            <h3 className="font-heading text-lg font-semibold text-strong">{t("leaveReview")}</h3>
+            <p className="text-xs text-muted-fg">{t("reviewIntro")}</p>
           </div>
         </div>
         <ReviewForm compact />
