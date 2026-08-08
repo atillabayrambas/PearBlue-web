@@ -148,16 +148,18 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 ## Prioritized Backlog (Phase 5/6)
 - **P0** — Wire real Brevo v3 API against api.brevo.com/v3/emailCampaigns + smtp-relay for `/api/newsletter/subscribe`
 - **P0** — Wire real IMAP via aioimaplib; parse ticket-nummer regex `#TKT-\d+` in Subject/Message-ID/References; push to `db.contact_messages` + Zoho Desk via `zoho_portal.add_ticket_thread`
-- **P0** — Fernet-encrypt Brevo api_key + mailbox passwords in db.integrations / db.mailboxes
-- **P1** — Refactor `server.py` (2061 lines) → `routes/priority.py`, `routes/newsletter.py`, `routes/brevo.py`, `routes/mailboxes.py`, `routes/virus_scanner.py`, `routes/user_details.py`
+- **P0** — Wire Zoho Books API in `/api/admin/financials` (replace mocked `zoho_books` payload with real invoice/paid/outstanding totals)
+- **P1** — Refactor `server.py` (2300+ lines) → `routes/priority.py`, `routes/newsletter.py`, `routes/brevo.py`, `routes/mailboxes.py`, `routes/virus_scanner.py`, `routes/user_details.py`, `routes/financials.py`, `routes/chat_rating.py`
 - **P1** — Build `/admin/reset-password?token=...` page for actual password change
 - **P1** — Wire ClamAV/VirusTotal for virus scanner
 - **P1** — Zoho Books contact 2-way sync daily worker (auto-create client, conflict detect)
+- **P1** — Detailed per-message/per-ticket CMS page (portal-style thread view with reply/status/assign/attach)
 - **P2** — Random pear-thema profielfoto generator (avatar op basis van naam+seed)
 - **P2** — CMS pagination selector (5/10/25/50/100/200) op alle lijsten
 - **P2** — Globale CMS zoekbalk met previews
 - **P2** — Sharing facturen/projecten/tickets met externe email + dual-party confirmatie
 - **P2** — Meta Pixel ID in AI Dashboard
+- **P2** — Review Autopilot (Send review invites automatically the day after every paid Zoho invoice)
 - **P3** — ICT + Cybersecurity managed prijzen (wacht op user-input)
 - **P3** — Volledige EN i18n voor CMS labels
 
