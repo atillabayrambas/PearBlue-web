@@ -70,6 +70,47 @@ def make_router(db) -> APIRouter:
         }
         return RedirectResponse(f"{ACCOUNTS}/oauth/v2/auth?{urlencode(params)}")
 
+    @router.post("/auth/zoho/exchange")
+    async def zoho_exchange(request: Request):
+        """Frontend callback receives ?code&state, then POSTs here to complete the flow."""
+        body = await request.json()
+        code = body.get("code")
+        state = body.get("state")
+        saved = request.session.pop("oauth_state", "")
+        if not code or not state or not secrets.compare_digest(state, saved or ""):
+            raise HTTPException(400, "Invalid OAuth state or code")
+        async with httpx.AsyncClient(timeout=20) as client:
+            tok_res = await client.post(f"{ACCOUNTS}/oauth/v2/token", data={
+                "grant_type": "authorization_code",
+                "client_id": ZOHO_CLIENT_ID,
+                "client_secret": ZOHO_CLIENT_SECRET,
+                "redirect_uri": ZOHO_REDIRECT_URI,
+                "code": code,
+            })
+            token = tok_res.json()
+            if "access_token" not in token:
+                raise HTTPException(400, f"Zoho token exchange failed: {token}")
+            access = token["access_token"]
+            id_res = await client.get(f"{ACCOUNTS}/oauth/user/info",
+                                      headers={"Authorization": f"Zoho-oauthtoken {access}"})
+            identity = id_res.json()
+        uid = str(identity.get("ZUID") or identity.get("id") or identity.get("Email") or "")
+        if not uid:
+            raise HTTPException(400, "Zoho identity response had no stable user ID")
+        update = {
+            "zoho_user_id": uid,
+            "email": identity.get("Email"),
+            "display_name": identity.get("Display_Name") or identity.get("First_Name"),
+            "access_token": _enc(access),
+            "api_domain": token.get("api_domain", DEFAULT_API_DOMAIN),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if token.get("refresh_token"):
+            update["refresh_token"] = _enc(token["refresh_token"])
+        await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": update}, upsert=True)
+        request.session["portal_user_id"] = uid
+        return {"ok": True, "email": identity.get("Email"), "display_name": update["display_name"]}
+
     @router.get("/auth/zoho/callback")
     async def zoho_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
         if error:

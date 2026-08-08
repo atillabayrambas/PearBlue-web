@@ -147,7 +147,7 @@ export default function Portal() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
             className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10 text-center">
-            <div className="flex justify-center mb-6"><Logo size={44} showText={false} /></div>
+            <div className="flex justify-center mb-6"><Logo size={72} iconOnly showText={false} /></div>
             <h1 className="font-heading text-2xl sm:text-3xl font-semibold text-strong mb-2">Bestaande klant?</h1>
             <p className="text-sm text-muted-fg mb-8">Log in met je Zoho-account om je facturen, projecten en support-tickets te bekijken.</p>
             <button onClick={startLogin} className="btn-primary w-full justify-center" data-testid="portal-zoho-login">

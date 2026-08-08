@@ -199,6 +199,33 @@ class RegistrationReview(BaseModel):
     admin_note: Optional[str] = Field(None, max_length=1000)
 
 
+class Review(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    company: Optional[str] = None
+    project: Optional[str] = None
+    rating: int = Field(..., ge=1, le=5)
+    quote: str
+    approved: bool = False
+    featured: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ReviewCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    company: Optional[str] = Field(None, max_length=120)
+    project: Optional[str] = Field(None, max_length=200)
+    rating: int = Field(..., ge=1, le=5)
+    quote: str = Field(..., min_length=10, max_length=1000)
+
+
+class ReviewUpdate(BaseModel):
+    approved: Optional[bool] = None
+    featured: Optional[bool] = None
+
+
 # ---------- Auth helpers ----------
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -658,6 +685,70 @@ async def review_registration(reg_id: str, payload: RegistrationReview, current=
     elif payload.status == "rejected":
         await _send_email(reg.email, "Update over je portaal-aanvraag", _reg_rejected_html(reg))
     return reg
+
+
+# ---- Reviews (customer testimonials) ----
+@api_router.post("/reviews", response_model=Review)
+async def create_review(payload: ReviewCreate):
+    r = Review(**payload.model_dump())
+    doc = r.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.reviews.insert_one(doc)
+    # Notify admin
+    await _send_email(
+        CONTACT_RECIPIENT_EMAIL,
+        f"[PearBlue] Nieuwe klantbeoordeling — {r.rating}★ van {r.name}",
+        f"<p>{r.name}{' · ' + r.company if r.company else ''} heeft een {r.rating}-sterren review achtergelaten:</p><blockquote>{r.quote}</blockquote><p>Open het CMS om deze te publiceren.</p>",
+    )
+    return r
+
+
+@api_router.get("/reviews", response_model=List[Review])
+async def list_reviews(featured: Optional[bool] = None, approved: Optional[bool] = None):
+    """Public list — by default only approved reviews. Pass featured=true for homepage picks."""
+    q: dict = {}
+    if approved is None:
+        q["approved"] = True
+    else:
+        q["approved"] = approved
+    if featured is not None:
+        q["featured"] = featured
+    items = await db.reviews.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for i in items:
+        if isinstance(i.get('created_at'), str):
+            i['created_at'] = datetime.fromisoformat(i['created_at'])
+    return items
+
+
+@api_router.get("/reviews/all", response_model=List[Review])
+async def list_all_reviews(current=Depends(require_admin)):
+    items = await db.reviews.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    for i in items:
+        if isinstance(i.get('created_at'), str):
+            i['created_at'] = datetime.fromisoformat(i['created_at'])
+    return items
+
+
+@api_router.patch("/reviews/{review_id}", response_model=Review)
+async def update_review(review_id: str, payload: ReviewUpdate, current=Depends(require_admin)):
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.reviews.update_one({"id": review_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Review not found")
+    doc = await db.reviews.find_one({"id": review_id}, {"_id": 0})
+    if isinstance(doc.get('created_at'), str):
+        doc['created_at'] = datetime.fromisoformat(doc['created_at'])
+    return Review(**doc)
+
+
+@api_router.delete("/reviews/{review_id}")
+async def delete_review(review_id: str, current=Depends(require_admin)):
+    result = await db.reviews.delete_one({"id": review_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"status": "deleted"}
 
 
 app.include_router(api_router)

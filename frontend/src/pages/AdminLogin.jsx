@@ -33,7 +33,7 @@ export default function AdminLogin() {
     <div className="min-h-[calc(100vh-5rem)] flex items-center justify-center px-6 py-16" data-testid="page-admin-login">
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
         className="surface rounded-3xl border border-app shadow-[0_30px_80px_rgba(10,25,47,0.08)] p-10 w-full max-w-md">
-        <div className="flex justify-center mb-6"><Logo size={40} showText={false} /></div>
+        <div className="flex justify-center mb-6"><Logo size={80} iconOnly showText={false} /></div>
         <h1 className="font-heading text-3xl font-semibold text-strong text-center mb-2">Admin Login</h1>
         <p className="text-sm text-muted-fg text-center mb-8">Log in om projecten te beheren.</p>
 

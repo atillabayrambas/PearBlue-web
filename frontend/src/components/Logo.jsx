@@ -5,15 +5,18 @@ import { useTheme } from "../theme/ThemeContext";
 // Two new logos: light theme (dark text) and dark theme (white text). Blue pear stays original.
 const LOGO_LIGHT = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/q9h768hj_PearBlue%20logo-03.webp"; // dark text — for light theme
 const LOGO_DARK = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/0iemi3i5_PearBlue%20logo-04.webp"; // white/light text — for dark theme
+const LOGO_ICON_ONLY = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/djwgz9jk_PearBlue%20logo-10.webp"; // pear-only, no text
 
-export const Logo = ({ size = 40, showText = true, className = "" }) => {
+export const Logo = ({ size = 40, showText = true, iconOnly = false, className = "" }) => {
   const { resolved } = useTheme();
-  const src = resolved === "dark" ? LOGO_DARK : LOGO_LIGHT;
+  const src = iconOnly ? LOGO_ICON_ONLY : (resolved === "dark" ? LOGO_DARK : LOGO_LIGHT);
 
   return (
     <Link to="/" className={`inline-flex items-center ${className}`} data-testid="brand-logo" aria-label="PearBlue home">
-      {showText ? (
+      {(showText && !iconOnly) ? (
         <img src={src} alt="PearBlue" style={{ height: size }} className="w-auto" />
+      ) : iconOnly ? (
+        <img src={LOGO_ICON_ONLY} alt="PearBlue" style={{ height: size }} className="w-auto" />
       ) : (
         <span
           className="relative block overflow-hidden shrink-0"
