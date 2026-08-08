@@ -267,7 +267,7 @@ CHATBOT_SYSTEM_PROMPT = (
     "taal van de gebruiker (NL of EN) en antwoord in dezelfde taal.\n\n"
     "Kerninformatie over PearBlue:\n"
     "- 'Jouw Complete Digitale Partner' — innovatief, duurzaam, betaalbaar\n"
-    "- Vestiging: Nederland\n"
+    "- Vestiging: Nederland, Delfzijl\n"
     "- KVK: 87201607 · Vestigingsnummer 000053124294\n"
     "- Contact: info@pearblue.nl · +31 596 229 030\n\n"
     "Drie pakketten:\n"
