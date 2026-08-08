@@ -8,6 +8,8 @@ import { PricingTables } from "../components/PricingTables";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { FeaturedReviews } from "../components/Reviews";
+import { TrustStats } from "../components/TrustStats";
+import { TrustpilotWidget } from "../components/TrustpilotWidget";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -100,8 +102,14 @@ export default function Home() {
       {/* PRICING TABLES (3 pakketten) */}
       <PricingTables />
 
+      {/* TRUST STATS */}
+      <TrustStats />
+
       {/* CLIENT REVIEWS */}
       <FeaturedReviews />
+
+      {/* TRUSTPILOT WIDGET (optional, activates when BUSINESS_UNIT_ID is set) */}
+      <TrustpilotWidget />
 
       {/* PORTFOLIO PREVIEW */}
       <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20" data-testid="portfolio-preview">

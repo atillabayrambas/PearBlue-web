@@ -762,6 +762,27 @@ async def admin_invite_log(current=Depends(require_admin)):
     return items
 
 
+# ---- Public trust stats (for homepage) ----
+@api_router.get("/stats/trust")
+async def trust_stats():
+    """Aggregate stats to show on the homepage. Cached implicitly by clients."""
+    approved = await db.reviews.count_documents({"approved": True})
+    # Average rating on approved reviews
+    avg = 0.0
+    if approved > 0:
+        pipeline = [{"$match": {"approved": True}}, {"$group": {"_id": None, "avg": {"$avg": "$rating"}}}]
+        cursor = db.reviews.aggregate(pipeline)
+        async for row in cursor:
+            avg = round(float(row.get("avg") or 0), 2)
+            break
+    # Completed projects = successful payment transactions (proxy) OR fall back to a manual count
+    # Reasonable proxy: distinct paid Zoho invoices in payment_transactions
+    completed_from_stripe = await db.payment_transactions.count_documents({"payment_status": "paid"})
+    manual_bonus = int(os.environ.get("STATS_COMPLETED_PROJECTS_BASE", "0"))
+    projects = completed_from_stripe + manual_bonus
+    return {"reviews": approved, "avg": avg, "projects": projects}
+
+
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
 app.include_router(make_stripe_router(db))
