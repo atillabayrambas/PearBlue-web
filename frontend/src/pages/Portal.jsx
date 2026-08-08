@@ -346,14 +346,26 @@ export default function Portal() {
           {(() => {
             const list = tickets.data?.data || [];
             if (!list.length) return <p className="text-sm text-muted-fg">{t("noTickets")}</p>;
+            const openTicket = (tid) => window.location.assign(`/portal/ticket/${tid}`);
+            const badge = (s) => {
+              const st = String(s || "").toLowerCase();
+              if (st === "closed" || st === "solved") return "bg-emerald-100 text-emerald-700";
+              if (st === "on hold") return "bg-amber-100 text-amber-700";
+              if (st === "open") return "bg-pear-100 text-pear-700";
+              return "bg-slate-100 text-slate-700";
+            };
             return (
               <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-tickets-list">
                 {list.slice(0, 20).map((tk, i) => (
-                  <li key={tk.id || i} className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3">
-                    <div className="min-w-0">
+                  <li key={tk.id || i}
+                      onClick={() => openTicket(tk.id)}
+                      data-testid={`portal-ticket-row-${tk.id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl surface-2 p-3 cursor-pointer hover:border-pear-500 border border-transparent transition-colors">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-strong truncate">#{tk.ticketNumber || i + 1} — {tk.subject}</p>
-                      <p className="text-xs text-muted-fg truncate">{tk.status} · {tk.priority}</p>
+                      <p className="text-xs text-muted-fg truncate">{tk.priority || "—"}</p>
                     </div>
+                    <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold shrink-0 ${badge(tk.status)}`}>{tk.status}</span>
                   </li>
                 ))}
               </ul>

@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 11 (Custom Scripts + Terms + User Management + Ticket Detail) tested end-to-end. Backend: 20/20 pytest PASS covering /api/site/scripts (public), /api/admin/scripts (401 unauth, roundtrip with admin JWT, 403 for analist), /api/admin/users CRUD + zoho_linked + auth_source, /api/admin/roles (all 6 roles + super_admin has 'scripts' perm), /api/admin/activity-log (user.create first record verified), cannot-delete-seed-admin returns 400, and portal ticket detail/threads/reply all require Zoho auth (401). Regression clean: /api/health, /api/reviews approved-only, /api/stats/trust, admin scan-invites gated, portal tasks/milestones/invoice-checkout gated, /api/auth/zoho/login → 307. Frontend: (1) Custom scripts injection verified — after PUT with header='<meta name=\"pb-inject-test\" content=\"ok\">' the home DOM contains that meta tag, and footer HTML comment 'pb-footer-inject-test' appears in <body>. Scripts cleared afterward. (2) /voorwaarden renders page-terms with H1 'Algemene Voorwaarden' and all 14 'Artikel N' headings; /terms with pb_lang=en renders H1 'Terms & Conditions' with all 14 'Article N' headings. footer-link-terms present and navigates to /voorwaarden. (3) /portal/ticket/{fake-id} while unauth renders page-ticket-detail + ticket-back and shows the 'Kon ticket niet openen / Not authenticated with Zoho' error card as spec'd. (4) Admin CMS: /admin/scripts renders cms-scripts with scripts-header-input, scripts-footer-input and scripts-save; save produces success indicator. /admin/users renders cms-users, cms-users-table, cms-activity-log, cms-roles-list; both seed users visible (admin@pearblue.nl super_admin — Niet gekoppeld/unlinked badge; beheer@multibay.eu super_admin — Gekoppeld/linked badge). New user form has all 5 data-testids (user-form-email/name/role/password/submit). All 6 roles are displayed with their permission chips in the roles panel. Activity log shows recent scripts.update and user.create/delete entries.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11.py",
+    "/app/test_reports/pytest/iteration11.xml"
+  ],
+  "action_items": [
+    "No blocking issues. Optional polish: individual role entries in /admin/users roles panel do not appear to expose per-row data-testid like role-row-<key> — testing spec mentioned '6 rows' but implementation renders them as inline chip blocks under cms-roles-list. cms-roles-list itself is present; consider adding data-testid=\"role-row-<key>\" on each of the 6 role blocks if you want per-role deep-linked testing."
+  ],
+  "critical_code_review_comments": [
+    "server.py: ROLE_PERMS keeps legacy 'admin' key with full super_admin perms (backward-compat). Only super_admin/'admin' can assign/modify super_admin — enforced in create_user & update_user. Good.",
+    "server.py seed_admin: on existing record, only upgrades role if it is None or 'admin' — so a super_admin whose role was changed to e.g. beheerder will NOT be forcibly re-upgraded. Correct behavior, but worth documenting.",
+    "server.py /api/admin/users list merges db.admins with db.zoho_users; zoho-only users get role=gebruiker & auth_source='zoho'. Nice touch, but note these zoho-only users have no admins-collection doc, so DELETE/PATCH on them will 404. Consider surfacing a hint in UI ('Zoho-only, not manageable here').",
+    "zoho_portal.py sendReply builds URL to Zoho Desk correctly with fromEmailAddress from stored orgUser; no injection risk since ticket_id comes from path param and content is JSON body sent to Zoho. Good.",
+    "CustomScriptsInjector: injects header/footer HTML via innerHTML — acceptable since only super_admin can write. Ensure the endpoint stays permission-guarded.",
+    "TermsPage.jsx correctly toggles NL/EN via LanguageContext; static content, no XSS risks."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11.py (new)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% of testable flows"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (role now super_admin after iteration 11 seed migration). Zoho super-admin beheer@multibay.eu (db.zoho_users) untouched.",
+  "seed_data_creation": "test_iter11_user@example.com and test_iter11_analist@example.com created and cleaned up within their respective tests. Custom scripts set to injection-test values and restored to empty strings afterward — no test data persisted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "6 roles: super_admin, beheerder, analist, moderator, chat_support, gebruiker. Legacy 'admin' role still allowed via ROLES_WITH_CMS_ACCESS whitelist and has same perms as super_admin. Permissions map is in server.py ROLE_PERMS. seed_admin now upgrades existing admin role 'admin'→'super_admin'. /api/site/scripts is PUBLIC (no auth) — used by CustomScriptsInjector on every page mount. Remember to clear scripts after any test that sets them. /admin/users, /admin/scripts, /admin/roles, /admin/activity-log all require require_permission('users' | 'scripts' | 'users' | 'users').",
+  "rca of the issue": "N/A — no bugs found in iteration 11 scope."
+}

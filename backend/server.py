@@ -256,13 +256,55 @@ async def require_admin(creds: Optional[HTTPAuthorizationCredentials] = Depends(
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALG])
-        if payload.get("role") != "admin":
+        role = payload.get("role")
+        if role not in ROLES_WITH_CMS_ACCESS:
             raise HTTPException(status_code=403, detail="Forbidden")
-        return {"email": payload.get("sub"), "role": payload.get("role")}
+        return {"email": payload.get("sub"), "role": role}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# --- Role model (6 roles) ---
+ROLE_SUPER_ADMIN = "super_admin"
+ROLE_BEHEERDER = "beheerder"
+ROLE_ANALIST = "analist"
+ROLE_MODERATOR = "moderator"
+ROLE_CHAT_SUPPORT = "chat_support"
+ROLE_GEBRUIKER = "gebruiker"
+
+ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT, ROLE_GEBRUIKER]
+ROLES_WITH_CMS_ACCESS = {"admin", ROLE_SUPER_ADMIN, ROLE_BEHEERDER, ROLE_ANALIST, ROLE_MODERATOR, ROLE_CHAT_SUPPORT}
+
+ROLE_PERMS = {
+    ROLE_SUPER_ADMIN: {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings"},
+    "admin": {"users", "roles", "secrets", "scripts", "content", "reviews", "analytics", "chat", "tickets", "portfolio", "settings"},
+    ROLE_BEHEERDER: {"users", "content", "reviews", "analytics", "chat", "tickets", "portfolio"},
+    ROLE_ANALIST: {"analytics"},
+    ROLE_MODERATOR: {"content", "portfolio", "reviews"},
+    ROLE_CHAT_SUPPORT: {"chat", "tickets"},
+    ROLE_GEBRUIKER: set(),
+}
+
+
+def require_permission(perm: str):
+    async def _check(current=Depends(require_admin)):
+        role = current.get("role")
+        if perm not in ROLE_PERMS.get(role, set()):
+            raise HTTPException(status_code=403, detail=f"Missing permission: {perm}")
+        return current
+    return _check
+
+
+async def _log_activity(actor_email: str, action: str, target: Optional[str] = None, meta: Optional[dict] = None):
+    await db.activity_log.insert_one({
+        "actor_email": actor_email,
+        "action": action,
+        "target": target,
+        "meta": meta or {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 async def seed_admin():
@@ -272,13 +314,19 @@ async def seed_admin():
         await db.admins.insert_one({
             "email": ADMIN_EMAIL,
             "password_hash": hashed,
-            "role": "admin",
+            "role": ROLE_SUPER_ADMIN,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(f"Admin seeded: {ADMIN_EMAIL}")
-    elif not verify_password(ADMIN_PASSWORD, existing.get("password_hash", "")):
-        await db.admins.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hashed}})
-        logger.info(f"Admin password updated: {ADMIN_EMAIL}")
+    else:
+        updates = {}
+        if not verify_password(ADMIN_PASSWORD, existing.get("password_hash", "")):
+            updates["password_hash"] = hashed
+        if existing.get("role") in {None, "admin"}:
+            updates["role"] = ROLE_SUPER_ADMIN
+        if updates:
+            await db.admins.update_one({"email": ADMIN_EMAIL}, {"$set": updates})
+            logger.info(f"Admin updated ({', '.join(updates.keys())}): {ADMIN_EMAIL}")
 
 
 # ---------- Email helpers ----------
@@ -781,6 +829,168 @@ async def trust_stats():
     manual_bonus = int(os.environ.get("STATS_COMPLETED_PROJECTS_BASE", "0"))
     projects = completed_from_stripe + manual_bonus
     return {"reviews": approved, "avg": avg, "projects": projects}
+
+
+# ============================================================================
+# User management (Iteration 11) — CRUD over admins + Zoho link status
+# ============================================================================
+class UserCreatePayload(BaseModel):
+    email: str = Field(..., min_length=3, max_length=200)
+    role: str
+    password: Optional[str] = None
+    display_name: Optional[str] = None
+
+
+class UserUpdatePayload(BaseModel):
+    role: Optional[str] = None
+    password: Optional[str] = None
+    display_name: Optional[str] = None
+
+
+@api_router.get("/admin/users")
+async def list_users(current=Depends(require_permission("users"))):
+    admins = await db.admins.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+    zoho_users = await db.zoho_users.find({}, {"_id": 0, "email": 1}).to_list(500)
+    zoho_emails = {(u.get("email") or "").lower().strip() for u in zoho_users if u.get("email")}
+    out = []
+    for a in admins:
+        email_l = (a.get("email") or "").lower().strip()
+        out.append({
+            "email": a.get("email"),
+            "role": a.get("role", "gebruiker"),
+            "display_name": a.get("display_name"),
+            "auth_source": a.get("auth_source", "password"),
+            "zoho_linked": email_l in zoho_emails,
+            "created_at": a.get("created_at"),
+        })
+    # Include zoho-only users not present in admins
+    admin_emails = {(a.get("email") or "").lower().strip() for a in admins}
+    for zu in zoho_users:
+        email_l = (zu.get("email") or "").lower().strip()
+        if email_l and email_l not in admin_emails:
+            out.append({
+                "email": zu.get("email"),
+                "role": ROLE_GEBRUIKER,
+                "display_name": None,
+                "auth_source": "zoho",
+                "zoho_linked": True,
+                "created_at": None,
+            })
+    return sorted(out, key=lambda x: (x.get("email") or ""))
+
+
+@api_router.post("/admin/users")
+async def create_user(payload: UserCreatePayload, current=Depends(require_permission("users"))):
+    if payload.role not in ALL_ROLES:
+        raise HTTPException(400, f"Invalid role. Allowed: {ALL_ROLES}")
+    # Only super_admin can create/edit other super_admins
+    if payload.role == ROLE_SUPER_ADMIN and current.get("role") not in {ROLE_SUPER_ADMIN, "admin"}:
+        raise HTTPException(403, "Only super_admin can assign super_admin role")
+    email_l = payload.email.lower().strip()
+    if await db.admins.find_one({"email": email_l}):
+        raise HTTPException(409, "User already exists")
+    doc = {
+        "email": email_l,
+        "role": payload.role,
+        "display_name": payload.display_name,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current.get("email"),
+    }
+    if payload.password:
+        doc["password_hash"] = hash_password(payload.password)
+    else:
+        doc["password_hash"] = "zoho-oauth-only"
+        doc["auth_source"] = "zoho"
+    await db.admins.insert_one(doc)
+    await _log_activity(current.get("email"), "user.create", email_l, {"role": payload.role})
+    doc.pop("password_hash", None)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.patch("/admin/users/{email}")
+async def update_user(email: str, payload: UserUpdatePayload, current=Depends(require_permission("users"))):
+    email_l = email.lower().strip()
+    existing = await db.admins.find_one({"email": email_l})
+    if not existing:
+        raise HTTPException(404, "User not found")
+    if existing.get("role") == ROLE_SUPER_ADMIN and current.get("role") not in {ROLE_SUPER_ADMIN, "admin"}:
+        raise HTTPException(403, "Only super_admin can modify super_admin accounts")
+    updates = {}
+    if payload.role is not None:
+        if payload.role not in ALL_ROLES:
+            raise HTTPException(400, f"Invalid role. Allowed: {ALL_ROLES}")
+        if payload.role == ROLE_SUPER_ADMIN and current.get("role") not in {ROLE_SUPER_ADMIN, "admin"}:
+            raise HTTPException(403, "Only super_admin can assign super_admin role")
+        updates["role"] = payload.role
+    if payload.display_name is not None:
+        updates["display_name"] = payload.display_name
+    if payload.password:
+        updates["password_hash"] = hash_password(payload.password)
+    if not updates:
+        raise HTTPException(400, "Nothing to update")
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updates["updated_by"] = current.get("email")
+    await db.admins.update_one({"email": email_l}, {"$set": updates})
+    await _log_activity(current.get("email"), "user.update", email_l, {k: v for k, v in updates.items() if k != "password_hash"})
+    return {"status": "updated"}
+
+
+@api_router.delete("/admin/users/{email}")
+async def delete_user(email: str, current=Depends(require_permission("users"))):
+    email_l = email.lower().strip()
+    if email_l == ADMIN_EMAIL.lower():
+        raise HTTPException(400, "Cannot delete seed admin")
+    existing = await db.admins.find_one({"email": email_l})
+    if not existing:
+        raise HTTPException(404, "User not found")
+    if existing.get("role") == ROLE_SUPER_ADMIN and current.get("role") not in {ROLE_SUPER_ADMIN, "admin"}:
+        raise HTTPException(403, "Only super_admin can delete super_admin accounts")
+    await db.admins.delete_one({"email": email_l})
+    await _log_activity(current.get("email"), "user.delete", email_l)
+    return {"status": "deleted"}
+
+
+@api_router.get("/admin/roles")
+async def list_roles(current=Depends(require_permission("users"))):
+    return [
+        {"key": r, "permissions": sorted(list(ROLE_PERMS.get(r, set())))}
+        for r in ALL_ROLES
+    ]
+
+
+@api_router.get("/admin/activity-log")
+async def activity_log(limit: int = 100, current=Depends(require_permission("users"))):
+    items = await db.activity_log.find({}, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 500))
+    return items
+
+
+# ============================================================================
+# Custom scripts (super_admin only) — inject in <head> and end of <body>
+# ============================================================================
+class CustomScripts(BaseModel):
+    header_scripts: str = ""
+    footer_scripts: str = ""
+
+
+@api_router.get("/site/scripts")
+async def public_get_scripts():
+    """Public read — used by the frontend to inject custom scripts (Trustpilot, etc.)."""
+    doc = await db.site_config.find_one({"_id": "scripts"}, {"_id": 0}) or {}
+    return {"header_scripts": doc.get("header_scripts", ""), "footer_scripts": doc.get("footer_scripts", "")}
+
+
+@api_router.put("/admin/scripts")
+async def update_scripts(payload: CustomScripts, current=Depends(require_permission("scripts"))):
+    await db.site_config.update_one(
+        {"_id": "scripts"},
+        {"$set": {"header_scripts": payload.header_scripts, "footer_scripts": payload.footer_scripts,
+                  "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": current.get("email")}},
+        upsert=True,
+    )
+    await _log_activity(current.get("email"), "scripts.update", None,
+                        {"header_len": len(payload.header_scripts), "footer_len": len(payload.footer_scripts)})
+    return {"status": "saved"}
 
 
 app.include_router(api_router)

@@ -28,6 +28,7 @@ export const Footer = () => {
             <li><Link to="/portfolio" className="hover:text-pear-500" data-testid="footer-link-portfolio">{t("nav.portfolio")}</Link></li>
             <li><Link to="/portal" className="hover:text-pear-500" data-testid="footer-link-portal">Klantportaal</Link></li>
             <li><Link to="/contact" className="hover:text-pear-500" data-testid="footer-link-contact">{t("nav.contact")}</Link></li>
+            <li><Link to="/voorwaarden" className="hover:text-pear-500" data-testid="footer-link-terms">Voorwaarden</Link></li>
           </ul>
         </div>
         <div>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
@@ -24,6 +24,8 @@ const AdminSidebar = () => {
     { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
     { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations" },
     { to: "/admin/reviews", label: "Klantreviews", icon: Star, testid: "cms-nav-reviews" },
+    { to: "/admin/users", label: "Gebruikers & rollen", icon: Users, testid: "cms-nav-users" },
+    { to: "/admin/scripts", label: "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
     { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages" },
   ];
@@ -570,6 +572,267 @@ const ReviewsAdmin = () => {
   );
 };
 
+// --- Users & Roles tab ---
+const ROLE_LABELS = {
+  super_admin: "Super administrator",
+  beheerder: "Beheerder",
+  analist: "Analist",
+  moderator: "Moderator",
+  chat_support: "Chat support",
+  gebruiker: "Gebruiker",
+  admin: "Beheerder (legacy)",
+};
+
+const UsersAdmin = () => {
+  const { authHeader, user: me } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ email: "", role: "gebruiker", password: "", display_name: "" });
+
+  const isSuperAdmin = (me?.role === "super_admin" || me?.role === "admin");
+
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      axios.get(`${API}/admin/users`, { headers: authHeader() }),
+      axios.get(`${API}/admin/roles`, { headers: authHeader() }),
+      axios.get(`${API}/admin/activity-log?limit=50`, { headers: authHeader() }),
+    ])
+      .then(([u, r, l]) => { setUsers(u.data || []); setRoles(r.data || []); setLogs(l.data || []); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const createUser = async (e) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await axios.post(`${API}/admin/users`, form, { headers: authHeader() });
+      toast.success("Gebruiker aangemaakt");
+      setForm({ email: "", role: "gebruiker", password: "", display_name: "" });
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Aanmaken mislukt");
+    } finally { setCreating(false); }
+  };
+
+  const updateRole = async (email, role) => {
+    try {
+      await axios.patch(`${API}/admin/users/${encodeURIComponent(email)}`, { role }, { headers: authHeader() });
+      toast.success(`Rol bijgewerkt naar ${ROLE_LABELS[role] || role}`);
+      load();
+    } catch (err) { toast.error(err?.response?.data?.detail || "Bijwerken mislukt"); }
+  };
+
+  const remove = async (email) => {
+    if (!window.confirm(`${email} verwijderen? Zoho-koppeling blijft bestaan.`)) return;
+    try {
+      await axios.delete(`${API}/admin/users/${encodeURIComponent(email)}`, { headers: authHeader() });
+      toast.success("Verwijderd");
+      load();
+    } catch (err) { toast.error(err?.response?.data?.detail || "Verwijderen mislukt"); }
+  };
+
+  return (
+    <div data-testid="cms-users">
+      <header className="mb-6">
+        <h1 className="font-heading text-3xl font-medium text-strong">Gebruikers &amp; rollen</h1>
+        <p className="text-sm text-muted-fg mt-1">Beheer wie toegang heeft tot het CMS en welke rechten ze hebben. Zoho-koppeling wordt automatisch gedetecteerd op e-mailadres.</p>
+      </header>
+
+      <section className="surface border border-app rounded-2xl p-5 mb-6" data-testid="cms-users-create">
+        <h2 className="font-heading font-semibold text-strong mb-3">Nieuwe gebruiker</h2>
+        <form onSubmit={createUser} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <input required type="email" placeholder="e-mailadres" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+            data-testid="user-form-email" className="rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none text-strong" />
+          <input type="text" placeholder="Naam (optioneel)" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })}
+            data-testid="user-form-name" className="rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none text-strong" />
+          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
+            data-testid="user-form-role" className="rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none text-strong">
+            {Object.entries(ROLE_LABELS).filter(([k]) => k !== "admin").map(([k, v]) => (
+              <option key={k} value={k} disabled={k === "super_admin" && !isSuperAdmin}>{v}</option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <input type="password" placeholder="Wachtwoord (leeg = Zoho)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
+              data-testid="user-form-password" className="flex-1 rounded-xl surface-2 border border-transparent focus:border-pear-500 px-3 py-2 text-sm outline-none text-strong" />
+            <button type="submit" disabled={creating} className="btn-primary shrink-0" data-testid="user-form-submit">
+              {creating ? "…" : <><Plus className="h-4 w-4" /></>}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="surface border border-app rounded-2xl overflow-hidden mb-6">
+        {loading ? <p className="p-6 text-muted-fg text-sm">Laden…</p> : (
+          <table className="w-full text-sm" data-testid="cms-users-table">
+            <thead className="text-xs uppercase tracking-widest text-muted-fg">
+              <tr>
+                <th className="text-left px-4 py-3">E-mail</th>
+                <th className="text-left px-4 py-3">Rol</th>
+                <th className="text-left px-4 py-3">Zoho</th>
+                <th className="text-right px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-app">
+              {users.map((u) => (
+                <tr key={u.email} data-testid={`user-row-${u.email}`}>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-strong">{u.email}</p>
+                    {u.display_name && <p className="text-xs text-muted-fg">{u.display_name}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={u.role}
+                      disabled={u.email === me?.email}
+                      onChange={(e) => updateRole(u.email, e.target.value)}
+                      data-testid={`user-role-${u.email}`}
+                      className="rounded-lg surface-2 border border-transparent focus:border-pear-500 px-2 py-1 text-xs outline-none text-strong"
+                    >
+                      {Object.entries(ROLE_LABELS).filter(([k]) => k !== "admin").map(([k, v]) => (
+                        <option key={k} value={k} disabled={k === "super_admin" && !isSuperAdmin}>{v}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.zoho_linked ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1" data-testid={`user-zoho-linked-${u.email}`}>
+                        <ShieldCheck className="h-3 w-3" /> Gekoppeld
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 px-2.5 py-1" data-testid={`user-zoho-unlinked-${u.email}`}>
+                        <ShieldX className="h-3 w-3" /> Niet gekoppeld
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {u.email !== me?.email && u.auth_source !== "zoho-only" && (
+                      <button onClick={() => remove(u.email)} data-testid={`user-delete-${u.email}`}
+                        className="inline-flex items-center gap-1 text-xs text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-full border border-red-200">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="surface border border-app rounded-2xl p-5">
+          <h3 className="font-heading font-semibold text-strong mb-3">Rollen &amp; rechten</h3>
+          <ul className="space-y-2 text-xs" data-testid="cms-roles-list">
+            {roles.map((r) => (
+              <li key={r.key} className="flex flex-wrap items-center gap-2 rounded-xl surface-2 p-3">
+                <span className="font-semibold text-strong text-sm">{ROLE_LABELS[r.key] || r.key}</span>
+                {r.permissions.length === 0 && <span className="text-muted-fg">— geen CMS rechten</span>}
+                {r.permissions.map((p) => (
+                  <span key={p} className="rounded-full bg-pear-100 text-pear-700 px-2 py-0.5 font-mono">{p}</span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="surface border border-app rounded-2xl p-5">
+          <h3 className="font-heading font-semibold text-strong mb-3">Activiteitenlog</h3>
+          {logs.length === 0 ? (
+            <p className="text-xs text-muted-fg">Nog geen activiteit.</p>
+          ) : (
+            <ul className="divide-y divide-app text-xs max-h-72 overflow-y-auto" data-testid="cms-activity-log">
+              {logs.map((l, i) => (
+                <li key={i} className="py-2">
+                  <p className="text-strong"><span className="font-mono">{l.action}</span> {l.target && <span className="text-muted-fg">· {l.target}</span>}</p>
+                  <p className="text-[10px] text-muted-fg">{l.actor_email} · {l.created_at?.slice(0, 19).replace("T", " ")}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// --- Custom scripts tab (super_admin only) ---
+const ScriptsAdmin = () => {
+  const { authHeader, user: me } = useAuth();
+  const [header, setHeader] = useState("");
+  const [footer, setFooter] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const canEdit = me?.role === "super_admin" || me?.role === "admin";
+
+  useEffect(() => {
+    axios.get(`${API}/site/scripts`)
+      .then((r) => { setHeader(r.data?.header_scripts || ""); setFooter(r.data?.footer_scripts || ""); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await axios.put(`${API}/admin/scripts`, { header_scripts: header, footer_scripts: footer }, { headers: authHeader() });
+      toast.success("Scripts opgeslagen. Herlaad de site om de nieuwe scripts te zien.");
+    } catch (err) { toast.error(err?.response?.data?.detail || "Opslaan mislukt"); }
+    finally { setSaving(false); }
+  };
+
+  if (!canEdit) {
+    return <div className="surface border border-app rounded-3xl p-10 text-center" data-testid="cms-scripts-forbidden">
+      <ShieldX className="h-10 w-10 text-red-500 mx-auto mb-3" />
+      <p className="font-heading text-lg text-strong">Alleen Super Administrator</p>
+      <p className="text-sm text-muted-fg">Voor het bewerken van site-scripts heb je super_admin rechten nodig — de scripts kunnen tracking- of security-gevolgen hebben.</p>
+    </div>;
+  }
+
+  return (
+    <div data-testid="cms-scripts">
+      <header className="mb-6">
+        <h1 className="font-heading text-3xl font-medium text-strong">Custom scripts</h1>
+        <p className="text-sm text-muted-fg mt-1">Injecteer aangepaste HTML/JS in de <code>&lt;head&gt;</code> of aan het einde van <code>&lt;body&gt;</code>. Handig voor Trustpilot TrustBox, Google Tag Manager, meta pixels, etc.</p>
+      </header>
+      {loading ? <p className="text-muted-fg">Laden…</p> : (
+        <div className="space-y-6">
+          <div className="surface border border-app rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Code className="h-4 w-4 text-pear-500" />
+              <h2 className="font-heading font-semibold text-strong">Header scripts <span className="text-xs text-muted-fg font-normal">— injecteert in &lt;head&gt;</span></h2>
+            </div>
+            <textarea rows={8} value={header} onChange={(e) => setHeader(e.target.value)} data-testid="scripts-header-input"
+              placeholder='<!-- e.g. Google Tag Manager, meta pixels --><script>...</script>'
+              className="w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 px-4 py-3 text-sm font-mono outline-none resize-y text-strong" />
+          </div>
+          <div className="surface border border-app rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Code className="h-4 w-4 text-pear-500" />
+              <h2 className="font-heading font-semibold text-strong">Footer scripts <span className="text-xs text-muted-fg font-normal">— injecteert vlak voor &lt;/body&gt;</span></h2>
+            </div>
+            <textarea rows={8} value={footer} onChange={(e) => setFooter(e.target.value)} data-testid="scripts-footer-input"
+              placeholder='<!-- e.g. Trustpilot TrustBox JS, chat widgets --><script src="..."></script>'
+              className="w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 px-4 py-3 text-sm font-mono outline-none resize-y text-strong" />
+          </div>
+          <div className="flex justify-end">
+            <button onClick={save} disabled={saving} className="btn-primary" data-testid="scripts-save">
+              <Save className="h-4 w-4" /> {saving ? "Opslaan…" : "Opslaan"}
+            </button>
+          </div>
+          <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 rounded-2xl p-4">
+            ⚠ Waarschuwing: aangepaste scripts kunnen prestatie en veiligheid van de site beïnvloeden. Plak alleen code die je vertrouwt. Kwaadaardige code kan bezoekers tracken of misleiden.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Layout ---
 const AdminLayout = ({ children }) => (
   <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
@@ -594,6 +857,8 @@ export default function AdminDashboard() {
           <Route path="analytics" element={<AnalyticsAdmin />} />
           <Route path="registrations" element={<RegistrationsAdmin />} />
           <Route path="reviews" element={<ReviewsAdmin />} />
+          <Route path="users" element={<UsersAdmin />} />
+          <Route path="scripts" element={<ScriptsAdmin />} />
           <Route path="settings" element={<SettingsAdmin />} />
           <Route path="messages" element={<MessagesAdmin />} />
         </Routes>

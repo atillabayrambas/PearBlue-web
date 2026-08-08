@@ -53,7 +53,7 @@ def _dec(value: str) -> str:
 def _mint_admin_token(email: str) -> str:
     payload = {
         "sub": email,
-        "role": "admin",
+        "role": "super_admin",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXP_MINUTES),
         "iat": datetime.now(timezone.utc),
     }
@@ -135,8 +135,8 @@ def make_router(db) -> APIRouter:
             if existing_admin is None:
                 await db.admins.insert_one({
                     "email": email_lower,
-                    "password_hash": "zoho-oauth-only",  # cannot login with password
-                    "role": "admin",
+                    "password_hash": "zoho-oauth-only",
+                    "role": "super_admin",
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "auth_source": "zoho",
                 })
@@ -354,5 +354,86 @@ def make_router(db) -> APIRouter:
             params={"from": from_, "limit": min(limit, 50)},
             headers={"orgId": DESK_ORG_ID},
         )
+
+    @router.get("/portal/tickets/{ticket_id}")
+    async def ticket_detail(request: Request, ticket_id: str):
+        uid = _require_portal_user(request)
+        if not DESK_ORG_ID:
+            raise HTTPException(400, "ZOHO_DESK_ORG_ID not configured")
+        return await _zoho_get(
+            uid,
+            f"https://desk.zoho.eu/api/v1/tickets/{ticket_id}",
+            headers={"orgId": DESK_ORG_ID},
+        )
+
+    @router.get("/portal/tickets/{ticket_id}/threads")
+    async def ticket_threads(request: Request, ticket_id: str):
+        uid = _require_portal_user(request)
+        if not DESK_ORG_ID:
+            raise HTTPException(400, "ZOHO_DESK_ORG_ID not configured")
+        # First get list of threads, then expand each with content
+        listing = await _zoho_get(
+            uid,
+            f"https://desk.zoho.eu/api/v1/tickets/{ticket_id}/threads",
+            headers={"orgId": DESK_ORG_ID},
+            params={"limit": 50},
+        )
+        threads = listing.get("data", [])
+        expanded = []
+        for th in threads[:30]:
+            try:
+                full = await _zoho_get(
+                    uid,
+                    f"https://desk.zoho.eu/api/v1/tickets/{ticket_id}/threads/{th.get('id')}",
+                    headers={"orgId": DESK_ORG_ID},
+                    params={"include": "plainText"},
+                )
+                expanded.append(full)
+            except Exception:
+                expanded.append(th)
+        return {"data": expanded}
+
+    @router.post("/portal/tickets/{ticket_id}/reply")
+    async def ticket_reply(request: Request, ticket_id: str):
+        uid = _require_portal_user(request)
+        if not DESK_ORG_ID:
+            raise HTTPException(400, "ZOHO_DESK_ORG_ID not configured")
+        body = await request.json()
+        content = (body or {}).get("content", "").strip()
+        if not content:
+            raise HTTPException(400, "Reply content is required")
+        # Zoho Desk POST thread — the client posts a public reply
+        payload = {
+            "channel": "WEB",
+            "contentType": "html",
+            "content": content,
+            "fromEmailAddress": None,  # let Zoho use the requester email
+            "isForward": False,
+        }
+        token, u = await _access_token(uid)
+        url = f"https://desk.zoho.eu/api/v1/tickets/{ticket_id}/sendReply"
+        h = {"Authorization": f"Zoho-oauthtoken {token}", "orgId": DESK_ORG_ID, "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=25) as client:
+            r = await client.post(url, headers=h, json=payload)
+        if r.status_code == 401 and u.get("refresh_token"):
+            async with httpx.AsyncClient(timeout=20) as client:
+                rt = await client.post(f"{ACCOUNTS}/oauth/v2/token", data={
+                    "refresh_token": _dec(u["refresh_token"]),
+                    "client_id": ZOHO_CLIENT_ID,
+                    "client_secret": ZOHO_CLIENT_SECRET,
+                    "grant_type": "refresh_token",
+                })
+                new_token = rt.json().get("access_token")
+            if new_token:
+                await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": {
+                    "access_token": _enc(new_token),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }})
+                h["Authorization"] = f"Zoho-oauthtoken {new_token}"
+                async with httpx.AsyncClient(timeout=25) as client:
+                    r = await client.post(url, headers=h, json=payload)
+        if r.status_code >= 400:
+            raise HTTPException(r.status_code, f"Zoho reply failed: {r.text[:200]}")
+        return r.json() if r.text else {"status": "sent"}
 
     return router

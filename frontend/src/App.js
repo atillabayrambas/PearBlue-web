@@ -11,6 +11,7 @@ import { Footer } from "@/components/Footer";
 import { Chatbot } from "@/components/Chatbot";
 import { CookieBanner } from "@/components/CookieBanner";
 import { AnalyticsLoader } from "@/components/AnalyticsLoader";
+import { CustomScriptsInjector } from "@/components/CustomScriptsInjector";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Services from "@/pages/Services";
@@ -21,6 +22,8 @@ import ZohoCallback from "@/pages/ZohoCallback";
 import ReviewInvitePage from "@/pages/ReviewInvitePage";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import ProjectDetail from "@/pages/ProjectDetail";
+import TicketDetail from "@/pages/TicketDetail";
+import TermsPage from "@/pages/TermsPage";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 
@@ -50,9 +53,12 @@ function Shell() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/portal" element={<Portal />} />
           <Route path="/portal/project/:projectId" element={<ProjectDetail />} />
+          <Route path="/portal/ticket/:ticketId" element={<TicketDetail />} />
           <Route path="/portal/betaling-gelukt" element={<PaymentSuccess />} />
           <Route path="/oauth/zoho/callback" element={<ZohoCallback />} />
           <Route path="/review" element={<ReviewInvitePage />} />
+          <Route path="/voorwaarden" element={<TermsPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="*" element={<Home />} />
@@ -62,6 +68,7 @@ function Shell() {
       {!isAdmin && <Chatbot />}
       {!isAdmin && <CookieBanner />}
       <AnalyticsLoader />
+      <CustomScriptsInjector />
     </div>
   );
 }
