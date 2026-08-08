@@ -130,12 +130,18 @@ def make_router(db) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     @router.post("/payments/invoice-checkout")
-    async def checkout(request: Request, body: CheckoutRequest):
+    async def checkout(request: Request):
+        # Auth first (fail-closed before schema validation)
+        uid = _require_portal_user(request)
         if not STRIPE_SECRET_KEY:
             raise HTTPException(503, "Stripe not configured")
         if not BOOKS_ORG_ID:
             raise HTTPException(400, "ZOHO_BOOKS_ORG_ID not configured")
-        uid = _require_portal_user(request)
+        try:
+            raw = await request.json()
+            body = CheckoutRequest(**raw)
+        except Exception:
+            raise HTTPException(422, "Invalid body")
         user = await db.zoho_users.find_one({"zoho_user_id": uid})
         if not user:
             raise HTTPException(401, "Zoho account not connected")
