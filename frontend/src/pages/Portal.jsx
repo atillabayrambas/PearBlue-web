@@ -2,11 +2,12 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
-import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, ExternalLink, Star } from "lucide-react";
+import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, ExternalLink, Star, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
 import { ReviewForm } from "../components/Reviews";
+import { useAuth } from "../auth/AuthContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -113,6 +114,7 @@ export default function Portal() {
   usePageSeo({ title: "Klantportaal", description: "Bekijk je facturen, projecten en support tickets bij PearBlue.", path: "/portal" });
   const [me, setMe] = useState({ loading: true, authenticated: false, user: null });
   const location = useLocation();
+  const { isAdmin } = useAuth();
 
   const loadMe = () => {
     setMe((m) => ({ ...m, loading: true }));
@@ -175,9 +177,16 @@ export default function Portal() {
           <h1 className="font-heading text-3xl sm:text-4xl font-medium text-strong">Welkom{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
           {me.user?.email && <p className="text-sm text-muted-fg mt-1">{me.user.email}</p>}
         </div>
-        <button onClick={logout} className="btn-secondary" data-testid="portal-logout">
-          <LogOut className="h-4 w-4" /> Uitloggen
-        </button>
+        <div className="flex gap-2">
+          {isAdmin && (
+            <Link to="/admin" className="btn-primary" data-testid="portal-admin-shortcut">
+              <ShieldCheck className="h-4 w-4" /> Beheer
+            </Link>
+          )}
+          <button onClick={logout} className="btn-secondary" data-testid="portal-logout">
+            <LogOut className="h-4 w-4" /> Uitloggen
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

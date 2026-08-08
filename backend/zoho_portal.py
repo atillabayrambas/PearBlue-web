@@ -3,11 +3,12 @@ Follows the least-privilege scopes playbook; stores tokens encrypted per user.
 """
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlencode
 from typing import Optional
 
 import httpx
+import jwt
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -19,6 +20,12 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 BOOKS_ORG_ID = os.environ.get("ZOHO_BOOKS_ORG_ID", "").strip()
 PROJECTS_PORTAL_ID = os.environ.get("ZOHO_PROJECTS_PORTAL_ID", "").strip()
 DESK_ORG_ID = os.environ.get("ZOHO_DESK_ORG_ID", "").strip()
+SUPER_ADMIN_EMAILS = {
+    e.strip().lower() for e in os.environ.get("SUPER_ADMIN_EMAILS", "").split(",") if e.strip()
+}
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
+JWT_ALG = "HS256"
+JWT_EXP_MINUTES = 60 * 24 * 7  # 7 days
 
 TOKEN_ENC_KEY = os.environ.get("TOKEN_ENCRYPTION_KEY", "").encode()
 _cipher = Fernet(TOKEN_ENC_KEY) if TOKEN_ENC_KEY else None
@@ -41,6 +48,16 @@ def _enc(value: str) -> str:
 
 def _dec(value: str) -> str:
     return _cipher.decrypt(value.encode()).decode()
+
+
+def _mint_admin_token(email: str) -> str:
+    payload = {
+        "sub": email,
+        "role": "admin",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXP_MINUTES),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
 def _require_portal_user(request: Request) -> str:
@@ -109,7 +126,22 @@ def make_router(db) -> APIRouter:
             update["refresh_token"] = _enc(token["refresh_token"])
         await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": update}, upsert=True)
         request.session["portal_user_id"] = uid
-        return {"ok": True, "email": identity.get("Email"), "display_name": update["display_name"]}
+        email_lower = (identity.get("Email") or "").lower().strip()
+        is_super_admin = email_lower in SUPER_ADMIN_EMAILS
+        response: dict = {"ok": True, "email": identity.get("Email"), "display_name": update["display_name"], "is_admin": is_super_admin}
+        if is_super_admin:
+            # Ensure an admins-collection record exists so /api/auth/me works consistently
+            existing_admin = await db.admins.find_one({"email": email_lower})
+            if existing_admin is None:
+                await db.admins.insert_one({
+                    "email": email_lower,
+                    "password_hash": "zoho-oauth-only",  # cannot login with password
+                    "role": "admin",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "auth_source": "zoho",
+                })
+            response["admin_token"] = _mint_admin_token(email_lower)
+        return response
 
     @router.get("/auth/zoho/callback")
     async def zoho_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):

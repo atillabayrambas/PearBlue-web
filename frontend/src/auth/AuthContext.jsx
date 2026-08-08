@@ -36,6 +36,19 @@ export const AuthProvider = ({ children }) => {
     return res.data.user;
   };
 
+  const adoptToken = async (t) => {
+    if (!t) return null;
+    try {
+      const res = await axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${t}` } });
+      localStorage.setItem(TOKEN_KEY, t);
+      setToken(t);
+      setUser(res.data);
+      return res.data;
+    } catch {
+      return null;
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
@@ -45,7 +58,7 @@ export const AuthProvider = ({ children }) => {
   const authHeader = () => (token ? { Authorization: `Bearer ${token}` } : {});
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, isAdmin: !!token, authHeader, loading }}>
+    <AuthContext.Provider value={{ token, user, login, logout, adoptToken, isAdmin: !!token, authHeader, loading }}>
       {children}
     </AuthContext.Provider>
   );

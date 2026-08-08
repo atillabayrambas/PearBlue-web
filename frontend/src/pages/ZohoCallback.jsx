@@ -3,6 +3,7 @@ import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Loader2, AlertCircle } from "lucide-react";
 import { usePortalAuth } from "../auth/PortalAuthContext";
+import { useAuth } from "../auth/AuthContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -11,6 +12,7 @@ export default function ZohoCallback() {
   const navigate = useNavigate();
   const location = useLocation();
   const { refresh } = usePortalAuth();
+  const { adoptToken } = useAuth();
   const ran = useRef(false);
 
   useEffect(() => {
@@ -24,12 +26,17 @@ export default function ZohoCallback() {
     if (!code || !state) { setError("Missing OAuth parameters"); return; }
     axios
       .post(`${API}/auth/zoho/exchange`, { code, state }, { withCredentials: true })
-      .then(async () => {
+      .then(async (res) => {
         await refresh();
-        navigate("/portal", { replace: true });
+        if (res.data?.admin_token) {
+          await adoptToken(res.data.admin_token);
+          navigate("/admin", { replace: true });
+        } else {
+          navigate("/portal", { replace: true });
+        }
       })
       .catch((e) => setError(e?.response?.data?.detail || e.message || "Zoho login mislukt"));
-  }, [location.search, navigate, refresh]);
+  }, [location.search, navigate, refresh, adoptToken]);
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-6 py-16" data-testid="page-zoho-callback">

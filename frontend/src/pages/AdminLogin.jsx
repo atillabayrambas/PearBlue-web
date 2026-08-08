@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { Logo } from "../components/Logo";
 
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
 export default function AdminLogin() {
   const { login, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +62,19 @@ export default function AdminLogin() {
             {submitting ? "Bezig…" : <>Inloggen <LogIn className="h-4 w-4" /></>}
           </button>
         </form>
+
+        <div className="mt-6 pt-6 border-t border-app text-center">
+          <p className="text-xs uppercase tracking-widest text-muted-fg mb-3">Of gebruik je Zoho-account</p>
+          <button
+            type="button"
+            onClick={() => { window.location.href = `${API}/auth/zoho/login`; }}
+            className="btn-secondary w-full justify-center"
+            data-testid="admin-zoho-login"
+          >
+            <LogIn className="h-4 w-4" /> Inloggen met Zoho
+          </button>
+          <p className="text-[11px] text-muted-fg mt-2">Alleen geautoriseerde Zoho-accounts krijgen admin-rechten.</p>
+        </div>
       </motion.div>
     </div>
   );
