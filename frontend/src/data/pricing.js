@@ -55,7 +55,6 @@ export const PRICING = [
   { cat: "website", id: "basis-5p", nl: "Basis Pakket — 5 pagina's (Home, Over ons, Diensten, Portfolio, Contact)", en: "Basic Package — 5 pages (Home, About, Services, Portfolio, Contact)", unit: "eenmalig", min: 200, max: 200, note_nl: "Vanaf-prijs", note_en: "Starting price" },
   { cat: "website", id: "wettelijk", nl: "Wettelijke pagina's (Algemene voorwaarden, Privacy, Cookies)", en: "Legal pages (T&C, Privacy, Cookies)", unit: "eenmalig", min: 0, max: 0, included: true, note_nl: "Verplicht — inbegrepen", note_en: "Mandatory — included" },
   { cat: "website", id: "extra-pagina", nl: "Elke extra pagina (na de eerste 5)", en: "Each extra page (after the first 5)", unit: "per_stuk", min: 50, max: 50 },
-  { cat: "website", id: "detail-struct", nl: "Product-/dienstdetail paginastructuur", en: "Product/service detail page structure", unit: "eenmalig", min: 100, max: 200 },
   { cat: "website", id: "theme-manual", nl: "Handmatige thema-switcher (donker/licht)", en: "Manual dark/light theme switcher", unit: "eenmalig", min: 50, max: 50 },
   { cat: "website", id: "theme-auto", nl: "Automatisch systeemthema volgen", en: "Auto system-theme follow", unit: "eenmalig", min: 10, max: 10 },
   { cat: "website", id: "taal", nl: "Extra taal (meertaligheid)", en: "Extra language", unit: "per_taal", min: 50, max: 50 },
@@ -65,6 +64,7 @@ export const PRICING = [
   { cat: "advanced", id: "ai-mail-sync", nl: "AI Mail & Support-ticket sync via nummer", en: "AI Mail & Support-ticket sync via number", unit: "eenmalig", min: 150, max: 150 },
   { cat: "advanced", id: "ai-dashboard", nl: "AI Dashboard modules (analytics per module)", en: "AI Dashboard modules (analytics per module)", unit: "per_module", min: 20, max: 20 },
   { cat: "advanced", id: "feedback-sys", nl: "Klant-feedbacksysteem", en: "Client feedback system", unit: "eenmalig", min: 30, max: 30 },
+  { cat: "advanced", id: "mailbox-imap", nl: "Mailbox-integratie (IMAP) — beheer meerdere mailboxen vanuit CMS", en: "Mailbox integration (IMAP) — manage multiple inboxes from CMS", unit: "eenmalig", min: 50, max: 50, note_nl: "Beheerders kunnen mailboxen toevoegen/verwijderen", note_en: "Admins can add/remove mailboxes" },
 
   // ---------- Upload & CMS ----------
   { cat: "upload", id: "cms-products", nl: "Zelf producten toevoegen via CMS", en: "Add products yourself via CMS", unit: "eenmalig", min: 20, max: 20 },
@@ -74,7 +74,7 @@ export const PRICING = [
 
   // ---------- E-commerce modules ----------
   { cat: "ecom", id: "shop", nl: "Winkel-setup (mandje & checkout)", en: "Shop setup (cart & checkout)", unit: "eenmalig", min: 300, max: 2000, note_nl: "Afhankelijk van complexiteit", note_en: "Depends on complexity" },
-  { cat: "ecom", id: "shipping", nl: "Adressen & verzending (Std incl. / uitgebreid)", en: "Addresses & shipping (Std incl. / extended)", unit: "eenmalig", min: 10, max: 150 },
+  { cat: "ecom", id: "shipping", nl: "Adressen & verzending (Standaard incl. — uitgebreid +€10)", en: "Addresses & shipping (Standard incl. — extended +€10)", unit: "eenmalig", min: 10, max: 10, note_nl: "+€10 extra bij uitgebreide verzendopties", note_en: "+€10 for extended shipping options" },
   { cat: "ecom", id: "pay-int", nl: "Betaalintegratie (iDEAL, Stripe)", en: "Payment integration (iDEAL, Stripe)", unit: "eenmalig", min: 30, max: 30 },
   { cat: "ecom", id: "colors", nl: "Product-kleurvariaties", en: "Product color variations", unit: "eenmalig", min: 20, max: 20 },
   { cat: "ecom", id: "sizes", nl: "Product-maatvariaties", en: "Product size variations", unit: "eenmalig", min: 20, max: 20 },

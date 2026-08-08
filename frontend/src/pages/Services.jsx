@@ -178,9 +178,16 @@ export default function Services() {
                 <p className="mt-3 text-sm text-muted-fg italic">
                   {lang === "nl" ? svc.intro_nl : svc.intro_en}
                 </p>
-                <div className="mt-6">
+                <div className="mt-6 flex flex-wrap gap-3">
                   <Link to="/contact" className="btn-primary" data-testid={`services-cta-${svc.key}`}>
                     {t("servicesPage.cta")} <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    to={`/prijslijst?tab=${svc.key === "ict" ? "ict" : svc.key === "cyber" ? "cyber" : "web"}`}
+                    className="btn-secondary"
+                    data-testid={`services-pricelist-${svc.key}`}
+                  >
+                    {lang === "nl" ? "Zie prijslijst" : "See pricelist"}
                   </Link>
                 </div>
               </div>

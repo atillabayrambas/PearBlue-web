@@ -29,7 +29,12 @@ const PriceRow = ({ item, lang }) => (
 
 export default function PricingListPage() {
   const { lang } = useLang();
-  const [activeService, setActiveService] = useState("web");
+  const initialTab = (() => {
+    if (typeof window === "undefined") return "web";
+    const q = new URLSearchParams(window.location.search).get("tab");
+    return ["web", "ict", "cyber"].includes(q) ? q : "web";
+  })();
+  const [activeService, setActiveService] = useState(initialTab);
   const [openCalc, setOpenCalc] = useState(false);
   usePageSeo({
     title: lang === "en" ? "Full pricelist — PearBlue" : "Volledige prijslijst — PearBlue",
@@ -324,53 +329,61 @@ function CalculatorModal({ onClose }) {
           </div>
         </div>
 
-        {/* Combined totals footer */}
-        <footer className="border-t border-app px-6 py-4 bg-pear-50/50 dark:bg-slate-800">
-          <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">
+        {/* Combined totals footer — 3 stacked blocks: One-off / Monthly / Hourly with BTW */}
+        <footer className="border-t border-app px-4 py-3 bg-pear-50/50 dark:bg-slate-800">
+          <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-2">
             {lang === "en" ? `Combined (${totals.activeSvcs.length || 0}/3 services)` : `Gecombineerd (${totals.activeSvcs.length || 0}/3 diensten)`}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-            <div className="flex justify-between sm:flex-col">
-              <span className="text-muted-fg">{lang === "en" ? "Subtotal (setup)" : "Subtotaal (setup)"}</span>
-              <span className="font-heading font-medium text-strong" data-testid="pricing-calc-subtotal">{money(totals.combined.subtotal)}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-2.5" data-testid="pricing-calc-col-oneoff">
+              <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "One-off" : "Eenmalig"}</div>
+              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong" data-testid="pricing-calc-subtotal">{money(totals.combined.subtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong" data-testid="pricing-calc-vat">{money(totals.combined.btw)}</span></div>
+              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold"><span className="text-strong">{lang === "en" ? "Total" : "Totaal"}</span><span className="font-mono text-pear-600" data-testid="pricing-calc-total-inclvat">{money(totals.combined.grandTotal)}</span></div>
             </div>
-            <div className="flex justify-between sm:flex-col">
-              <span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span>
-              <span className="font-heading font-medium text-strong" data-testid="pricing-calc-vat">{money(totals.combined.btw)}</span>
+            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-2.5" data-testid="pricing-calc-col-monthly">
+              <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "Monthly (recurring)" : "Maandelijks (vast)"}</div>
+              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong">{money(totals.combined.monthly)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong">{money(totals.combined.monthlyBtw)}</span></div>
+              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold"><span className="text-strong">{lang === "en" ? "Total /mo" : "Totaal /m"}</span><span className="font-mono text-pear-600" data-testid="pricing-calc-monthly-total">{money(totals.combined.monthlyTotal)}</span></div>
             </div>
-            <div className="flex justify-between sm:flex-col">
-              <span className="text-muted-fg font-semibold">{lang === "en" ? "Total incl. VAT" : "Totaal incl. btw"}</span>
-              <span className="font-heading text-2xl font-semibold text-pear-600" data-testid="pricing-calc-total-inclvat">{money(totals.combined.grandTotal)}</span>
+            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-2.5" data-testid="pricing-calc-col-hourly">
+              <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "Hourly (ad-hoc)" : "Uurlijks (los)"}</div>
+              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong">{money(totals.combined.hourly)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong">{money(totals.combined.hourly * VAT_RATE)}</span></div>
+              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold"><span className="text-strong">{lang === "en" ? "Total /hr" : "Totaal /uur"}</span><span className="font-mono text-pear-600" data-testid="pricing-calc-hourly-total">{money(totals.combined.hourly * (1 + VAT_RATE))}</span></div>
             </div>
           </div>
-          {totals.combined.monthly > 0 && (
-            <div className="mt-2 text-xs text-muted-fg" data-testid="pricing-calc-monthly-line">
-              {lang === "en" ? "Recurring: " : "Doorlopend: "}{money(totals.combined.monthly)} / {lang === "en" ? "month excl. VAT" : "maand excl. btw"} ({money(totals.combined.monthlyTotal)} {lang === "en" ? "incl." : "incl."} btw)
-            </div>
-          )}
-          {totals.combined.hourly > 0 && (
-            <div className="mt-1 text-xs text-muted-fg" data-testid="pricing-calc-hourly-line">
-              {lang === "en" ? "Hourly rates: " : "Uurlijkse tarieven: "}{money(totals.combined.hourly)} {lang === "en" ? "excl. VAT (ad-hoc)" : "excl. btw (los)"}
-            </div>
-          )}
-          <p className="mt-2 text-[11px] text-muted-fg leading-relaxed">
+          <p className="mt-2 text-[10px] text-muted-fg leading-relaxed">
             {lang === "en"
-              ? "Estimate only — final quote may be lower or higher based on scope and requirements. Hourly rates are separate from setup and recurring costs."
-              : "Slechts een indicatie — de definitieve offerte kan lager of hoger uitpakken. Uurtarieven staan los van setup en vaste lasten."}
+              ? "Estimate only — final quote may differ. Setup is one-off, monthly costs recur, hourly rates are billed ad-hoc."
+              : "Slechts een schatting — offerte kan afwijken. Setup is eenmalig, maandelijkse kosten zijn doorlopend, uurtarieven worden los gefactureerd."}
           </p>
-          <div className="mt-3 flex flex-wrap gap-2 justify-end">
+          <div className="mt-2 flex flex-wrap gap-2 justify-end">
             <button type="button" onClick={clearWishlist} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-red-400 hover:text-red-500" data-testid="pricing-calc-clear">
               {lang === "en" ? "Clear" : "Leegmaken"}
             </button>
-            <button type="button" onClick={saveWishlist} className="btn-secondary" data-testid="pricing-calc-save">
-              <Save className="h-4 w-4" /> {lang === "en" ? "Save wishlist" : "Wishlist opslaan"}
-            </button>
+            <div className="relative inline-block group" data-testid="pricing-calc-save-wrap">
+              <button type="button" onClick={saveWishlist} className="btn-secondary" data-testid="pricing-calc-save">
+                <Save className="h-4 w-4" /> {lang === "en" ? "Save wishlist" : "Wishlist opslaan"}
+                <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 text-strong text-[10px] font-bold" data-testid="pricing-calc-save-info" aria-label="info">i</span>
+              </button>
+              <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg bg-slate-900 text-white text-[11px] p-2.5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-10">
+                {lang === "en"
+                  ? "Saved locally in cookies/cache if you accepted cookies — otherwise only kept in this tab. Log in to your portal to store permanently on your profile."
+                  : "Opgeslagen in cookies/cache mits cookies geaccepteerd — anders alleen in dit tabblad. Log in op je portaal om het permanent aan je profiel te koppelen."}
+              </div>
+            </div>
             <button type="button" onClick={shareLink} className="btn-secondary" data-testid="pricing-calc-share">
               <Share2 className="h-4 w-4" /> {lang === "en" ? "Share" : "Delen"}
             </button>
             <Link to="/contact" className="btn-primary" data-testid="pricing-calc-request-quote">
               {lang === "en" ? "Request quote" : "Vraag offerte"} <ArrowRight className="h-4 w-4" />
             </Link>
+          </div>
+          {/* Feedback widget inside modal (compact) */}
+          <div className="pt-2 mt-2 border-t border-app/40">
+            <FeedbackWidget page="calculator" className="!mt-0" />
           </div>
         </footer>
       </div>

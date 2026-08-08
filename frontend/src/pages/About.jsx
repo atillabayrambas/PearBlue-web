@@ -19,6 +19,11 @@ export default function About() {
     { icon: Leaf, title: t("about.v2_title"), desc: t("about.v2_desc") },
     { icon: Wallet, title: t("about.v3_title"), desc: t("about.v3_desc") },
     { icon: HeartHandshake, title: t("about.v4_title"), desc: t("about.v4_desc") },
+    { icon: Sparkles, title: t("about.v5_title"), desc: t("about.v5_desc") },
+    { icon: Leaf, title: t("about.v6_title"), desc: t("about.v6_desc") },
+    { icon: Sparkles, title: t("about.v7_title"), desc: t("about.v7_desc") },
+    { icon: Leaf, title: t("about.v8_title"), desc: t("about.v8_desc") },
+    { icon: HeartHandshake, title: t("about.v9_title"), desc: t("about.v9_desc") },
   ];
   return (
     <div data-testid="page-about">

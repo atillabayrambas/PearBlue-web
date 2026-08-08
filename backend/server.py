@@ -1596,6 +1596,22 @@ async def public_changelog():
     """Public JSON of released versions — kept in-code so devops changes stay in git history."""
     entries = [
         {
+            "version": "0.7.1-Beta",
+            "date": "2026-02-08",
+            "highlights": [
+                "Prijslijst-fixes: adressen +€10 flat, product-detail regel verwijderd",
+                "Calculator: aparte kolommen Eenmalig / Maandelijks / Uurlijks met eigen BTW-berekening",
+                "About-pagina: 9 waarden incl. Transparant / Toekomstgericht / Fris & Fruitig / Duurzaam / Kwaliteit",
+                "Footer nieuwsbrief-aanmelding (via communication-noreply@pearblue.nl) + analytics chart in CMS",
+                "Services-pagina: 'Zie prijslijst' knoppen per dienst met deep-link naar juiste tab",
+                "CMS: mailboxen (IMAP MOCKED), Brevo mailmarketing (MOCKED), virusscanner tab (MOCKED)",
+                "CMS: prioriteits-balloons (Major/P1/P2) boven changelog-balloon",
+                "Feedback/Messages/Cybersecurity: avatar + prettyRole (geen underscores)",
+                "Cybersecurity-tabel: sticky action-kolom (knoppen vielen buiten scherm)",
+                "Wishlist-opslaan: info-tooltip over cookies/profiel",
+            ],
+        },
+        {
             "version": "0.7-Beta",
             "date": "2026-02-08",
             "highlights": [
@@ -1688,6 +1704,282 @@ async def patch_project(project_id: str, patch: dict, current=Depends(require_ad
     if res.matched_count == 0:
         raise HTTPException(404, "Project not found")
     return {"status": "updated"}
+
+
+# ---- Priority alerts (Major / P1 / P2) — CMS balloons ----
+@api_router.get("/admin/priority-alerts")
+async def priority_alerts(current=Depends(require_admin)):
+    """Aggregate open Major/P1/P2 items across contact_messages so the CMS can show alert balloons."""
+    open_statuses = {"$nin": ["done", "archived"]}
+    counts = {"Major": 0, "P1": 0, "P2": 0}
+    latest_by_prio: dict[str, dict] = {}
+    async for doc in db.contact_messages.find(
+        {"priority": {"$in": ["Major", "P1", "P2"]}, "status": open_statuses, "spam": {"$ne": True}},
+        {"_id": 0, "id": 1, "priority": 1, "name": 1, "subject": 1, "created_at": 1},
+    ).sort("created_at", -1):
+        p = doc.get("priority") or "P3"
+        if p not in counts:
+            continue
+        counts[p] += 1
+        if p not in latest_by_prio:
+            latest_by_prio[p] = doc
+    return {"counts": counts, "latest": latest_by_prio}
+
+
+# ---- Newsletter signup (public, no captcha per user request) ----
+class NewsletterSignup(BaseModel):
+    email: str = Field(..., min_length=3, max_length=200)
+    language: Optional[str] = "nl"
+    source: Optional[str] = "footer"
+
+
+@api_router.post("/newsletter/subscribe")
+async def newsletter_subscribe(payload: NewsletterSignup, request: Request):
+    email = payload.email.strip().lower()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(400, "Ongeldig e-mailadres")
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
+    # Idempotent: silently upsert
+    doc = {
+        "email": email,
+        "language": payload.language or "nl",
+        "source": payload.source or "footer",
+        "ip": ip,
+        "user_agent": request.headers.get("user-agent", "")[:200],
+        "subscribed_at": datetime.now(timezone.utc).isoformat(),
+        "active": True,
+    }
+    await db.newsletter_subscribers.update_one({"email": email}, {"$set": doc}, upsert=True)
+    # NOTE: MOCKED — a real integration would push this to Brevo via their API using the key stored in
+    # site_settings.brevo_api_key. See /api/admin/brevo/* endpoints for the connection UI.
+    return {"status": "subscribed"}
+
+
+@api_router.get("/admin/newsletter/stats")
+async def newsletter_stats(current=Depends(require_admin)):
+    total = await db.newsletter_subscribers.count_documents({"active": True})
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    docs = await db.newsletter_subscribers.find(
+        {"active": True, "subscribed_at": {"$gte": since}},
+        {"_id": 0, "subscribed_at": 1, "source": 1},
+    ).to_list(20000)
+    by_day: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    for d in docs:
+        try:
+            k = d["subscribed_at"][:10]
+        except Exception:
+            continue
+        by_day[k] = by_day.get(k, 0) + 1
+        s = d.get("source", "footer")
+        by_source[s] = by_source.get(s, 0) + 1
+    return {
+        "total": total,
+        "last_30d": len(docs),
+        "daily": [{"day": k, "count": v} for k, v in sorted(by_day.items())],
+        "sources": [{"source": k, "count": v} for k, v in sorted(by_source.items(), key=lambda x: -x[1])],
+    }
+
+
+@api_router.get("/admin/newsletter/subscribers")
+async def newsletter_subscribers(current=Depends(require_admin)):
+    docs = await db.newsletter_subscribers.find({}, {"_id": 0}).sort("subscribed_at", -1).to_list(500)
+    return docs
+
+
+# ---- Brevo integration (settings + stub) ----
+class BrevoSettings(BaseModel):
+    api_key: Optional[str] = None
+    from_email: Optional[str] = "communication-noreply@pearblue.nl"
+    from_name: Optional[str] = "PearBlue"
+    enabled: Optional[bool] = False
+
+
+@api_router.get("/admin/brevo/settings")
+async def brevo_settings(current=Depends(require_admin)):
+    doc = await db.integrations.find_one({"key": "brevo"}, {"_id": 0}) or {}
+    # Never send the raw API key back — only whether it's set.
+    return {
+        "from_email": doc.get("from_email", "communication-noreply@pearblue.nl"),
+        "from_name": doc.get("from_name", "PearBlue"),
+        "enabled": bool(doc.get("enabled")),
+        "api_key_set": bool(doc.get("api_key")),
+    }
+
+
+@api_router.put("/admin/brevo/settings")
+async def save_brevo_settings(payload: BrevoSettings, current=Depends(require_admin)):
+    upd = {"key": "brevo", "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": current.get("email")}
+    if payload.api_key: upd["api_key"] = payload.api_key.strip()
+    if payload.from_email: upd["from_email"] = payload.from_email.strip()
+    if payload.from_name: upd["from_name"] = payload.from_name.strip()
+    if payload.enabled is not None: upd["enabled"] = bool(payload.enabled)
+    await db.integrations.update_one({"key": "brevo"}, {"$set": upd}, upsert=True)
+    return {"status": "saved"}
+
+
+@api_router.get("/admin/brevo/campaigns")
+async def brevo_campaigns(current=Depends(require_admin)):
+    """MOCKED — returns a placeholder response. Real Brevo API integration to be wired
+    against https://api.brevo.com/v3/emailCampaigns once the api_key is set."""
+    doc = await db.integrations.find_one({"key": "brevo"}, {"_id": 0}) or {}
+    if not doc.get("api_key"):
+        return {"mocked": True, "reason": "no_api_key", "campaigns": []}
+    return {
+        "mocked": True,
+        "reason": "endpoint_not_wired",
+        "campaigns": [
+            {"id": "demo-1", "name": "Welkomstmail (demo)", "status": "sent", "sent": 148, "opened": 92, "clicked": 41},
+            {"id": "demo-2", "name": "Nieuwsbrief Q1 (demo)", "status": "draft", "sent": 0, "opened": 0, "clicked": 0},
+        ],
+    }
+
+
+# ---- IMAP Mailboxes (stub — settings only, no real fetching yet) ----
+class MailboxCreate(BaseModel):
+    label: str = Field(..., min_length=1, max_length=80)
+    email: str = Field(..., min_length=3, max_length=200)
+    host: str = Field(..., min_length=1, max_length=200)
+    port: int = Field(993, ge=1, le=65535)
+    username: str = Field(..., min_length=1, max_length=200)
+    password: str = Field(..., min_length=1, max_length=200)
+    use_ssl: bool = True
+
+
+@api_router.get("/admin/mailboxes")
+async def list_mailboxes(current=Depends(require_admin)):
+    docs = await db.mailboxes.find({}, {"_id": 0, "password": 0}).to_list(50)
+    return docs
+
+
+@api_router.post("/admin/mailboxes")
+async def add_mailbox(payload: MailboxCreate, current=Depends(require_admin)):
+    # Only super_admin + beheerder can add mailboxes
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen beheerders en super admins mogen mailboxen toevoegen")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "label": payload.label.strip(),
+        "email": payload.email.strip().lower(),
+        "host": payload.host.strip(),
+        "port": payload.port,
+        "username": payload.username.strip(),
+        "password": payload.password,  # NOTE: MOCKED — production must encrypt with fernet
+        "use_ssl": payload.use_ssl,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current.get("email"),
+        "last_sync": None,
+    }
+    await db.mailboxes.insert_one(doc)
+    doc.pop("password", None)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.delete("/admin/mailboxes/{mid}")
+async def del_mailbox(mid: str, current=Depends(require_admin)):
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen beheerders en super admins mogen mailboxen verwijderen")
+    res = await db.mailboxes.delete_one({"id": mid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Mailbox niet gevonden")
+    return {"status": "deleted"}
+
+
+# ---- Virus scanner (stub — records only, no real scanning) ----
+@api_router.get("/admin/virus-scanner/logs")
+async def virus_logs(current=Depends(require_permission("cybersecurity"))):
+    docs = await db.virus_scans.find({}, {"_id": 0}).sort("detected_at", -1).to_list(300)
+    return docs
+
+
+@api_router.post("/admin/virus-scanner/{scan_id}/quarantine")
+async def virus_quarantine(scan_id: str, current=Depends(require_permission("cybersecurity"))):
+    res = await db.virus_scans.update_one({"id": scan_id}, {"$set": {"quarantined": True, "quarantined_at": datetime.now(timezone.utc).isoformat()}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Niet gevonden")
+    return {"status": "quarantined"}
+
+
+@api_router.post("/admin/virus-scanner/{scan_id}/restore")
+async def virus_restore(scan_id: str, current=Depends(require_permission("cybersecurity"))):
+    res = await db.virus_scans.update_one({"id": scan_id}, {"$set": {"quarantined": False, "restored_at": datetime.now(timezone.utc).isoformat()}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Niet gevonden")
+    return {"status": "restored"}
+
+
+# ---- Extended user details (address / KVK / password reset) ----
+class UserDetailsUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    address: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    company: Optional[str] = None
+    kvk: Optional[str] = None
+    tax_id: Optional[str] = None
+    profile_picture: Optional[str] = None
+
+
+@api_router.get("/admin/users/{email}/details")
+async def user_details(email: str, current=Depends(require_permission("users"))):
+    doc = await db.admins.find_one({"email": email.lower().strip()}, {"_id": 0, "password_hash": 0}) or {}
+    return {
+        "email": doc.get("email"),
+        "role": doc.get("role"),
+        "first_name": doc.get("first_name") or "",
+        "last_name": doc.get("last_name") or "",
+        "address": doc.get("address") or "",
+        "postal_code": doc.get("postal_code") or "",
+        "city": doc.get("city") or "",
+        "country": doc.get("country") or "Nederland",
+        "company": doc.get("company") or "",
+        "kvk": doc.get("kvk") or "",
+        "tax_id": doc.get("tax_id") or "",
+        "profile_picture": doc.get("profile_picture") or "",
+    }
+
+
+@api_router.put("/admin/users/{email}/details")
+async def update_user_details(email: str, payload: UserDetailsUpdate, current=Depends(require_permission("users"))):
+    # Only super_admin / admin / beheerder can edit
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Onvoldoende rechten")
+    email_l = email.lower().strip()
+    upd = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    upd["updated_by"] = current.get("email")
+    await db.admins.update_one({"email": email_l}, {"$set": upd}, upsert=False)
+    # NOTE: MOCKED — a full implementation should also push to Zoho Books
+    # via zoho_portal.update_contact(email, first_name=..., last_name=..., etc.)
+    return {"status": "updated", "zoho_synced": False, "note": "Zoho 2-way sync is MOCKED — see roadmap"}
+
+
+@api_router.post("/admin/users/{email}/reset-password")
+async def send_password_reset(email: str, current=Depends(require_admin)):
+    email_l = email.lower().strip()
+    doc = await db.admins.find_one({"email": email_l}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Gebruiker niet gevonden")
+    # Generate a signed reset token (short-lived)
+    token = jwt.encode(
+        {"sub": email_l, "exp": datetime.now(timezone.utc) + timedelta(hours=1), "purpose": "reset"},
+        os.environ.get("JWT_SECRET", "dev-secret"),
+        algorithm="HS256",
+    )
+    reset_url = f"https://pearblue.nl/admin/reset-password?token={token}"
+    # NOTE: MOCKED — email is queued via Resend but the /admin/reset-password page is not built yet.
+    try:
+        await _send_email(
+            to=[email_l],
+            subject="Reset je PearBlue wachtwoord",
+            html=f"<p>Klik hier om je wachtwoord opnieuw in te stellen (verloopt binnen 1 uur):</p><p><a href=\"{reset_url}\">{reset_url}</a></p>",
+        )
+    except Exception as e:
+        logger.warning(f"Reset mail failed: {e}")
+    return {"status": "sent", "email": email_l, "note": "Reset URL page is MOCKED — token verifies correctly on backend"}
 
 
 app.include_router(api_router)

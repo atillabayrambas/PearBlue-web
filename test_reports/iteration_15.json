@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 15 backend + frontend tests. All 16 pytest cases pass (test_iteration15.py). Frontend verified: /prijslijst — 'Product-/dienstdetail paginastructuur' row REMOVED; 'Mailbox-integratie (IMAP) €50 one-off' present in Advanced; 'Adressen & verzending (Standaard incl. — uitgebreid +€10)' present in Ecom; deep-link /prijslijst?tab=cyber activates cyber tab (border-pear-500). Calculator opens as modal with 3 columns pricing-calc-col-oneoff/monthly/hourly + pricing-calc-save-info tooltip + feedback-widget-calculator inline. /over-ons (NL) shows all 9 values (Innovatief, Veilig, Betaalbaar, Persoonlijk, Transparant, Toekomstgericht, Fris & Fruitig, Duurzaam, Kwaliteit). /diensten: services-cta-ict/cyber + services-pricelist-ict/cyber present with correct hrefs. Footer NewsletterForm renders (footer-newsletter), submitting a valid email returns 200 and shows footer-newsletter-done, NO captcha. Admin login: cms-nav-changelog REMOVED, cms-sidebar-changelog-link (sidebar footer) still present; cms-nav-mailboxes + cms-nav-brevo present; cms-priority-stack renders. /admin/mailboxes: cms-mailboxes + mailbox-add-btn + mailbox-form all present. /admin/mailmarketing: cms-brevo + brevo-settings-form + brevo-newsletter-stats + brevo-campaigns all present (campaigns MOCKED). Cybersecurity → cs-open-virus-scanner button navigates to /admin/virusscanner with cms-virusscanner + virus-logs-table. Feedback rows show user-avatar element per row.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Public footer + CMS sidebar footer", "issues": ["Footer version bar still hardcoded 'v0.7-Beta' (Footer.jsx line 107) while backend GET /api/changelog current='0.7.1-Beta' and top notification bar shows 'v0.7.1-Beta'. Sidebar footer in AdminDashboard likewise says 'PearBlue CMS · v0.7-Beta · 2026'. Consider reading version from /api/changelog or a shared constant."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [
+    "OPTIONAL/MINOR: Update Footer.jsx and AdminSidebar footer to use dynamic version (0.7.1-Beta) from /api/changelog.current instead of hardcoded 'v0.7-Beta'. Top CMS version bar already shows the correct 'v0.7.1-Beta'.",
+    "OPTIONAL/NAMING: Services.jsx uses svc.key='media' for the website service, so the rendered attribute is services-cta-media / services-pricelist-media (not services-cta-web / services-pricelist-web as the review request wording implies). The href fallback still correctly points to /prijslijst?tab=web, so functionality is fine — only the testid naming diverges from the spec text. Consider renaming svc.key from 'media' → 'web' for consistency with the spec, or update the spec."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 2061 lines (was 1764 in iter14). It has crossed the 700-line threshold significantly — strongly recommend splitting into modules: routers/priority.py, routers/newsletter.py, routers/brevo.py, routers/mailboxes.py, routers/virus_scanner.py, routers/user_details.py.",
+    "IMAP mailbox password is stored in plain-text (`payload.password` directly persisted). NOTE in code says 'production must encrypt with fernet' — flag as security TODO before real IMAP integration lands.",
+    "Brevo api_key is likewise stored plaintext in db.integrations. Same fernet/vault TODO applies.",
+    "Reset-password endpoint calls _send_email but the /admin/reset-password page does not exist yet (per code comment). Ensure token verification endpoint + UI page are tracked in roadmap."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration15.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% of targeted iteration-15 UI checks"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026!",
+  "seed_data_creation": "Newsletter subscribers with TEST_newsletter_* prefix; test mailbox 'TEST_Support' created & deleted; Brevo settings updated to api_key=xkeysib-test-abc123 (from_email=communication-noreply@pearblue.nl, enabled=true). Admin user details updated to address='Havenstraat 1', kvk='87201607'.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 15 endpoints all working: /api/admin/priority-alerts (returns {counts:{Major,P1,P2}, latest}), /api/newsletter/subscribe (public, idempotent, 400 on invalid), /api/admin/newsletter/stats, /api/admin/brevo/{settings,campaigns} (settings PUT persists api_key but GET never exposes it, campaigns always mocked), /api/admin/mailboxes CRUD (password never echoed, RBAC via role set), /api/admin/virus-scanner/{logs,{id}/quarantine,{id}/restore} (quarantine/restore return 404 for missing id), /api/admin/users/{email}/{details GET/PUT, reset-password POST} (Zoho MOCKED → zoho_synced:false). Changelog now has 8 entries with current='0.7.1-Beta'. Frontend testids to remember: pricing-calc-col-{oneoff,monthly,hourly}, pricing-calc-save-info, feedback-widget-calculator, footer-newsletter, footer-newsletter-done, cms-nav-{mailboxes,brevo}, cms-priority-stack, cms-sidebar-changelog-link, cms-mailboxes, mailbox-{add-btn,form}, cms-brevo, brevo-{settings-form,newsletter-stats,campaigns}, cms-virusscanner, virus-logs-table, cs-open-virus-scanner, services-cta-{media,ict,cyber} (NOT web — see action_items), services-pricelist-{media,ict,cyber}, user-avatar. Only 2 role-assignable admins seeded (super_admin admin@pearblue.nl + beheer@multibay.eu), so 403 RBAC path for mailbox add/delete was intentionally skipped per iteration 15 note."
+}

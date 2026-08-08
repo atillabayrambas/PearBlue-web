@@ -42,8 +42,9 @@ const AdminSidebar = () => {
     { to: "/admin/feedback", label: "Feedback", icon: MessageSquare, testid: "cms-nav-feedback", badge: counters.feedback },
     { to: "/admin/cybersecurity", label: "Cybersecurity", icon: ShieldAlert, testid: "cms-nav-cybersecurity", badge: counters.cybersecurity },
     { to: "/admin/users", label: "Gebruikers & rollen", icon: Users, testid: "cms-nav-users" },
+    { to: "/admin/mailboxes", label: "Mailboxen (IMAP)", icon: Inbox, testid: "cms-nav-mailboxes" },
+    { to: "/admin/mailmarketing", label: "Mailmarketing (Brevo)", icon: Send, testid: "cms-nav-brevo" },
     { to: "/admin/scripts", label: "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
-    { to: "/admin/changelog", label: "Changelogs", icon: Sparkles, testid: "cms-nav-changelog" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
   ];
   return (
@@ -92,7 +93,94 @@ const AdminSidebar = () => {
   );
 };
 
-// CMS-only alert bar when there's a fresh version. Dismissible; auto-hides after 31 days.
+// Avatar helper — pear-themed initials fallback when no profile picture is set.
+const Avatar = ({ name, email, profilePicture, size = 32 }) => {
+  const label = (name || email || "?").trim();
+  const initials = label.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "?";
+  // Deterministic color from name
+  const hash = [...label].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
+  const hue = Math.abs(hash) % 360;
+  return profilePicture ? (
+    <img src={profilePicture} alt={label} width={size} height={size} className="rounded-full object-cover" data-testid="user-avatar" />
+  ) : (
+    <div
+      className="rounded-full flex items-center justify-center font-heading font-semibold text-white shadow-sm"
+      style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${hue} 70% 55%), hsl(${(hue + 40) % 360} 65% 45%))`, fontSize: size * 0.4 }}
+      data-testid="user-avatar-initials"
+    >{initials}</div>
+  );
+};
+
+// Turn "chat_support" → "Chat support"; "super_admin" → "Super admin"
+const prettyRole = (r) => (r || "").split("_").map((w) => w ? w[0].toUpperCase() + w.slice(1) : "").join(" ").trim();
+
+// Priority alert balloons stack (above the version bar). Uses localStorage for dismiss + hourly-reappear for P1.
+const PriorityAlerts = () => {
+  const { authHeader } = useAuth();
+  const [alerts, setAlerts] = useState({ counts: { Major: 0, P1: 0, P2: 0 }, latest: {} });
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const load = () => axios.get(`${API}/admin/priority-alerts`, { headers: authHeader() }).then((r) => setAlerts(r.data || {})).catch(() => {});
+    load();
+    const iv = setInterval(load, 60000);
+    // Bump every 60s so hourly re-appearance check works
+    const t = setInterval(() => setTick((x) => x + 1), 60000);
+    return () => { clearInterval(iv); clearInterval(t); };
+    // eslint-disable-next-line
+  }, []);
+
+  const rules = [
+    { key: "Major", label: "Major", color: "bg-red-800 text-white", persist: true, hourly: false },
+    { key: "P1", label: "P1", color: "bg-red-500 text-white", persist: false, hourly: true },
+    { key: "P2", label: "P2", color: "bg-amber-400 text-slate-900", persist: false, hourly: false },
+  ];
+
+  const shouldShow = (level) => {
+    const count = alerts?.counts?.[level] || 0;
+    if (!count) return false;
+    const rule = rules.find((r) => r.key === level);
+    if (rule.persist) return true;
+    const key = `pb_prio_dismissed_${level}`;
+    const dismissed = parseInt(localStorage.getItem(key) || "0", 10);
+    if (!dismissed) return true;
+    if (rule.hourly) {
+      return (Date.now() - dismissed) > 60 * 60 * 1000;
+    }
+    return false;
+  };
+  const dismiss = (level) => {
+    localStorage.setItem(`pb_prio_dismissed_${level}`, String(Date.now()));
+    setTick((x) => x + 1);
+  };
+
+  return (
+    <div className="space-y-2 mb-3" data-testid="cms-priority-stack">
+      {rules.map((r) => (
+        shouldShow(r.key) ? (
+          <div
+            key={r.key}
+            className={`rounded-2xl px-4 py-2.5 text-sm font-medium flex items-center gap-3 shadow-lg ${r.color}`}
+            data-testid={`cms-prio-bar-${r.key.toLowerCase()}`}
+          >
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span className="flex-1">
+              <strong>{r.label}</strong> · {alerts.counts[r.key]} open item{alerts.counts[r.key] > 1 ? "s" : ""}
+              {alerts.latest?.[r.key]?.subject ? ` — ${alerts.latest[r.key].subject}` : ""}
+            </span>
+            <Link to="/admin/messages" className="bg-white/25 hover:bg-white/40 rounded-full px-3 py-1 text-xs" data-testid={`cms-prio-view-${r.key.toLowerCase()}`}>
+              Bekijk
+            </Link>
+            {!r.persist && (
+              <button onClick={() => dismiss(r.key)} className={r.color.includes("text-slate") ? "text-slate-900/70 hover:text-slate-900" : "text-white/80 hover:text-white"} aria-label="Sluiten" data-testid={`cms-prio-close-${r.key.toLowerCase()}`}>
+                <XCircle className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ) : null
+      ))}
+    </div>
+  );
+};
 const VersionAlertBar = ({ currentVersion }) => {
   const key = `pb_cms_ack_${currentVersion}`;
   const [shown, setShown] = useState(false);
@@ -514,9 +602,10 @@ const MessagesAdmin = () => {
                     aria-label="Selecteer"
                     data-testid={`msg-select-${m.id || i}`}
                   />
+                  <Avatar name={m.name} email={m.email} size={36} />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-strong truncate">
-                      {m.name} <span className="text-muted-fg font-normal">— {m.email}</span>
+                      {m.name} <span className="text-muted-fg font-normal text-xs">— {m.email}</span>
                       {m.spam && <span className="ml-2 text-[10px] uppercase text-red-500 bg-red-100 rounded-full px-2 py-0.5">Spam</span>}
                     </p>
                     <p className="text-xs text-muted-fg truncate">{m.subject || "(geen onderwerp)"} · {new Date(m.created_at).toLocaleString("nl-NL")}</p>
@@ -555,7 +644,7 @@ const MessagesAdmin = () => {
                     >
                       <option value="">— Niet toegewezen —</option>
                       {assignees.map((a) => (
-                        <option key={a.email} value={a.email}>{a.display_name || a.email} · {a.role}</option>
+                        <option key={a.email} value={a.email}>{a.display_name || a.email} · {prettyRole(a.role)}</option>
                       ))}
                       {user?.email && !assignees.find((a) => a.email === user.email) && (
                         <option value={user.email}>{user.email} · (mij)</option>
@@ -1199,12 +1288,17 @@ const CybersecurityAdmin = () => {
 
   return (
     <div className="space-y-6" data-testid="cms-cybersecurity">
-      <div>
-        <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
-          <ShieldAlert className="h-6 w-6 text-pear-500" />
-          Cybersecurity
-        </h2>
-        <p className="text-sm text-muted-fg mt-1">Verzoeken die door de rate-limiter, spam-filter of honeypot zijn geblokkeerd. Je kunt handmatig ont- of herblokkeren.</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+            <ShieldAlert className="h-6 w-6 text-pear-500" />
+            Cybersecurity
+          </h2>
+          <p className="text-sm text-muted-fg mt-1">Verzoeken die door de rate-limiter, spam-filter of honeypot zijn geblokkeerd. Je kunt handmatig ont- of herblokkeren.</p>
+        </div>
+        <Link to="/admin/virusscanner" className="btn-secondary" data-testid="cs-open-virus-scanner">
+          <ShieldX className="h-4 w-4" /> Virusscanner openen
+        </Link>
       </div>
 
       {/* Stats + chart */}
@@ -1296,7 +1390,7 @@ const CybersecurityAdmin = () => {
       {/* Blocks table */}
       <div className="rounded-2xl border border-app overflow-hidden surface" data-testid="cs-blocks-table">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-pear-50/50 dark:bg-pear-500/5 text-left">
               <tr>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wie (IP · Land)</th>
@@ -1305,7 +1399,7 @@ const CybersecurityAdmin = () => {
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Hoe (OS · Browser · Device)</th>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Wanneer</th>
                 <th className="px-3 py-2 font-semibold text-xs uppercase tracking-widest text-muted-fg">Status</th>
-                <th className="px-3 py-2" />
+                <th className="px-3 py-2 sticky right-0 bg-pear-50/50 dark:bg-pear-500/5" />
               </tr>
             </thead>
             <tbody>
@@ -1335,7 +1429,7 @@ const CybersecurityAdmin = () => {
                       <span className="text-xs text-red-500 font-semibold">Geblokkeerd</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 bg-app">
                     {b.unblocked ? (
                       <button
                         onClick={() => toggle(b, false)}
@@ -1451,7 +1545,9 @@ const FeedbackAdmin = () => {
                   return (
                     <div key={f.id} className="p-4 border-b border-app/50 last:border-0" data-testid={`fb-row-${f.id}`}>
                       <div className="flex flex-wrap items-start gap-3">
-                        <div className="flex-1 min-w-0">
+                    <div className="flex gap-3 items-start flex-1 min-w-0">
+                      <Avatar name={f.email || "Anon"} email={f.email} size={36} />
+                      <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`text-[10px] uppercase font-bold rounded-full px-2 py-0.5 ${st.color}`}>{st.label}</span>
                             {f.rating && <span className="text-xs text-pear-500">{"★".repeat(f.rating)}</span>}
@@ -1461,6 +1557,7 @@ const FeedbackAdmin = () => {
                           <p className="text-sm text-strong mt-1 whitespace-pre-wrap">{f.message}</p>
                           {f.assigned_to && <p className="text-[10px] text-muted-fg mt-1">Toegewezen aan: {f.assigned_to}</p>}
                         </div>
+                    </div>
                         <div className="flex flex-col gap-1.5 shrink-0 min-w-[180px]">
                           <select
                             value={f.status || "new"}
@@ -1478,9 +1575,10 @@ const FeedbackAdmin = () => {
                           >
                             <option value="">— Niet toegewezen —</option>
                             {assignees.map((a) => (
-                              <option key={a.email} value={a.email}>{a.display_name || a.email} · {a.role}</option>
+                              <option key={a.email} value={a.email}>
+                                {a.display_name || a.email} · {prettyRole(a.role)}
+                              </option>
                             ))}
-                            {/* Include current user if not in list */}
                             {user?.email && !assignees.find((a) => a.email === user.email) && (
                               <option value={user.email}>{user.email} · (mij)</option>
                             )}
@@ -1534,6 +1632,315 @@ const FeedbackAdmin = () => {
 };
 
 // ------------------------------------------------------------
+// IMAP Mailboxes CMS — connect and switch inboxes
+// (Real IMAP fetching is MOCKED — settings storage is real.)
+// ------------------------------------------------------------
+const MailboxesAdmin = () => {
+  const { authHeader, user } = useAuth();
+  const [items, setItems] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true });
+  const [selectedId, setSelectedId] = useState(null);
+  const canManage = ["super_admin", "admin", "beheerder"].includes(user?.role);
+
+  const load = async () => {
+    try { const r = await axios.get(`${API}/admin/mailboxes`, { headers: authHeader() }); setItems(r.data || []); }
+    catch { toast.error("Kon mailboxen niet laden"); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const add = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await axios.post(`${API}/admin/mailboxes`, form, { headers: authHeader() });
+      toast.success("Mailbox toegevoegd");
+      setItems([...items, r.data]);
+      setForm({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true });
+      setShowForm(false);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Toevoegen mislukt"); }
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Deze mailbox verwijderen?")) return;
+    try { await axios.delete(`${API}/admin/mailboxes/${id}`, { headers: authHeader() }); toast.success("Verwijderd"); load(); }
+    catch { toast.error("Verwijderen mislukt"); }
+  };
+
+  return (
+    <div data-testid="cms-mailboxes">
+      <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+        <Inbox className="h-6 w-6 text-pear-500" /> Mailboxen (IMAP)
+      </h2>
+      <p className="text-sm text-muted-fg mt-1 mb-4">
+        Verbind je IMAP-mailboxen zodat ze samen met de Berichten-CMS lopen. Actuele bericht-synchronisatie is <strong>MOCKED</strong> — instellingen worden wel opgeslagen. Alleen beheerders en super admins kunnen mailboxen toevoegen of verwijderen.
+      </p>
+
+      {items.length > 1 && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap" data-testid="mailbox-switcher">
+          <span className="text-xs uppercase tracking-widest text-muted-fg">Actieve mailbox:</span>
+          {items.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelectedId(m.id)}
+              className={`text-xs px-3 py-1.5 rounded-full border ${selectedId === m.id ? "bg-pear-500 text-white border-pear-500" : "border-app hover:border-pear-500"}`}
+              data-testid={`mailbox-switch-${m.id}`}
+            >{m.label} <span className="text-muted-fg">({m.email})</span></button>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-app overflow-hidden surface mb-4">
+        {items.length === 0 ? (
+          <div className="p-8 text-center text-muted-fg text-sm">Nog geen mailboxen gekoppeld.</div>
+        ) : (
+          <ul className="divide-y divide-app">
+            {items.map((m) => (
+              <li key={m.id} className="p-4 flex items-center justify-between gap-4" data-testid={`mailbox-row-${m.id}`}>
+                <div className="min-w-0">
+                  <p className="font-semibold text-strong">{m.label}</p>
+                  <p className="text-xs text-muted-fg font-mono">{m.email} · {m.host}:{m.port} {m.use_ssl && "(SSL)"}</p>
+                  <p className="text-[10px] text-muted-fg mt-0.5">Laatste sync: {m.last_sync ? new Date(m.last_sync).toLocaleString("nl-NL") : "nooit"}</p>
+                </div>
+                {canManage && (
+                  <button onClick={() => del(m.id)} className="text-red-500 hover:text-red-600 text-xs px-3 py-1 border border-red-200 rounded-full" data-testid={`mailbox-delete-${m.id}`}>
+                    Verwijderen
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {canManage && (
+        <>
+          {!showForm ? (
+            <button onClick={() => setShowForm(true)} className="btn-primary" data-testid="mailbox-add-btn">
+              <Plus className="h-4 w-4" /> Mailbox toevoegen
+            </button>
+          ) : (
+            <form onSubmit={add} className="surface border border-app rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="mailbox-form">
+              <input required placeholder="Label (bv. Support)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-label" />
+              <input required type="email" placeholder="you@pearblue.nl" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-email" />
+              <input required placeholder="IMAP host (imap.provider.com)" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-host" />
+              <input type="number" placeholder="Port" value={form.port} onChange={(e) => setForm({ ...form, port: parseInt(e.target.value, 10) || 993 })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-port" />
+              <input required placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-username" />
+              <input required type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-password" />
+              <label className="flex items-center gap-2 text-xs md:col-span-2">
+                <input type="checkbox" checked={form.use_ssl} onChange={(e) => setForm({ ...form, use_ssl: e.target.checked })} className="accent-pear-500" data-testid="mailbox-input-ssl" />
+                SSL/TLS (aanbevolen)
+              </label>
+              <div className="md:col-span-2 flex gap-2">
+                <button type="submit" className="btn-primary" data-testid="mailbox-submit">Opslaan</button>
+                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary" data-testid="mailbox-cancel">Annuleer</button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
+      <p className="text-[11px] text-muted-fg mt-4">
+        <strong>Note:</strong> IMAP-fetching is momenteel MOCKED. Instellingen worden opgeslagen, maar mails worden nog niet automatisch opgehaald. Voor productie moet <code>python-imaplib</code>/<code>aioimaplib</code> gekoppeld worden + Zoho Desk sync via subject-parsing (regex <code>#TKT-\d+</code>).
+      </p>
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
+// Brevo CMS — settings + campaigns (MOCKED)
+// ------------------------------------------------------------
+const BrevoAdmin = () => {
+  const { authHeader } = useAuth();
+  const [settings, setSettings] = useState({ from_email: "communication-noreply@pearblue.nl", from_name: "PearBlue", enabled: false, api_key_set: false });
+  const [apiKey, setApiKey] = useState("");
+  const [stats, setStats] = useState(null);
+  const [campaigns, setCampaigns] = useState(null);
+
+  const load = async () => {
+    try {
+      const [s, st, c] = await Promise.all([
+        axios.get(`${API}/admin/brevo/settings`, { headers: authHeader() }),
+        axios.get(`${API}/admin/newsletter/stats`, { headers: authHeader() }).catch(() => ({ data: null })),
+        axios.get(`${API}/admin/brevo/campaigns`, { headers: authHeader() }).catch(() => ({ data: null })),
+      ]);
+      setSettings(s.data || settings);
+      setStats(st.data);
+      setCampaigns(c.data);
+    } catch { /* ignore */ }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const save = async (e) => {
+    e.preventDefault();
+    try {
+      const body = { from_email: settings.from_email, from_name: settings.from_name, enabled: settings.enabled };
+      if (apiKey) body.api_key = apiKey;
+      await axios.put(`${API}/admin/brevo/settings`, body, { headers: authHeader() });
+      toast.success("Brevo-instellingen opgeslagen");
+      setApiKey("");
+      load();
+    } catch { toast.error("Opslaan mislukt"); }
+  };
+
+  const maxDaily = stats?.daily?.reduce((m, d) => Math.max(m, d.count), 1) || 1;
+  return (
+    <div data-testid="cms-brevo">
+      <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+        <Send className="h-6 w-6 text-pear-500" /> Mailmarketing (Brevo)
+      </h2>
+      <p className="text-sm text-muted-fg mt-1 mb-4">
+        Beheer je nieuwsbrief-lijsten en campagnes. Vul hieronder je Brevo API-sleutel in — de rest van deze pagina wordt actief zodra de sleutel is opgeslagen. <strong>Verzendingen zijn momenteel MOCKED</strong>.
+      </p>
+
+      <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-3 mb-6" data-testid="brevo-settings-form">
+        <div>
+          <label className="text-xs uppercase tracking-widest text-muted-fg">Brevo API-sleutel {settings.api_key_set && <span className="text-emerald-600 ml-2">✓ geconfigureerd</span>}</label>
+          <input
+            type="password"
+            placeholder={settings.api_key_set ? "•••••• (leeg laten om huidige te behouden)" : "xkeysib-xxxxxxxxxxxxx"}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-app bg-app px-3 py-2 text-sm font-mono"
+            data-testid="brevo-api-key"
+          />
+          <p className="text-[11px] text-muted-fg mt-1">Haal je API-sleutel op via app.brevo.com → SMTP &amp; API → API Keys. Alleen v3 keys.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={settings.from_email} onChange={(e) => setSettings({ ...settings, from_email: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" placeholder="Verzend-e-mail" data-testid="brevo-from-email" />
+          <input value={settings.from_name} onChange={(e) => setSettings({ ...settings, from_name: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" placeholder="Verzendnaam" data-testid="brevo-from-name" />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={settings.enabled} onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })} className="accent-pear-500" data-testid="brevo-enabled" />
+          Mailmarketing inschakelen
+        </label>
+        <button type="submit" className="btn-primary" data-testid="brevo-save">Opslaan</button>
+      </form>
+
+      {stats && (
+        <div className="rounded-2xl border border-app p-5 surface mb-6" data-testid="brevo-newsletter-stats">
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <div className="text-xs uppercase tracking-widest text-muted-fg">Aanmeldingen (totaal)</div>
+              <div className="font-heading text-3xl font-medium text-strong" data-testid="newsletter-total">{stats.total}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-widest text-muted-fg">Laatste 30 dagen</div>
+              <div className="font-heading text-3xl font-medium text-strong">{stats.last_30d}</div>
+            </div>
+          </div>
+          {stats.daily?.length > 0 && (
+            <div className="flex items-end gap-1.5 h-24">
+              {stats.daily.map((d) => (
+                <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="w-full bg-pear-500 rounded-t" style={{ height: `${(d.count / maxDaily) * 100}%`, minHeight: d.count > 0 ? "2px" : "0" }} title={`${d.day}: ${d.count}`} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {campaigns && (
+        <div className="rounded-2xl border border-app p-5 surface" data-testid="brevo-campaigns">
+          <div className="text-xs uppercase tracking-widest text-muted-fg mb-3">Campagnes (MOCKED: {campaigns.reason})</div>
+          {(campaigns.campaigns || []).length === 0 ? (
+            <div className="text-sm text-muted-fg">Nog geen campagnes.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-muted-fg">
+                <tr><th className="py-1">Naam</th><th>Status</th><th className="text-right">Verzonden</th><th className="text-right">Geopend</th><th className="text-right">Klikken</th></tr>
+              </thead>
+              <tbody>
+                {(campaigns.campaigns || []).map((c) => (
+                  <tr key={c.id} className="border-t border-app/40">
+                    <td className="py-2">{c.name}</td>
+                    <td><span className="text-xs rounded-full px-2 py-0.5 bg-slate-100 text-slate-600">{c.status}</span></td>
+                    <td className="text-right font-mono">{c.sent}</td>
+                    <td className="text-right font-mono">{c.opened}</td>
+                    <td className="text-right font-mono">{c.clicked}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
+// Virus scanner tab (MOCKED — same layout as production, but no real scan engine yet)
+// ------------------------------------------------------------
+const VirusScannerAdmin = () => {
+  const { authHeader } = useAuth();
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const load = async () => {
+    setLoading(true);
+    try { const r = await axios.get(`${API}/admin/virus-scanner/logs`, { headers: authHeader() }); setLogs(r.data || []); }
+    catch { toast.error("Kon virus-logs niet laden"); } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  const act = async (id, action) => {
+    try {
+      await axios.post(`${API}/admin/virus-scanner/${id}/${action}`, {}, { headers: authHeader() });
+      toast.success(action === "quarantine" ? "In quarantaine gezet" : "Teruggezet");
+      load();
+    } catch { toast.error("Actie mislukt"); }
+  };
+  return (
+    <div data-testid="cms-virusscanner">
+      <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+        <ShieldX className="h-6 w-6 text-red-500" /> Virusscanner
+      </h2>
+      <p className="text-sm text-muted-fg mt-1 mb-6">
+        Overzicht van gedetecteerde bedreigingen. In quarantaine gezette items blijven in de lijst en kunnen worden teruggezet. <strong>MOCKED:</strong> deze module is UI-only tot een externe scan-engine (ClamAV / VirusTotal API) wordt gekoppeld.
+      </p>
+      <div className="rounded-2xl border border-app overflow-hidden surface" data-testid="virus-logs-table">
+        {loading ? <div className="p-8 text-center text-muted-fg">Laden…</div> :
+          logs.length === 0 ? (
+            <div className="p-10 text-center text-muted-fg text-sm">
+              Nog geen detecties. Dit is verwacht — de scanner is nog niet actief.
+              <div className="mt-4 text-[11px]">Roadmap: ClamAV/EDR-integratie + automatische mail-alert bij ernstige detecties + automatische quarantaine bij CVSS ≥ 7.</div>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-red-50 dark:bg-red-500/10 text-left">
+                <tr>
+                  <th className="px-3 py-2 text-xs uppercase tracking-widest text-muted-fg">Bestand/Bron</th>
+                  <th className="px-3 py-2 text-xs uppercase tracking-widest text-muted-fg">Bedreiging</th>
+                  <th className="px-3 py-2 text-xs uppercase tracking-widest text-muted-fg">Severity</th>
+                  <th className="px-3 py-2 text-xs uppercase tracking-widest text-muted-fg">Gedetecteerd</th>
+                  <th className="px-3 py-2 text-xs uppercase tracking-widest text-muted-fg">Status</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((l) => (
+                  <tr key={l.id} className="border-t border-app/50">
+                    <td className="px-3 py-2 text-xs font-mono">{l.source || l.filename}</td>
+                    <td className="px-3 py-2">{l.threat}</td>
+                    <td className="px-3 py-2 text-xs">{l.severity}</td>
+                    <td className="px-3 py-2 text-xs text-muted-fg">{new Date(l.detected_at).toLocaleString("nl-NL")}</td>
+                    <td className="px-3 py-2 text-xs">{l.quarantined ? "In quarantaine" : "Actief"}</td>
+                    <td className="px-3 py-2 text-right">
+                      {l.quarantined
+                        ? <button onClick={() => act(l.id, "restore")} className="text-xs px-2.5 py-1 rounded-full border border-emerald-200 text-emerald-600 hover:bg-emerald-50">Terugzetten</button>
+                        : <button onClick={() => act(l.id, "quarantine")} className="text-xs px-2.5 py-1 rounded-full border border-red-200 text-red-500 hover:bg-red-50">In quarantaine</button>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        }
+      </div>
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
 // Changelog admin — reads public /api/changelog
 // ------------------------------------------------------------
 const ChangelogAdmin = () => {
@@ -1579,6 +1986,7 @@ const AdminLayout = ({ children }) => {
       <div className="flex flex-col lg:flex-row gap-8">
         <AdminSidebar />
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex-1 min-w-0">
+          <PriorityAlerts />
           <VersionAlertBar currentVersion={currentVersion} />
           {children}
         </motion.div>
@@ -1602,6 +2010,9 @@ export default function AdminDashboard() {
           <Route path="messages" element={<MessagesAdmin />} />
           <Route path="feedback" element={<FeedbackAdmin />} />
           <Route path="cybersecurity" element={<CybersecurityAdmin />} />
+          <Route path="virusscanner" element={<VirusScannerAdmin />} />
+          <Route path="mailboxes" element={<MailboxesAdmin />} />
+          <Route path="mailmarketing" element={<BrevoAdmin />} />
           <Route path="changelog" element={<ChangelogAdmin />} />
         </Routes>
       </AdminLayout>
