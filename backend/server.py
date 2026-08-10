@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, UploadFile, File, Query
 from fastapi.responses import Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -634,11 +634,21 @@ async def delete_project(project_id: str, current=Depends(require_admin)):
 
 # ---- Chat stats (admin) ----
 @api_router.get("/chat/stats")
-async def chat_stats(days: int = 30, current=Depends(require_admin)):
+async def chat_stats(days: int = 30, from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None, current=Depends(require_admin)):
     from datetime import date
-    days = max(1, min(days, 90))
+    # Support custom range via ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    days = max(1, min(days, 1825))  # up to 5 years
     now = datetime.now(timezone.utc)
-    since = now - timedelta(days=days - 1)
+    if from_ and to:
+        try:
+            start = datetime.fromisoformat(from_).replace(tzinfo=timezone.utc)
+            end = datetime.fromisoformat(to).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+            days = max(1, (end.date() - start.date()).days + 1)
+            since = start
+        except Exception:
+            since = now - timedelta(days=days - 1)
+    else:
+        since = now - timedelta(days=days - 1)
     cutoff = since.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     cursor = db.chat_messages.find(
         {"created_at": {"$gte": cutoff}},
@@ -1736,6 +1746,73 @@ async def delete_contact_attachment(msg_id: str, attach_id: str, current=Depends
     return {"status": "deleted"}
 
 
+# ---- Inline attachment preview (streams the raw bytes without a "download" filename header) ----
+@api_router.get("/admin/contact/{msg_id}/attachments/{attach_id}/preview")
+async def preview_contact_attachment(msg_id: str, attach_id: str, current=Depends(require_permission("messages"))):
+    doc = await db.contact_messages.find_one({"id": msg_id}, {"attachments": 1})
+    if not doc:
+        raise HTTPException(404, "Message not found")
+    att = next((a for a in (doc.get("attachments") or []) if a.get("id") == attach_id), None)
+    if not att or not att.get("data_b64"):
+        raise HTTPException(404, "Attachment not found")
+    try:
+        raw = base64.b64decode(att["data_b64"])
+    except Exception:
+        raise HTTPException(500, "Attachment corrupt")
+    return Response(
+        content=raw,
+        media_type=att.get("mime") or "application/octet-stream",
+        headers={"Content-Disposition": f"inline; filename=\"{att.get('name', 'file')}\""},
+    )
+
+
+# ---- Reply templates (CRUD) — used by the Ticket Threads CMS quick-insert dropdown ----
+class ReplyTemplate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str = Field(..., min_length=1, max_length=120)
+    body: str = Field(..., min_length=1, max_length=5000)
+    lang: Optional[str] = "nl"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: Optional[str] = None
+
+
+class ReplyTemplateCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    body: str = Field(..., min_length=1, max_length=5000)
+    lang: Optional[str] = "nl"
+
+
+@api_router.get("/admin/reply-templates")
+async def list_reply_templates(current=Depends(require_permission("messages"))):
+    items = await db.reply_templates.find({}, {"_id": 0}).sort("title", 1).to_list(200)
+    return items
+
+
+@api_router.post("/admin/reply-templates", response_model=ReplyTemplate)
+async def create_reply_template(payload: ReplyTemplateCreate, current=Depends(require_permission("messages"))):
+    tpl = ReplyTemplate(**payload.model_dump(), created_by=current.get("email"))
+    await db.reply_templates.insert_one(tpl.model_dump(mode="json"))
+    return tpl
+
+
+@api_router.patch("/admin/reply-templates/{tid}")
+async def update_reply_template(tid: str, payload: ReplyTemplateCreate, current=Depends(require_permission("messages"))):
+    upd = payload.model_dump()
+    res = await db.reply_templates.update_one({"id": tid}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Template not found")
+    return {"status": "updated"}
+
+
+@api_router.delete("/admin/reply-templates/{tid}")
+async def delete_reply_template(tid: str, current=Depends(require_permission("messages"))):
+    res = await db.reply_templates.delete_one({"id": tid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Template not found")
+    return {"status": "deleted"}
+
+
+
 
 # ---- Bulk actions for messages ----
 class BulkIds(BaseModel):
@@ -2566,7 +2643,7 @@ async def submit_chat_rating(payload: ChatRating, request: Request):
 
 @api_router.get("/admin/chat/ratings")
 async def chat_ratings_stats(days: int = 30, current=Depends(require_admin)):
-    start = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+    start = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 1825)))
     docs = await db.chat_ratings.find(
         {"created_at": {"$gte": start.isoformat()}}, {"_id": 0}
     ).sort("created_at", -1).to_list(1000)

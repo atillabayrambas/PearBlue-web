@@ -21,7 +21,17 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 21 (this session, v0.5.7-Beta) — Mobile blockers batch A
+### Feb 2026 — Iteration 22 (this session, v0.5.8-Beta) — Batch B (CMS home, templates, attachment preview)
+- **AI dashboard is nu de CMS-startpagina** (`/admin` → `AnalyticsAdmin`). Portfolio verhuisd naar `/admin/portfolio`.
+- **Uitgebreide periode-selectie** in AI dashboard: 1D (default) / 7D / 30D / 90D / 6M / 1J / 2J / 3J / 5J + **Aangepast** met van/tot datumkiezer. Backend `/api/chat/stats` steunt nu `?from=YYYY-MM-DD&to=YYYY-MM-DD` en `days` tot 1825 (5 jaar). Zelfde geldt voor `/api/admin/chat/ratings`.
+- **CMS auto-refresh 15s** — AnalyticsAdmin en MessagesAdmin herladen automatisch elke 15s zodat cijfers en berichten live blijven.
+- **Antwoord-templates CRUD** — nieuw `/api/admin/reply-templates` GET/POST/PATCH/DELETE (RBAC via `messages` permission). Frontend: `ReplyTemplatesDropdown` in het antwoord-panel toont opgeslagen templates; `TemplatesManager` modal biedt volledige CRUD (titel + tekst). Snel-insert dropdown voegt template body toe aan reply-textarea.
+- **Bijlage-preview** — nieuwe `AttachmentsGrid` (thumbnail-tegel per bijlage, via blob URL) + `AttachmentPreview` modal (fullscreen `<img>` voor images, `<iframe>` voor PDF). Nieuw backend endpoint `GET /api/admin/contact/{id}/attachments/{aid}/preview` levert bytes met `Content-Disposition: inline`.
+- **CMS-taal (partieel)** — sidebar labels, "Signed in as" / "Ingelogd als", "Back to site" / "Terug naar site", "Log out" / "Uitloggen" en AI dashboard heading volgen nu `useLang()`. Diepere pagina-bodies (thread, portfolio-formulier) blijven Nederlands — volgende iteratie.
+- **CMS sidebar** — toont e-mailadres in kleiner grijs onder display name (data-testid `cms-sidebar-email`).
+- **Testing**: pytest 13/13 nieuw + 13/13 regressie iter20 = 26/26 groen (`/app/test_reports/iteration_22.json`). Frontend acceptatie-criteria alle geverifieerd.
+
+### Feb 2026 — Iteration 21 (v0.5.7-Beta) — Mobile blockers batch A
 - **Global `.pb-modal` utility** (in `index.css`) — mobile-first bottom-sheet on <640px, centered on ≥640px, capped at `100dvh` minus safe-area, internal flex+`.pb-modal-body` scroll pattern. Solid theme-aware background via `--pb-bg-solid` variable. Removes legacy `bg-white dark:bg-slate-900` + broken `var(--pb-bg-solid, white)` inline overrides across CalculatorModal, QuoteFromCalculator, User details editor and Feedback notes modal.
 - **Body scroll lock** — new `hooks/useBodyScrollLock.js` adds `body.pb-lock-scroll`. Prevents underlying page from scrolling when Calculator modal or CMS mobile sidebar is open.
 - **Chatbot creative repositioning** — via CSS, when any modal/drawer is open the floating chatbot launcher fades out and slides down on mobile (opacity 0 + translateY 120%) so it never covers the "Request quote" CTA. On desktop it slides 4rem left for the same reason.

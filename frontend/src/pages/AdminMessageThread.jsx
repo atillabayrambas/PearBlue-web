@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   ArrowLeft, Loader2, AlertCircle, Send, MessageCircle, Paperclip, XCircle,
-  Download, Trash2, Lock,
+  Download, Trash2, Lock, FileText, Image as ImageIcon, Plus, Edit2, ChevronDown,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { Avatar } from "../components/Avatar";
@@ -45,6 +45,18 @@ export default function AdminMessageThread() {
   const [uploading, setUploading] = useState(false);
   const [note, setNote] = useState("");
   const fileInput = useRef(null);
+
+  // Reply templates state
+  const [templates, setTemplates] = useState([]);
+  const [showTplMgr, setShowTplMgr] = useState(false);
+  const [previewAtt, setPreviewAtt] = useState(null); // { att, url, mime }
+
+  const loadTemplates = () => {
+    axios.get(`${API}/admin/reply-templates`, { headers: authHeader() })
+      .then((r) => setTemplates(r.data || []))
+      .catch(() => setTemplates([]));
+  };
+  useEffect(() => { loadTemplates(); /* eslint-disable-next-line */ }, []);
 
   const load = () => {
     setLoading(true);
@@ -267,30 +279,38 @@ export default function AdminMessageThread() {
 
         {/* Attachments */}
         {(msg.attachments || []).length > 0 && (
-          <div className="mb-6" data-testid="msg-thread-attachments">
-            <div className="flex items-center gap-2 mb-2">
-              <Paperclip className="h-4 w-4 text-pear-500" />
-              <h3 className="font-heading font-semibold text-strong">Bijlagen</h3>
-              <span className="text-xs text-muted-fg">({msg.attachments.length})</span>
-            </div>
-            <ul className="flex flex-wrap gap-2">
-              {msg.attachments.map((a) => (
-                <li key={a.id} className="inline-flex items-center gap-2 rounded-full surface-2 border border-app px-3 py-1.5 text-xs" data-testid={`msg-thread-attachment-${a.id}`}>
-                  <button type="button" onClick={() => downloadAttachment(a.id, a.name)} className="inline-flex items-center gap-1 hover:text-pear-500" data-testid={`msg-thread-attachment-download-${a.id}`}>
-                    <Download className="h-3.5 w-3.5" /> {a.name} · {(a.size / 1024).toFixed(0)} kB
-                  </button>
-                  <button type="button" onClick={() => removeAttachment(a.id)} className="hover:text-red-500" aria-label="Verwijder bijlage" data-testid={`msg-thread-attachment-remove-${a.id}`}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <AttachmentsGrid
+            attachments={msg.attachments}
+            msgId={msgId}
+            authHeader={authHeader}
+            onDelete={removeAttachment}
+            onDownload={downloadAttachment}
+            onOpenPreview={setPreviewAtt}
+          />
+        )}
+
+        {/* Attachment preview modal */}
+        {previewAtt && (
+          <AttachmentPreview
+            att={previewAtt.att}
+            url={previewAtt.url}
+            mime={previewAtt.mime}
+            onClose={() => setPreviewAtt(null)}
+            onDownload={() => downloadAttachment(previewAtt.att.id, previewAtt.att.name)}
+          />
         )}
 
         {/* Reply panel */}
         <div className="surface border border-app rounded-2xl p-5 mb-6" data-testid="msg-thread-reply-panel">
-          <h3 className="font-heading font-semibold text-strong mb-3">Antwoord versturen</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-heading font-semibold text-strong">Antwoord versturen</h3>
+            <ReplyTemplatesDropdown
+              templates={templates}
+              onInsert={(tpl) => setReply((r) => r ? `${r}\n\n${tpl.body}` : tpl.body)}
+              onManage={() => setShowTplMgr(true)}
+              disabled={locked}
+            />
+          </div>
           <label className="text-xs uppercase tracking-widest text-muted-fg block mb-1">Onderwerp</label>
           <input
             type="text"
@@ -380,6 +400,285 @@ export default function AdminMessageThread() {
           </div>
         </div>
       </motion.div>
+
+      {/* Templates manager modal */}
+      {showTplMgr && (
+        <TemplatesManager
+          templates={templates}
+          authHeader={authHeader}
+          onClose={() => { setShowTplMgr(false); loadTemplates(); }}
+          onChange={loadTemplates}
+        />
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// AttachmentsGrid — thumb grid with inline preview trigger (images + PDF)
+// -----------------------------------------------------------------------------
+function AttachmentsGrid({ attachments, msgId, authHeader, onDelete, onDownload, onOpenPreview }) {
+  const [thumbs, setThumbs] = useState({}); // { attId: objectUrl }
+  useEffect(() => {
+    let cancelled = false;
+    const urls = [];
+    (async () => {
+      for (const a of attachments) {
+        if (thumbs[a.id]) continue;
+        if (!(a.mime || "").startsWith("image/")) continue;
+        try {
+          const r = await axios.get(`${API}/admin/contact/${msgId}/attachments/${a.id}/preview`, {
+            headers: authHeader(), responseType: "blob",
+          });
+          if (cancelled) return;
+          const url = URL.createObjectURL(r.data);
+          urls.push(url);
+          setThumbs((prev) => ({ ...prev, [a.id]: url }));
+        } catch { /* skip */ }
+      }
+    })();
+    return () => { cancelled = true; urls.forEach(URL.revokeObjectURL); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments.length, msgId]);
+
+  const openPreview = async (a) => {
+    const isImage = (a.mime || "").startsWith("image/");
+    const isPdf = (a.mime || "") === "application/pdf";
+    if (!isImage && !isPdf) return onDownload(a.id, a.name);
+    try {
+      const r = await axios.get(`${API}/admin/contact/${msgId}/attachments/${a.id}/preview`, {
+        headers: authHeader(), responseType: "blob",
+      });
+      const url = URL.createObjectURL(r.data);
+      onOpenPreview({ att: a, url, mime: a.mime });
+    } catch {
+      toast.error("Preview mislukt");
+    }
+  };
+
+  return (
+    <div className="mb-6" data-testid="msg-thread-attachments">
+      <div className="flex items-center gap-2 mb-2">
+        <Paperclip className="h-4 w-4 text-pear-500" />
+        <h3 className="font-heading font-semibold text-strong">Bijlagen</h3>
+        <span className="text-xs text-muted-fg">({attachments.length})</span>
+      </div>
+      <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        {attachments.map((a) => {
+          const isImage = (a.mime || "").startsWith("image/");
+          const isPdf = (a.mime || "") === "application/pdf";
+          return (
+            <li key={a.id} className="surface-2 rounded-xl border border-app overflow-hidden group relative" data-testid={`msg-thread-attachment-${a.id}`}>
+              <button type="button" onClick={() => openPreview(a)} className="block w-full text-left" data-testid={`msg-thread-attachment-open-${a.id}`}>
+                <div className="aspect-video flex items-center justify-center bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  {isImage && thumbs[a.id] ? (
+                    <img src={thumbs[a.id]} alt={a.name} className="w-full h-full object-cover" loading="lazy" />
+                  ) : isImage ? (
+                    <ImageIcon className="h-10 w-10 text-muted-fg animate-pulse" />
+                  ) : isPdf ? (
+                    <FileText className="h-10 w-10 text-red-400" />
+                  ) : (
+                    <Paperclip className="h-10 w-10 text-muted-fg" />
+                  )}
+                </div>
+                <div className="px-2 py-1.5 text-[11px] text-strong truncate" title={a.name}>{a.name}</div>
+                <div className="px-2 pb-2 text-[10px] text-muted-fg truncate">{(a.size / 1024).toFixed(0)} kB · {a.mime}</div>
+              </button>
+              <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button type="button" onClick={(e) => { e.stopPropagation(); onDownload(a.id, a.name); }} className="p-1 rounded-full bg-white/90 dark:bg-slate-900/90 hover:text-pear-500" aria-label="Download" data-testid={`msg-thread-attachment-download-${a.id}`}>
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(a.id); }} className="p-1 rounded-full bg-white/90 dark:bg-slate-900/90 hover:text-red-500" aria-label="Verwijder bijlage" data-testid={`msg-thread-attachment-remove-${a.id}`}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// AttachmentPreview — fullscreen inline viewer for images & PDFs (uses blob URL)
+// -----------------------------------------------------------------------------
+function AttachmentPreview({ att, url, mime, onClose, onDownload }) {
+  useEffect(() => () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } }, [url]);
+  return (
+    <div className="pb-modal" onClick={onClose} data-testid="msg-thread-attachment-preview">
+      <div className="pb-modal-card w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
+        <header className="px-4 py-2 border-b border-app flex items-center justify-between shrink-0 surface">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-strong truncate">{att.name}</div>
+            <div className="text-[11px] text-muted-fg">{mime} · {(att.size / 1024).toFixed(0)} kB</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onDownload} className="text-xs rounded-full border border-app px-3 py-1 hover:border-pear-500" data-testid="msg-thread-preview-download">
+              <Download className="h-3.5 w-3.5 inline mr-1" /> Download
+            </button>
+            <button onClick={onClose} className="text-2xl leading-none text-muted-fg hover:text-strong" data-testid="msg-thread-preview-close">×</button>
+          </div>
+        </header>
+        <div className="pb-modal-body bg-slate-900/95 flex items-center justify-center min-h-[60vh]">
+          {mime.startsWith("image/") ? (
+            <img src={url} alt={att.name} className="max-w-full max-h-[80vh] object-contain" />
+          ) : mime === "application/pdf" ? (
+            <iframe src={url} title={att.name} className="w-full h-[80vh] border-0 bg-white" />
+          ) : (
+            <div className="p-6 text-white text-sm">Voor dit type kan geen preview worden gegenereerd.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// ReplyTemplatesDropdown — quick-insert one of the saved templates
+// -----------------------------------------------------------------------------
+function ReplyTemplatesDropdown({ templates, onInsert, onManage, disabled }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const onClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        className="inline-flex items-center gap-1.5 text-xs rounded-full border border-app px-3 py-1.5 hover:border-pear-500 disabled:opacity-40"
+        data-testid="msg-thread-templates-toggle"
+      >
+        Antwoord-templates <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-72 max-h-72 overflow-y-auto surface border border-app rounded-2xl shadow-lg z-20 p-1.5" data-testid="msg-thread-templates-menu">
+          {templates.length === 0 && (
+            <p className="p-3 text-xs text-muted-fg text-center">Nog geen templates. Maak er een aan met &quot;Beheren&quot;.</p>
+          )}
+          {templates.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => { onInsert(t); setOpen(false); }}
+              className="w-full text-left px-3 py-2 rounded-xl text-xs hover:bg-pear-100/50"
+              data-testid={`msg-thread-template-insert-${t.id}`}
+            >
+              <div className="font-semibold text-strong">{t.title}</div>
+              <div className="text-muted-fg line-clamp-2">{t.body}</div>
+            </button>
+          ))}
+          <div className="border-t border-app mt-1.5 pt-1.5">
+            <button
+              type="button"
+              onClick={() => { onManage(); setOpen(false); }}
+              className="w-full text-center text-xs text-pear-500 hover:text-pear-600 py-1.5"
+              data-testid="msg-thread-templates-manage"
+            >
+              <Edit2 className="h-3 w-3 inline mr-1" /> Beheren
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// TemplatesManager — CRUD modal for saved reply templates
+// -----------------------------------------------------------------------------
+function TemplatesManager({ templates, authHeader, onClose, onChange }) {
+  const [editing, setEditing] = useState(null); // { id?, title, body }
+  const [busy, setBusy] = useState(false);
+
+  const startNew = () => setEditing({ title: "", body: "" });
+  const save = async () => {
+    if (!editing.title.trim() || !editing.body.trim()) { toast.error("Titel en tekst zijn verplicht"); return; }
+    setBusy(true);
+    try {
+      if (editing.id) {
+        await axios.patch(`${API}/admin/reply-templates/${editing.id}`, { title: editing.title, body: editing.body, lang: "nl" }, { headers: authHeader() });
+        toast.success("Template bijgewerkt");
+      } else {
+        await axios.post(`${API}/admin/reply-templates`, { title: editing.title, body: editing.body, lang: "nl" }, { headers: authHeader() });
+        toast.success("Template opgeslagen");
+      }
+      setEditing(null);
+      onChange();
+    } catch { toast.error("Opslaan mislukt"); } finally { setBusy(false); }
+  };
+  const del = async (id) => {
+    if (!window.confirm("Deze template verwijderen?")) return;
+    try {
+      await axios.delete(`${API}/admin/reply-templates/${id}`, { headers: authHeader() });
+      onChange();
+    } catch { toast.error("Verwijderen mislukt"); }
+  };
+
+  return (
+    <div className="pb-modal" style={{ zIndex: 90 }} onClick={onClose} data-testid="msg-thread-templates-modal">
+      <div className="pb-modal-card w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <header className="px-6 py-4 border-b border-app flex items-center justify-between shrink-0 surface">
+          <div>
+            <div className="font-heading text-lg font-semibold text-strong">Antwoord-templates beheren</div>
+            <p className="text-xs text-muted-fg">Snel-invoegen voor terugkerende antwoorden.</p>
+          </div>
+          <button onClick={onClose} className="text-muted-fg hover:text-strong text-2xl leading-none">×</button>
+        </header>
+        <div className="pb-modal-body p-6 space-y-4 surface">
+          {!editing && (
+            <div className="flex justify-end">
+              <button onClick={startNew} className="btn-primary" data-testid="templates-new">
+                <Plus className="h-4 w-4" /> Nieuwe template
+              </button>
+            </div>
+          )}
+          {editing && (
+            <div className="space-y-3 surface-2 rounded-xl p-4">
+              <label className="block">
+                <span className="text-xs uppercase tracking-widest text-muted-fg">Titel</span>
+                <input value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="templates-edit-title" />
+              </label>
+              <label className="block">
+                <span className="text-xs uppercase tracking-widest text-muted-fg">Tekst</span>
+                <textarea value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} rows={6} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="templates-edit-body" />
+              </label>
+              <div className="flex items-center justify-end gap-2">
+                <button onClick={() => setEditing(null)} className="text-xs px-3 py-1.5 rounded-full border border-app">Annuleren</button>
+                <button onClick={save} disabled={busy} className="btn-primary" data-testid="templates-edit-save">
+                  {busy ? "Opslaan…" : "Opslaan"}
+                </button>
+              </div>
+            </div>
+          )}
+          <ul className="space-y-2">
+            {templates.length === 0 && !editing && (
+              <li className="text-sm text-muted-fg text-center py-8">Nog geen templates. Maak er een aan om ze in het antwoord-panel snel in te voegen.</li>
+            )}
+            {templates.map((t) => (
+              <li key={t.id} className="surface-2 rounded-xl border border-app p-3 flex items-start justify-between gap-3" data-testid={`templates-item-${t.id}`}>
+                <div className="min-w-0">
+                  <div className="font-semibold text-strong text-sm">{t.title}</div>
+                  <div className="text-xs text-muted-fg whitespace-pre-wrap line-clamp-3">{t.body}</div>
+                </div>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <button onClick={() => setEditing(t)} className="text-xs rounded-full border border-app px-2.5 py-1 hover:border-pear-500" data-testid={`templates-edit-${t.id}`}>
+                    <Edit2 className="h-3 w-3 inline mr-1" /> Bewerken
+                  </button>
+                  <button onClick={() => del(t.id)} className="text-xs rounded-full border border-red-200 text-red-500 px-2.5 py-1 hover:bg-red-50" data-testid={`templates-delete-${t.id}`}>
+                    <Trash2 className="h-3 w-3 inline mr-1" /> Verwijderen
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }

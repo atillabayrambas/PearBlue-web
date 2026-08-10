@@ -48,19 +48,19 @@ const AdminSidebar = () => {
   const role = user?.role || "";
   const canSeeFinancials = ["super_admin", "admin", "beheerder", "financien"].includes(role);
   const items = [
-    { to: "/admin", label: "Portfolio", icon: Briefcase, end: true, testid: "cms-nav-projects" },
-    { to: "/admin/analytics", label: "AI dashboard", icon: BarChart3, testid: "cms-nav-analytics" },
-    ...(canSeeFinancials ? [{ to: "/admin/financials", label: "Financiën", icon: Euro, testid: "cms-nav-financials" }] : []),
-    { to: "/admin/registrations", label: "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations", badge: counters.portal },
-    { to: "/admin/reviews", label: "Klantreviews", icon: Star, testid: "cms-nav-reviews", badge: counters.reviews },
-    { to: "/admin/messages", label: "Berichten", icon: Inbox, testid: "cms-nav-messages", badge: counters.messages },
-    { to: "/admin/feedback", label: "Feedback", icon: MessageSquare, testid: "cms-nav-feedback", badge: counters.feedback },
-    { to: "/admin/cybersecurity", label: "Cybersecurity", icon: ShieldAlert, testid: "cms-nav-cybersecurity", badge: counters.cybersecurity },
-    { to: "/admin/users", label: "Gebruikers & rollen", icon: Users, testid: "cms-nav-users" },
-    { to: "/admin/mailboxes", label: "Mailboxen (IMAP)", icon: Inbox, testid: "cms-nav-mailboxes" },
-    { to: "/admin/mailmarketing", label: "Mailmarketing (Brevo)", icon: Send, testid: "cms-nav-brevo" },
-    { to: "/admin/scripts", label: "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
-    { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
+    { to: "/admin", label: lang === "en" ? "AI dashboard" : "AI dashboard", icon: BarChart3, end: true, testid: "cms-nav-analytics" },
+    { to: "/admin/portfolio", label: "Portfolio", icon: Briefcase, testid: "cms-nav-projects" },
+    ...(canSeeFinancials ? [{ to: "/admin/financials", label: lang === "en" ? "Financials" : "Financiën", icon: Euro, testid: "cms-nav-financials" }] : []),
+    { to: "/admin/registrations", label: lang === "en" ? "Portal requests" : "Portaal aanvragen", icon: UserPlus, testid: "cms-nav-registrations", badge: counters.portal },
+    { to: "/admin/reviews", label: lang === "en" ? "Client reviews" : "Klantreviews", icon: Star, testid: "cms-nav-reviews", badge: counters.reviews },
+    { to: "/admin/messages", label: lang === "en" ? "Messages" : "Berichten", icon: Inbox, testid: "cms-nav-messages", badge: counters.messages },
+    { to: "/admin/feedback", label: lang === "en" ? "Feedback" : "Feedback", icon: MessageSquare, testid: "cms-nav-feedback", badge: counters.feedback },
+    { to: "/admin/cybersecurity", label: lang === "en" ? "Cybersecurity" : "Cybersecurity", icon: ShieldAlert, testid: "cms-nav-cybersecurity", badge: counters.cybersecurity },
+    { to: "/admin/users", label: lang === "en" ? "Users & roles" : "Gebruikers & rollen", icon: Users, testid: "cms-nav-users" },
+    { to: "/admin/mailboxes", label: lang === "en" ? "Mailboxes (IMAP)" : "Mailboxen (IMAP)", icon: Inbox, testid: "cms-nav-mailboxes" },
+    { to: "/admin/mailmarketing", label: lang === "en" ? "Mailmarketing (Brevo)" : "Mailmarketing (Brevo)", icon: Send, testid: "cms-nav-brevo" },
+    { to: "/admin/scripts", label: lang === "en" ? "Custom scripts" : "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
+    { to: "/admin/settings", label: lang === "en" ? "Site settings" : "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
   ];
   const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || user?.display_name || user?.email;
   const nextTheme = { light: "dark", dark: "system", system: "light" }[mode] || "light";
@@ -73,7 +73,7 @@ const AdminSidebar = () => {
           <Menu className="h-5 w-5 text-strong" />
         </button>
         <Link to="/" className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-strong hover:text-pear-500 px-3 py-1.5 rounded-full border border-app" data-testid="cms-mobile-back">
-          ← Terug naar site
+          ← {lang === "en" ? "Back to site" : "Terug naar site"}
         </Link>
       </div>
 
@@ -104,8 +104,9 @@ const AdminSidebar = () => {
         <div className="mb-6 flex items-center gap-3" data-testid="cms-sidebar-profile">
           <Avatar name={displayName} email={user?.email} profilePicture={profile?.profile_picture} size={40} />
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-widest text-muted-fg">Ingelogd als</p>
+            <p className="text-[11px] uppercase tracking-widest text-muted-fg">{lang === "en" ? "Signed in as" : "Ingelogd als"}</p>
             <p className="font-heading font-semibold text-strong text-sm mt-0.5 truncate">{displayName}</p>
+            {user?.email && <p className="text-[10px] text-muted-fg truncate mt-0.5" data-testid="cms-sidebar-email">{user.email}</p>}
           </div>
         </div>
 
@@ -163,7 +164,7 @@ const AdminSidebar = () => {
           className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm text-red-500 border border-red-200 hover:bg-red-50 dark:hover:bg-red-500/10"
           data-testid="cms-logout"
         >
-          <LogOut className="h-4 w-4" /> Uitloggen
+          <LogOut className="h-4 w-4" /> {lang === "en" ? "Log out" : "Uitloggen"}
         </button>
         <div className="mt-4 pt-3 border-t border-app text-[10px] text-muted-fg text-center">
           PearBlue CMS · v0.5.5-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
@@ -571,7 +572,7 @@ const MessagesAdmin = () => {
       setAssignees(a.data || []);
     } catch { /* ignore */ } finally { setLoading(false); }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); const id = setInterval(load, 15000); return () => clearInterval(id); /* eslint-disable-next-line */ }, []);
 
   const patch = async (id, upd) => {
     try { await axios.patch(`${API}/admin/contact/${id}`, upd, { headers: authHeader() }); load(); }
@@ -2348,6 +2349,7 @@ const ChangelogAdmin = () => {
 
 const AdminLayout = ({ children }) => {
   const [currentVersion, setCurrentVersion] = useState(null);
+  const { lang } = useLang();
   useEffect(() => {
     axios.get(`${API}/changelog`)
       .then((r) => setCurrentVersion(r.data?.current || null))
@@ -2356,7 +2358,7 @@ const AdminLayout = ({ children }) => {
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
       <div className="mb-6 text-sm hidden lg:block">
-        <Link to="/" className="text-muted-fg hover:text-pear-500">← Terug naar site</Link>
+        <Link to="/" className="text-muted-fg hover:text-pear-500">← {lang === "en" ? "Back to site" : "Terug naar site"}</Link>
       </div>
       <div className="flex flex-col lg:flex-row gap-8">
         <AdminSidebar />
@@ -2375,7 +2377,8 @@ export default function AdminDashboard() {
     <RequireAdmin>
       <AdminLayout>
         <Routes>
-          <Route index element={<ProjectsAdmin />} />
+          <Route index element={<AnalyticsAdmin />} />
+          <Route path="portfolio" element={<ProjectsAdmin />} />
           <Route path="analytics" element={<AnalyticsAdmin />} />
           <Route path="financials" element={<FinancialsAdmin />} />
           <Route path="registrations" element={<RegistrationsAdmin />} />

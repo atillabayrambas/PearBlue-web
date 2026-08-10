@@ -3,6 +3,7 @@ import axios from "axios";
 import { motion } from "framer-motion";
 import { MessageCircle, Users, Gauge, Sparkles, Smile } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { useLang } from "../i18n/LanguageContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -21,40 +22,88 @@ const Stat = ({ icon: Icon, label, value, sub }) => (
 
 export const AnalyticsAdmin = () => {
   const { authHeader } = useAuth();
+  const { lang } = useLang();
   const [stats, setStats] = useState(null);
   const [ratings, setRatings] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(1);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    let daysParam = days;
+    // Custom range: pass explicit from/to in query string
+    let extra = "";
+    if (days === "custom" && customFrom && customTo) {
+      daysParam = 30;
+      extra = `&from=${customFrom}&to=${customTo}`;
+    }
     Promise.all([
-      axios.get(`${API}/chat/stats?days=${days}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
-      axios.get(`${API}/admin/chat/ratings?days=${days}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
+      axios.get(`${API}/chat/stats?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
+      axios.get(`${API}/admin/chat/ratings?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
     ]).then(([s, r]) => { setStats(s); setRatings(r); }).finally(() => setLoading(false));
+    // Poll every 15s so admins see live figures
+    const id = setInterval(() => {
+      axios.get(`${API}/chat/stats?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => setStats(r.data)).catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days]);
+  }, [days, customFrom, customTo]);
 
   const max = Math.max(1, ...(stats?.per_day || []).map((d) => d.count));
+
+  const PERIODS = [
+    { k: 1, label: "1D" },
+    { k: 7, label: "7D" },
+    { k: 30, label: "30D" },
+    { k: 90, label: "90D" },
+    { k: 180, label: "6M" },
+    { k: 365, label: "1J" },
+    { k: 730, label: "2J" },
+    { k: 1095, label: "3J" },
+    { k: 1825, label: "5J" },
+  ];
 
   return (
     <div data-testid="cms-analytics">
       <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <h1 className="font-heading text-3xl font-medium text-strong">AI kosten dashboard</h1>
-          <p className="text-sm text-muted-fg mt-1">Bekijk in één oogopslag hoeveel chat-berichten er via Claude Sonnet 4.6 worden verstuurd.</p>
+          <h1 className="font-heading text-3xl font-medium text-strong">{lang === "en" ? "AI cost dashboard" : "AI kosten dashboard"}</h1>
+          <p className="text-sm text-muted-fg mt-1">{lang === "en" ? "See at a glance how many chat messages are sent via Claude Sonnet 4.6." : "Bekijk in één oogopslag hoeveel chat-berichten er via Claude Sonnet 4.6 worden verstuurd."}</p>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-fg">Periode:</span>
-          {[7, 30, 90].map((d) => (
-            <button key={d} onClick={() => setDays(d)}
-              data-testid={`analytics-range-${d}`}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-fg">{lang === "en" ? "Period:" : "Periode:"}</span>
+          {PERIODS.map((p) => (
+            <button key={p.k} onClick={() => { setDays(p.k); setShowCustom(false); }}
+              data-testid={`analytics-range-${p.k}`}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                days === d ? "bg-pear-500 text-white border-pear-500" : "surface text-strong border-app hover:border-pear-500"
-              }`}>{d}d</button>
+                days === p.k ? "bg-pear-500 text-white border-pear-500" : "surface text-strong border-app hover:border-pear-500"
+              }`}>{p.label}</button>
           ))}
+          <button
+            onClick={() => { setShowCustom((v) => !v); setDays("custom"); }}
+            data-testid="analytics-range-custom"
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${
+              days === "custom" ? "bg-pear-500 text-white border-pear-500" : "surface text-strong border-app hover:border-pear-500"
+            }`}
+          >{lang === "en" ? "Custom" : "Aangepast"}</button>
         </div>
       </header>
+      {showCustom && (
+        <div className="mb-6 flex flex-wrap gap-3 items-end surface border border-app rounded-2xl p-4" data-testid="analytics-custom-range">
+          <label className="text-xs text-muted-fg block">
+            <span className="block mb-1 uppercase tracking-widest">Vanaf</span>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="rounded-lg border border-app surface px-2 py-1 text-sm" data-testid="analytics-custom-from" />
+          </label>
+          <label className="text-xs text-muted-fg block">
+            <span className="block mb-1 uppercase tracking-widest">Tot</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="rounded-lg border border-app surface px-2 py-1 text-sm" data-testid="analytics-custom-to" />
+          </label>
+          <p className="text-[11px] text-muted-fg">Kies een start- en einddatum en de grafiek herlaadt automatisch.</p>
+        </div>
+      )}
 
       {loading && <p className="text-muted-fg">Laden…</p>}
 
