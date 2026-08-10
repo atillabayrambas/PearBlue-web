@@ -21,7 +21,16 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 22 (this session, v0.5.8-Beta) — Batch B (CMS home, templates, attachment preview)
+### Feb 2026 — Iteration 23 (this session, v0.5.9-Beta) — OTAP procedure + Batch C essentials
+- **OTAP procedure sectie op /over-ons** — nieuwe uitgebreide sectie met horizontal timeline (desktop) en verticale timeline (mobiel) van 6 fases: Intake · Ontwikkeling · Test · Acceptatie · Productie · Nazorg. Gekleurde iconen, dag-labels (Dag 1-7 / Doorlopend), animation-in-view. Callout benadrukt "Website live binnen 7 dagen. Transparant, betaalbaar."
+- **30 unieke avatars + kleurpalet** — `AvatarPicker` component. 10 mannelijk (avataaars short-hair seeds) + 10 vrouwelijk (long-hair seeds) + 10 unisex robots (bottts-neutral). 8-kleuren achtergrond palette (pear/sky/mint/amber/rose/violet/coral/slate). Tabs: Alles / Mannelijk / Vrouwelijk / Unisex. Reset naar initialen knop.
+- **Nederlandse postcode auto-fill** — `usePostalLookup` hook gebruikt postcode.tech als primaire bron met Nominatim (OSM) fallback. Vult straat + plaats + provincie + land automatisch in. Cache in memory zodat één postcode niet twee keer wordt opgehaald.
+- **Telefoon met landcode-picker** — `PhoneInput` component met 31 dial codes, emoji-vlaggen (🇳🇱 🇧🇪 🇩🇪 🇫🇷 🇬🇧 …), inline zoekbalk in de dropdown. Slaat automatisch samengesteld `+31612345678` E.164-formaat op.
+- **User Edit modal in CMS** uitgebreid — Kies avatar knop, Postcode+Huisnummer met Zoek-knop en on-blur autofill, aparte Provincie/regio veld, geïntegreerde PhoneInput.
+- **Backend**: `UserDetailsUpdate` + GET/PUT endpoints accepteren nu ook `house_number`.
+- **Testing**: alle nieuwe UI's smoke-tested (avatar grid, postcode Groningen 9711AA test, phone dial picker menu). Backend blijft groen.
+
+### Feb 2026 — Iteration 22 (v0.5.8-Beta) — Batch B (CMS home, templates, attachment preview)
 - **AI dashboard is nu de CMS-startpagina** (`/admin` → `AnalyticsAdmin`). Portfolio verhuisd naar `/admin/portfolio`.
 - **Uitgebreide periode-selectie** in AI dashboard: 1D (default) / 7D / 30D / 90D / 6M / 1J / 2J / 3J / 5J + **Aangepast** met van/tot datumkiezer. Backend `/api/chat/stats` steunt nu `?from=YYYY-MM-DD&to=YYYY-MM-DD` en `days` tot 1825 (5 jaar). Zelfde geldt voor `/api/admin/chat/ratings`.
 - **CMS auto-refresh 15s** — AnalyticsAdmin en MessagesAdmin herladen automatisch elke 15s zodat cijfers en berichten live blijven.

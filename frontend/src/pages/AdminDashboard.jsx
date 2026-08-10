@@ -11,7 +11,10 @@ import { AnalyticsAdmin } from "./AdminAnalytics";
 import { FinancialsAdmin } from "./AdminFinancials";
 import AdminMessageThread from "./AdminMessageThread";
 import { Avatar } from "../components/Avatar";
+import { AvatarPicker } from "../components/AvatarPicker";
+import { PhoneInput } from "../components/PhoneInput";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { usePostalLookup } from "../hooks/usePostalLookup";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const PEARBLUE_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/djwgz9jk_PearBlue%20logo-10.webp";
@@ -1411,8 +1414,29 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
 
   const randomize = () => setDetails((d) => ({ ...(d || {}), profile_picture: generatePearAvatar(email) }));
   const removeAvatar = () => setDetails((d) => ({ ...(d || {}), profile_picture: "" }));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { lookup } = usePostalLookup();
+  const [lookingUp, setLookingUp] = useState(false);
 
   const set = (k) => (e) => setDetails((d) => ({ ...(d || {}), [k]: e.target.value }));
+
+  const autofillFromPostcode = async () => {
+    if (!details?.postal_code) return;
+    setLookingUp(true);
+    const res = await lookup(details.postal_code, details.house_number || details.house || "");
+    setLookingUp(false);
+    if (res) {
+      setDetails((d) => ({ ...(d || {}),
+        address: res.street ? `${res.street}${(d?.house_number || d?.house) ? " " + (d.house_number || d.house) : ""}` : d?.address,
+        city: res.city || d?.city,
+        region: res.region || d?.region,
+        country: res.country === "NL" ? "Nederland" : (res.country || d?.country || "Nederland"),
+      }));
+      toast.success(`Adres gevonden: ${res.street}, ${res.city}`);
+    } else {
+      toast.error("Kon dit adres niet vinden");
+    }
+  };
 
   return (
     <div className="pb-modal" style={{ zIndex: 80 }} onClick={onClose} data-testid="user-details-modal">
@@ -1430,10 +1454,28 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
             <div className="flex items-center gap-4">
               <Avatar name={`${details.first_name || ""} ${details.last_name || ""}`.trim() || email} email={email} profilePicture={details.profile_picture} size={64} />
               <div className="flex flex-col gap-2">
+                <button type="button" onClick={() => setPickerOpen(true)} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-pear-500" data-testid="user-details-avatar-pick">Kies avatar</button>
                 <button type="button" onClick={randomize} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-pear-500" data-testid="user-details-avatar-random">Random pear-avatar</button>
                 <button type="button" onClick={removeAvatar} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-red-400" data-testid="user-details-avatar-remove">Terug naar initialen</button>
               </div>
             </div>
+            {pickerOpen && (
+              <div className="pb-modal" style={{ zIndex: 90 }} onClick={() => setPickerOpen(false)} data-testid="user-details-avatar-picker-modal">
+                <div className="pb-modal-card w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+                  <header className="px-6 py-4 border-b border-app flex items-center justify-between shrink-0 surface">
+                    <div className="font-heading text-lg font-semibold text-strong">Kies een avatar</div>
+                    <button type="button" onClick={() => setPickerOpen(false)} className="text-2xl leading-none text-muted-fg hover:text-strong">×</button>
+                  </header>
+                  <div className="pb-modal-body p-6 surface">
+                    <AvatarPicker
+                      currentUrl={details.profile_picture}
+                      onSelect={(url) => { setDetails((d) => ({ ...(d || {}), profile_picture: url || "" })); setPickerOpen(false); }}
+                      onCancel={() => setPickerOpen(false)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Voornaam *</span>
@@ -1449,15 +1491,32 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Postcode *</span>
-                <input required value={details.postal_code || ""} onChange={set("postal_code")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-postal" />
+                <div className="flex gap-1 mt-1">
+                  <input required value={details.postal_code || ""} onChange={set("postal_code")} onBlur={autofillFromPostcode} placeholder="1234AB" className="flex-1 rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong uppercase" data-testid="user-details-postal" />
+                  <button type="button" onClick={autofillFromPostcode} disabled={lookingUp} className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-lg border border-app hover:border-pear-500 disabled:opacity-40" data-testid="user-details-postal-lookup">{lookingUp ? "…" : "Zoek"}</button>
+                </div>
+              </label>
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Huisnummer</span>
+                <input value={details.house_number || ""} onChange={set("house_number")} onBlur={autofillFromPostcode} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-house-number" />
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Plaats</span>
                 <input value={details.city || ""} onChange={set("city")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-city" />
               </label>
-              <label className="block sm:col-span-2">
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Provincie / regio</span>
+                <input value={details.region || ""} onChange={set("region")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-region" />
+              </label>
+              <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Land</span>
                 <input value={details.country || "Nederland"} onChange={set("country")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-country" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Telefoon</span>
+                <div className="mt-1">
+                  <PhoneInput value={details.phone || ""} onChange={(v) => setDetails((d) => ({ ...(d || {}), phone: v }))} testid="user-details-phone" />
+                </div>
               </label>
             </div>
             <details className="rounded-xl border border-app p-3">

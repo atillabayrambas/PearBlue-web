@@ -2304,6 +2304,7 @@ class UserDetailsUpdate(BaseModel):
     last_name: Optional[str] = None
     address: Optional[str] = None
     postal_code: Optional[str] = None
+    house_number: Optional[str] = None
     city: Optional[str] = None
     region: Optional[str] = None
     country: Optional[str] = None
@@ -2324,6 +2325,7 @@ async def user_details(email: str, current=Depends(require_permission("users")))
         "last_name": doc.get("last_name") or "",
         "address": doc.get("address") or "",
         "postal_code": doc.get("postal_code") or "",
+        "house_number": doc.get("house_number") or "",
         "city": doc.get("city") or "",
         "region": doc.get("region") or "",
         "country": doc.get("country") or "Nederland",
