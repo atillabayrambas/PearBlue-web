@@ -25,6 +25,27 @@ export const ThemeProvider = ({ children }) => {
   useEffect(() => {
     const stored = localStorage.getItem("pb_theme_mode") || readCookie("pb_theme_mode");
     if (stored === "light" || stored === "dark" || stored === "system") setModeState(stored);
+    // Fetch backend pref if logged in — this syncs theme across devices
+    const token = localStorage.getItem("pb_admin_token");
+    if (token) {
+      const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+      fetch(`${API}/auth/me/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => {
+          if (d && ["light", "dark", "system"].includes(d.theme_mode)) {
+            setModeState(d.theme_mode);
+          }
+        })
+        .catch(() => {});
+    }
+    // Cross-tab sync via storage events
+    const onStorage = (e) => {
+      if (e.key === "pb_theme_mode" && ["light", "dark", "system"].includes(e.newValue)) {
+        setModeState(e.newValue);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   useEffect(() => {

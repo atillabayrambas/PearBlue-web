@@ -10,6 +10,8 @@ import { ReviewForm } from "../components/Reviews";
 import { LocalCaptcha, ConsentText } from "../components/LocalCaptcha";
 import { COUNTRIES } from "../data/countries";
 import { Avatar } from "../components/Avatar";
+import { PhoneInput } from "../components/PhoneInput";
+import { usePostalLookup } from "../hooks/usePostalLookup";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
 
@@ -60,12 +62,28 @@ const startLogin = () => {
 const RegistrationForm = () => {
   const { lang } = useLang();
   const t = (k) => PT[k]?.[lang] || PT[k]?.nl || k;
-  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "", address: "", postal_code: "", city: "", region: "", country: "NL" });
+  const { lookup } = usePostalLookup();
+  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "", address: "", postal_code: "", house_number: "", city: "", region: "", country: "NL" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [captchaOk, setCaptchaOk] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value, ...(k === "country" ? { region: "" } : {}) });
   const country = COUNTRIES.find((c) => c.code === form.country) || COUNTRIES[0];
+
+  const autofill = async () => {
+    if (!form.postal_code || form.country !== "NL") return;
+    setLookingUp(true);
+    const res = await lookup(form.postal_code, form.house_number);
+    setLookingUp(false);
+    if (!res) return;
+    setForm((f) => ({
+      ...f,
+      address: res.street ? `${res.street}${f.house_number ? " " + f.house_number : ""}` : f.address,
+      city: res.city || f.city,
+      region: res.region || f.region,
+    }));
+  };
   const submit = async (e) => {
     e.preventDefault();
     if (!captchaOk) { toast.error(lang === "en" ? "Please confirm you are not a robot" : "Bevestig eerst dat je geen robot bent"); return; }
@@ -117,23 +135,31 @@ const RegistrationForm = () => {
         </label>
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regPhone")}</span>
-          <input value={form.phone} onChange={change("phone")} type="tel" data-testid="portal-reg-phone"
-            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+          <div className="mt-1">
+            <PhoneInput value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} testid="portal-reg-phone" />
+          </div>
         </label>
       </div>
-      {/* Address block */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Address block — postcode + house number drives the auto-fill of city/region on NL */}
+      <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
         <label className="block sm:col-span-2">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Address" : "Adres"} *</span>
-          <input required value={form.address} onChange={change("address")} type="text" placeholder={lang === "en" ? "Street & number" : "Straat & huisnummer"} data-testid="portal-reg-address"
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Postal code" : "Postcode"} *</span>
+          <input required value={form.postal_code} onChange={change("postal_code")} onBlur={autofill} type="text" placeholder="1234AB" data-testid="portal-reg-postal"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong uppercase" />
+        </label>
+        <label className="block sm:col-span-1">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "House #" : "Huisnr."}</span>
+          <input value={form.house_number} onChange={change("house_number")} onBlur={autofill} type="text" data-testid="portal-reg-house"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Postal code" : "Postcode"} *</span>
-          <input required value={form.postal_code} onChange={change("postal_code")} type="text" data-testid="portal-reg-postal"
+        <label className="block sm:col-span-3">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Address" : "Adres"} *</span>
+          <input required value={form.address} onChange={change("address")} type="text" placeholder={lang === "en" ? "Auto-filled from postcode" : "Wordt automatisch ingevuld"} data-testid="portal-reg-address"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>
       </div>
+      {lookingUp && <p className="text-[11px] text-muted-fg -mt-2">{lang === "en" ? "Looking up address…" : "Adres opzoeken…"}</p>}
+      {/* City/country/region row — auto-filled but overridable */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "City" : "Plaats"}</span>
@@ -150,7 +176,9 @@ const RegistrationForm = () => {
           </select>
         </label>
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Region / province" : "Regio / provincie"}</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg leading-tight" title={lang === "en" ? "Region / province" : "Regio / provincie"}>
+            {lang === "en" ? "Region" : "Regio"}
+          </span>
           {(country?.regions || []).length > 0 ? (
             <select value={form.region} onChange={change("region")} data-testid="portal-reg-region"
               className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong">
@@ -302,6 +330,9 @@ export default function Portal() {
               <ShieldCheck className="h-4 w-4" /> {t("manage")}
             </Link>
           )}
+          <Link to="/portal/profile" className="btn-secondary !px-4 !py-2 !text-xs" data-testid="portal-profile-link">
+            {lang === "en" ? "My profile" : "Mijn profiel"}
+          </Link>
           <button onClick={logout} className="btn-secondary !px-4 !py-2 !text-xs" data-testid="portal-logout">
             <LogOut className="h-4 w-4" /> {t("logout")}
           </button>

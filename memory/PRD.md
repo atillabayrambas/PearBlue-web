@@ -21,7 +21,27 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 23 (this session, v0.5.9-Beta) — OTAP procedure + Batch C essentials
+### Feb 2026 — Iteration 24 (this session, v0.6.0-Beta) — Portal profile + Batch C polish
+- **Klantportaal profielbewerking** — nieuwe `/portal/profile` pagina (route + link in portal header). Iedere ingelogde klant kan zelf voornaam, achternaam, weergavenaam, bedrijf, telefoon (met landcode picker), volledig adres (met postcode-autofill), avatar (uit 40 presets) OF eigen foto/webcam-upload aanpassen. Backend `GET /portal/profile` en `PUT /portal/profile` toegevoegd in `zoho_portal.py` (writes gaan naar `db.zoho_users`).
+- **Avatar library uitgebreid tot 40 varianten + verbeteringen**
+  - 10 mannelijk + 10 vrouwelijk + 10 nieuwe **subculturen** (Gothic, Emo, Artist, Rocker, Punk, Skater, Preppy, Vintage, Sporty, Anime — met verschillende DiceBear-styles voor visuele diversiteit) + 10 robots.
+  - Tabs hernoemd: **Robots** apart (i.p.v. "Unisex / robots"). Toegevoegd: **Subculturen** tab.
+  - Palette dubbele blauwtinten opgeruimd; **Midnight** kleur toegevoegd; nieuw **Custom color picker** met hex-input + native color picker + Toepassen.
+  - **Upload foto**-knop en **Foto met webcam**-knop (getUserMedia + canvas snapshot → base64 JPEG).
+- **Postcode auto-fill in aanmeldformulier** — Portaal-aanvraag heeft nu Postcode + Huisnummer + auto-populated Adres/Plaats/Regio via de gedeelde `usePostalLookup` hook. Regio-label ingekort naar "Regio" (was "Regio / provincie") en compacter grid.
+- **PhoneInput met landcode-picker** in portaal-aanmeldformulier én in Portal Profile.
+- **User CMS aanpasbare kolommen** — kolom-instellingen popover (⚙︎ Kolommen) waarmee beheerders kunnen kiezen welke velden zichtbaar zijn: E-mail (verplicht) · Voornaam & achternaam · Rol · Bedrijf · Telefoon · Plaats · Land · Zoho. Voorkeur bewaard in `localStorage` als `pb_user_cols`.
+- **Snelle weergave** knop per gebruiker — `UserQuickViewModal` toont read-only alle velden (avatar + role + adres/postcode/huisnummer/regio/KVK/BTW) met "Bewerken"-knop in de footer om door te schakelen naar de edit-modal.
+- **Backend `/admin/users`** — response nu inclusief `first_name`, `last_name`, `company`, `phone`, `city`, `country`, `profile_picture` voor de nieuwe tabelkolommen.
+- **Cross-device taal/thema-sync** — `LanguageContext` en `ThemeContext` fetchen bij mount de `/api/auth/me/prefs` van backend (indien token aanwezig) en luisteren op `storage`-events voor real-time sync tussen tabs/vensters.
+- **OTAP procedure updates op /over-ons**:
+  - Ontwikkeling: "**3 landingpage-varianten om te vergelijken** → definitieve UI-mockup".
+  - Acceptatie: "5 hoofd-revisierondes + **3 extra design-revisies** voor de gekozen landingpage".
+- **Cybersecurity CMS overlap opgelost** — Status-cel `min-w-[130px]` en sticky "Actions"-cel alleen sticky <lg (op desktop niet meer, dus geen overlap met blokkeer-knop).
+- **Openingstijden** aangepast van "Ma-vr 09:00 - 17:30" naar "**Ma-vr 10:00 - 17:00**" in NL + EN i18n bundels.
+- **Testing**: Alle nieuwe UI's smoke-tested (subculture-tab volledig zichtbaar, kolomtoggle, quickview modal render). Backend endpoints geverifieerd via curl.
+
+### Feb 2026 — Iteration 23 (v0.5.9-Beta) — OTAP procedure + Batch C essentials
 - **OTAP procedure sectie op /over-ons** — nieuwe uitgebreide sectie met horizontal timeline (desktop) en verticale timeline (mobiel) van 6 fases: Intake · Ontwikkeling · Test · Acceptatie · Productie · Nazorg. Gekleurde iconen, dag-labels (Dag 1-7 / Doorlopend), animation-in-view. Callout benadrukt "Website live binnen 7 dagen. Transparant, betaalbaar."
 - **30 unieke avatars + kleurpalet** — `AvatarPicker` component. 10 mannelijk (avataaars short-hair seeds) + 10 vrouwelijk (long-hair seeds) + 10 unisex robots (bottts-neutral). 8-kleuren achtergrond palette (pear/sky/mint/amber/rose/violet/coral/slate). Tabs: Alles / Mannelijk / Vrouwelijk / Unisex. Reset naar initialen knop.
 - **Nederlandse postcode auto-fill** — `usePostalLookup` hook gebruikt postcode.tech als primaire bron met Nominatim (OSM) fallback. Vult straat + plaats + provincie + land automatisch in. Cache in memory zodat één postcode niet twee keer wordt opgehaald.

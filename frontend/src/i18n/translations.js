@@ -110,7 +110,7 @@ export const translations = {
       info_phone: "Telefoon",
       info_address: "Adres",
       hours_title: "Openingstijden",
-      hours: "Ma-vr 09:00 - 17:30",
+      hours: "Ma-vr 10:00 - 17:00",
     },
     lang_switch: "Taal",
     pricing: {
@@ -269,7 +269,7 @@ export const translations = {
       info_phone: "Phone",
       info_address: "Address",
       hours_title: "Opening hours",
-      hours: "Mon-Fri 09:00 - 17:30",
+      hours: "Mon-Fri 10:00 - 17:00",
     },
     lang_switch: "Language",
     pricing: {

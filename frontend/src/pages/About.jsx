@@ -107,8 +107,8 @@ const ProcedureSection = ({ lang }) => {
       phase: nl ? "02 · ONTWIKKELING (O)" : "02 · DEVELOPMENT (D)",
       title: nl ? "Design & bouw" : "Design & build",
       desc: nl
-        ? "Wireframes → UI-mockup → code in onze developmentomgeving. Dagelijkse voortgangsupdates via het klantportaal."
-        : "Wireframes → UI mockup → code in our development environment. Daily progress updates via the client portal.",
+        ? "Wireframes → 3 landingpage-varianten om te vergelijken → definitieve UI-mockup → code in onze developmentomgeving. Dagelijkse voortgangsupdates via het klantportaal."
+        : "Wireframes → 3 landing-page variants to compare → final UI mockup → code in our development environment. Daily progress updates via the client portal.",
       time: nl ? "Dag 2-4" : "Day 2-4",
       color: "from-pear-400 to-pear-500",
     },
@@ -127,8 +127,8 @@ const ProcedureSection = ({ lang }) => {
       phase: nl ? "04 · ACCEPTATIE (A)" : "04 · ACCEPTANCE (A)",
       title: nl ? "Jij bepaalt" : "You approve",
       desc: nl
-        ? "Live acceptatieomgeving. Feedback in 5 revisierondes inbegrepen. Pas na jouw expliciete go gaan we naar productie."
-        : "Live acceptance environment. Feedback in 5 revision rounds included. Only after your explicit go we move to production.",
+        ? "Live acceptatieomgeving. Feedback in 5 hoofd-revisierondes + 3 extra design-revisies voor de gekozen landingpage inbegrepen. Pas na jouw expliciete go gaan we naar productie."
+        : "Live acceptance environment. 5 main revision rounds + 3 extra design revisions on the chosen landing page included. Only after your explicit go we move to production.",
       time: nl ? "Dag 6" : "Day 6",
       color: "from-violet-400 to-fuchsia-400",
     },

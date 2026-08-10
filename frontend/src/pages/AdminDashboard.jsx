@@ -1168,6 +1168,25 @@ const generatePearAvatar = (seed) => {
   return `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${s}&backgroundColor=${bg}&scale=90`;
 };
 
+const USER_COL_DEFS = [
+  { key: "email", label: "E-mail", labelEn: "Email", default: true, fixed: true },
+  { key: "name", label: "Voornaam & achternaam", labelEn: "Name", default: true },
+  { key: "role", label: "Rol", labelEn: "Role", default: true },
+  { key: "company", label: "Bedrijf", labelEn: "Company", default: true },
+  { key: "phone", label: "Telefoon", labelEn: "Phone", default: false },
+  { key: "city", label: "Plaats", labelEn: "City", default: false },
+  { key: "country", label: "Land", labelEn: "Country", default: false },
+  { key: "zoho", label: "Zoho", labelEn: "Zoho", default: true },
+];
+
+const readUserCols = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem("pb_user_cols") || "null");
+    if (Array.isArray(stored)) return stored;
+  } catch { /* ignore */ }
+  return USER_COL_DEFS.filter((c) => c.default).map((c) => c.key);
+};
+
 const UsersAdmin = () => {
   const { authHeader, user: me } = useAuth();
   const [users, setUsers] = useState([]);
@@ -1177,6 +1196,15 @@ const UsersAdmin = () => {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ email: "", role: "gebruiker", password: "", display_name: "" });
   const [editingUser, setEditingUser] = useState(null); // email being edited
+  const [quickViewUser, setQuickViewUser] = useState(null); // read-only detail email
+  const [cols, setCols] = useState(readUserCols);
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const persistCols = (next) => { setCols(next); try { localStorage.setItem("pb_user_cols", JSON.stringify(next)); } catch { /* ignore */ } };
+  const toggleCol = (k) => {
+    if (cols.includes(k)) persistCols(cols.filter((c) => c !== k));
+    else persistCols([...cols, k]);
+  };
+  const visibleCols = USER_COL_DEFS.filter((c) => c.fixed || cols.includes(c.key));
 
   const isSuperAdmin = (me?.role === "super_admin" || me?.role === "admin");
   const isBeheerder = isSuperAdmin || me?.role === "beheerder";
@@ -1256,48 +1284,107 @@ const UsersAdmin = () => {
 
       <section className="surface border border-app rounded-2xl overflow-x-auto mb-6">
         {loading ? <p className="p-6 text-muted-fg text-sm">Laden…</p> : (
+          <>
+            {/* Column toggle */}
+            <div className="px-4 py-2 border-b border-app flex flex-wrap items-center gap-2 relative">
+              <span className="text-[10px] uppercase tracking-widest text-muted-fg">{users.length} gebruiker(s)</span>
+              <button type="button" onClick={() => setColMenuOpen((v) => !v)} className="ml-auto text-xs rounded-full border border-app px-3 py-1 hover:border-pear-500 inline-flex items-center gap-1" data-testid="users-col-menu-toggle">
+                <SettingsIcon className="h-3.5 w-3.5" /> Kolommen
+              </button>
+              {colMenuOpen && (
+                <div className="absolute top-full right-2 mt-1 w-56 surface border border-app rounded-2xl shadow-lg z-30 p-2" data-testid="users-col-menu">
+                  {USER_COL_DEFS.map((c) => (
+                    <label key={c.key} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-strong ${c.fixed ? "opacity-60" : "hover:bg-pear-100/50 cursor-pointer"}`}>
+                      <input
+                        type="checkbox"
+                        checked={c.fixed || cols.includes(c.key)}
+                        disabled={c.fixed}
+                        onChange={() => toggleCol(c.key)}
+                        className="accent-pear-500 h-3.5 w-3.5"
+                        data-testid={`users-col-toggle-${c.key}`}
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                  <button onClick={() => setColMenuOpen(false)} className="w-full text-center text-[10px] uppercase tracking-widest text-muted-fg mt-2 pt-2 border-t border-app hover:text-strong">Sluiten</button>
+                </div>
+              )}
+            </div>
           <table className="w-full text-sm min-w-[720px]" data-testid="cms-users-table">
             <thead className="text-xs uppercase tracking-widest text-muted-fg">
               <tr>
-                <th className="text-left px-4 py-3">E-mail</th>
-                <th className="text-left px-4 py-3">Rol</th>
-                <th className="text-left px-4 py-3">Zoho</th>
+                {visibleCols.map((c) => (
+                  <th key={c.key} className="text-left px-4 py-3">{c.label}</th>
+                ))}
                 <th className="text-right px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-app">
-              {users.map((u) => (
+              {users.map((u) => {
+                const initial = (u.first_name || "").trim().charAt(0).toUpperCase();
+                const nameDisplay = (u.first_name || u.last_name)
+                  ? `${u.first_name || ""} ${initial ? initial + "." : ""} ${u.last_name || ""}`.trim().replace(/\s+/g, " ")
+                  : (u.display_name || "—");
+                return (
                 <tr key={u.email} data-testid={`user-row-${u.email}`}>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-strong">{u.email}</p>
-                    {u.display_name && <p className="text-xs text-muted-fg">{u.display_name}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={u.role}
-                      disabled={u.email === me?.email}
-                      onChange={(e) => updateRole(u.email, e.target.value)}
-                      data-testid={`user-role-${u.email}`}
-                      className="rounded-lg surface-2 border border-transparent focus:border-pear-500 px-2 py-1 text-xs outline-none text-strong"
-                    >
-                      {Object.entries(ROLE_LABELS).filter(([k]) => k !== "admin").map(([k, v]) => (
-                        <option key={k} value={k} disabled={k === "super_admin" && !isSuperAdmin}>{v}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    {u.zoho_linked ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1" data-testid={`user-zoho-linked-${u.email}`}>
-                        <ShieldCheck className="h-3 w-3" /> Gekoppeld
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 px-2.5 py-1" data-testid={`user-zoho-unlinked-${u.email}`}>
-                        <ShieldX className="h-3 w-3" /> Niet gekoppeld
-                      </span>
-                    )}
-                  </td>
+                  {visibleCols.map((c) => {
+                    if (c.key === "email") return (
+                      <td key="email" className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={nameDisplay} email={u.email} profilePicture={u.profile_picture} size={32} />
+                          <div className="min-w-0">
+                            <p className="font-medium text-strong truncate">{u.email}</p>
+                            {u.display_name && <p className="text-xs text-muted-fg truncate">{u.display_name}</p>}
+                          </div>
+                        </div>
+                      </td>
+                    );
+                    if (c.key === "name") return (
+                      <td key="name" className="px-4 py-3 text-strong whitespace-nowrap">{nameDisplay}</td>
+                    );
+                    if (c.key === "role") return (
+                      <td key="role" className="px-4 py-3">
+                        <select
+                          value={u.role}
+                          disabled={u.email === me?.email}
+                          onChange={(e) => updateRole(u.email, e.target.value)}
+                          data-testid={`user-role-${u.email}`}
+                          className="rounded-lg surface-2 border border-transparent focus:border-pear-500 px-2 py-1 text-xs outline-none text-strong"
+                        >
+                          {Object.entries(ROLE_LABELS).filter(([k]) => k !== "admin").map(([k, v]) => (
+                            <option key={k} value={k} disabled={k === "super_admin" && !isSuperAdmin}>{v}</option>
+                          ))}
+                        </select>
+                      </td>
+                    );
+                    if (c.key === "company") return <td key="company" className="px-4 py-3 text-strong text-xs">{u.company || "—"}</td>;
+                    if (c.key === "phone") return <td key="phone" className="px-4 py-3 text-xs">{u.phone || "—"}</td>;
+                    if (c.key === "city") return <td key="city" className="px-4 py-3 text-xs">{u.city || "—"}</td>;
+                    if (c.key === "country") return <td key="country" className="px-4 py-3 text-xs">{u.country || "—"}</td>;
+                    if (c.key === "zoho") return (
+                      <td key="zoho" className="px-4 py-3">
+                        {u.zoho_linked ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1" data-testid={`user-zoho-linked-${u.email}`}>
+                            <ShieldCheck className="h-3 w-3" /> Gekoppeld
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-red-100 text-red-700 px-2.5 py-1" data-testid={`user-zoho-unlinked-${u.email}`}>
+                            <ShieldX className="h-3 w-3" /> Niet gekoppeld
+                          </span>
+                        )}
+                      </td>
+                    );
+                    return null;
+                  })}
                   <td className="px-4 py-3 text-right">
-                    <div className="inline-flex items-center gap-1">
+                    <div className="inline-flex items-center gap-1 flex-wrap justify-end">
+                      <button
+                        onClick={() => setQuickViewUser(u.email)}
+                        data-testid={`user-view-${u.email}`}
+                        className="inline-flex items-center gap-1 text-xs text-pear-500 hover:bg-pear-50 px-2.5 py-1 rounded-full border border-pear-500"
+                      >
+                        Snelle weergave
+                      </button>
                       <button
                         onClick={() => setEditingUser(u.email)}
                         data-testid={`user-edit-${u.email}`}
@@ -1314,9 +1401,11 @@ const UsersAdmin = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+          </>
         )}
       </section>
 
@@ -1358,6 +1447,67 @@ const UsersAdmin = () => {
           canEditPassword={isBeheerder}
         />
       )}
+      {quickViewUser && (
+        <UserQuickViewModal email={quickViewUser} onClose={() => setQuickViewUser(null)} onEdit={() => { setEditingUser(quickViewUser); setQuickViewUser(null); }} />
+      )}
+    </div>
+  );
+};
+
+// --- Read-only quick-view modal ---
+const UserQuickViewModal = ({ email, onClose, onEdit }) => {
+  const { authHeader } = useAuth();
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    axios.get(`${API}/admin/users/${encodeURIComponent(email)}/details`, { headers: authHeader() })
+      .then((r) => setD(r.data)).catch(() => setD({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+  const row = (label, value) => (
+    <div className="flex items-start justify-between gap-3 py-2 border-b border-app/50 last:border-0">
+      <span className="text-[11px] uppercase tracking-widest text-muted-fg shrink-0">{label}</span>
+      <span className="text-sm text-strong text-right break-all">{value || "—"}</span>
+    </div>
+  );
+  return (
+    <div className="pb-modal" style={{ zIndex: 80 }} onClick={onClose} data-testid="user-quickview-modal">
+      <div className="pb-modal-card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <header className="px-6 py-4 border-b border-app flex items-center justify-between shrink-0 surface">
+          <div className="min-w-0">
+            <div className="font-heading text-lg font-semibold text-strong">Snelle weergave</div>
+            <p className="text-xs text-muted-fg truncate">{email}</p>
+          </div>
+          <button onClick={onClose} className="text-muted-fg hover:text-strong text-2xl leading-none" data-testid="user-quickview-close">×</button>
+        </header>
+        <div className="pb-modal-body p-6 surface">
+          {!d ? <p className="text-muted-fg text-sm">Laden…</p> : (
+            <div className="flex flex-col items-center gap-3 mb-4">
+              <Avatar name={`${d.first_name || ""} ${d.last_name || ""}`.trim() || email} email={email} profilePicture={d.profile_picture} size={80} />
+              <p className="font-heading text-lg font-semibold text-strong">{`${d.first_name || ""} ${d.last_name || ""}`.trim() || "—"}</p>
+              <p className="text-xs text-muted-fg">{d.role || "gebruiker"}</p>
+            </div>
+          )}
+          {d && (
+            <div className="text-sm">
+              {row("E-mail", email)}
+              {row("Telefoon", d.phone)}
+              {row("Bedrijf", d.company)}
+              {row("Adres", d.address)}
+              {row("Postcode", d.postal_code)}
+              {row("Huisnummer", d.house_number)}
+              {row("Plaats", d.city)}
+              {row("Regio", d.region)}
+              {row("Land", d.country)}
+              {row("KVK", d.kvk)}
+              {row("BTW / Tax ID", d.tax_id)}
+            </div>
+          )}
+        </div>
+        <footer className="px-6 py-3 border-t border-app flex items-center justify-end gap-2 surface">
+          <button onClick={onClose} className="text-xs px-4 py-2 rounded-full border border-app hover:border-slate-400">Sluiten</button>
+          <button onClick={onEdit} className="btn-primary" data-testid="user-quickview-edit">Bewerken</button>
+        </footer>
+      </div>
     </div>
   );
 };
@@ -1853,14 +2003,14 @@ const CybersecurityAdmin = () => {
                     <div className="text-[10px] text-muted-fg truncate max-w-[220px]" title={b.user_agent}>{b.user_agent}</div>
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-fg whitespace-nowrap">{new Date(b.created_at).toLocaleString("nl-NL")}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 min-w-[130px]">
                     {b.unblocked ? (
                       <span className="text-xs text-emerald-600 font-semibold">Gedeblokkeerd</span>
                     ) : (
                       <span className="text-xs text-red-500 font-semibold">Geblokkeerd</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 surface border-l-2 border-app shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)]">
+                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 lg:static surface lg:bg-transparent border-l-2 lg:border-l-0 border-app shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)] lg:shadow-none">
                     {b.unblocked ? (
                       <button
                         onClick={() => toggle(b, false)}

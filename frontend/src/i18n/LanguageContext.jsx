@@ -24,10 +24,34 @@ export const LanguageProvider = ({ children }) => {
     const stored = localStorage.getItem("pb_lang") || readCookie("pb_lang");
     if (stored === "nl" || stored === "en") {
       setLangState(stored);
-      return;
+    } else {
+      const browser = (navigator.language || "nl").toLowerCase();
+      setLangState(browser.startsWith("nl") ? "nl" : "en");
     }
-    const browser = (navigator.language || "nl").toLowerCase();
-    setLangState(browser.startsWith("nl") ? "nl" : "en");
+    // On mount (and whenever token changes), fetch backend pref and apply if
+    // it differs. This syncs language across devices for logged-in users.
+    const token = localStorage.getItem("pb_admin_token");
+    if (token) {
+      const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+      fetch(`${API}/auth/me/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => {
+          if (d && (d.lang === "nl" || d.lang === "en")) {
+            localStorage.setItem("pb_lang", d.lang);
+            writeCookie("pb_lang", d.lang);
+            setLangState(d.lang);
+          }
+        })
+        .catch(() => {});
+    }
+    // Also listen to storage events from other tabs/windows for real-time sync
+    const onStorage = (e) => {
+      if (e.key === "pb_lang" && (e.newValue === "nl" || e.newValue === "en")) {
+        setLangState(e.newValue);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const setLang = (l) => {

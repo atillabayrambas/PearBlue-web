@@ -195,6 +195,52 @@ def make_router(db) -> APIRouter:
         request.session.pop("portal_user_id", None)
         return {"ok": True}
 
+    # ---- Portal self-service profile — read + update ----
+    @router.get("/portal/profile")
+    async def portal_profile_get(request: Request):
+        uid = _require_portal_user(request)
+        u = await db.zoho_users.find_one(
+            {"zoho_user_id": uid},
+            {"_id": 0, "access_token": 0, "refresh_token": 0},
+        ) or {}
+        return {
+            "email": u.get("email"),
+            "display_name": u.get("display_name") or "",
+            "first_name": u.get("first_name") or "",
+            "last_name": u.get("last_name") or "",
+            "phone": u.get("phone") or "",
+            "company": u.get("company") or "",
+            "address": u.get("address") or "",
+            "postal_code": u.get("postal_code") or "",
+            "house_number": u.get("house_number") or "",
+            "city": u.get("city") or "",
+            "region": u.get("region") or "",
+            "country": u.get("country") or "Nederland",
+            "profile_picture": u.get("profile_picture") or "",
+        }
+
+    @router.put("/portal/profile")
+    async def portal_profile_update(request: Request, payload: dict):
+        uid = _require_portal_user(request)
+        allowed = {
+            "display_name", "first_name", "last_name", "phone", "company",
+            "address", "postal_code", "house_number", "city", "region", "country",
+            "profile_picture",
+        }
+        upd = {}
+        for k, v in (payload or {}).items():
+            if k in allowed:
+                if k == "profile_picture" and isinstance(v, str) and len(v) > 3 * 1024 * 1024:
+                    raise HTTPException(413, "Profile picture too large (>3MB)")
+                if isinstance(v, str) and len(v) > 3 * 1024 * 1024:
+                    raise HTTPException(413, "Field too large")
+                upd[k] = v
+        if not upd:
+            raise HTTPException(400, "No editable fields provided")
+        upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": upd})
+        return {"status": "updated"}
+
     async def _access_token(uid: str) -> tuple[str, dict]:
         u = await db.zoho_users.find_one({"zoho_user_id": uid})
         if not u:
