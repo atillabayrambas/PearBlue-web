@@ -127,8 +127,8 @@ const ProcedureSection = ({ lang }) => {
       phase: nl ? "04 · ACCEPTATIE (A)" : "04 · ACCEPTANCE (A)",
       title: nl ? "Jij bepaalt" : "You approve",
       desc: nl
-        ? "Live acceptatieomgeving. Feedback in 5 hoofd-revisierondes + 3 extra design-revisies voor de gekozen landingpage inbegrepen. Pas na jouw expliciete go gaan we naar productie."
-        : "Live acceptance environment. 5 main revision rounds + 3 extra design revisions on the chosen landing page included. Only after your explicit go we move to production.",
+        ? "Live acceptatieomgeving. 3 revisierondes inbegrepen op het gekozen ontwerp. Pas na jouw expliciete go gaan we naar productie."
+        : "Live acceptance environment. 3 revision rounds on the chosen design included. Only after your explicit go we move to production.",
       time: nl ? "Dag 6" : "Day 6",
       color: "from-violet-400 to-fuchsia-400",
     },

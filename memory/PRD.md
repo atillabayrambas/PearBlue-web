@@ -21,7 +21,20 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 24 (this session, v0.6.0-Beta) — Portal profile + Batch C polish
+### Feb 2026 — Iteration 25 (this session, v0.6.1-Beta) — UsersAdmin polish + bidirectional postcode
+- **Bidirectionele postcode-autofill** — Adres-veld triggert nu ook autofill: als de gebruiker een volledig adres met NL-postcode invult, wordt de postcode automatisch geëxtraheerd (regex `\d{4}\s?[A-Za-z]{2}`), evenals het huisnummer. Werkt op: portaal-aanmeldformulier, `/portal/profile` én CMS gebruikersrollen edit-modal.
+- **Plaats / Regio / Land nu read-only** — Deze velden zijn alleen nog te wijzigen door de postcode API. Voorkomt inconsistente data en handmatige typos. Op alle 3 formulieren.
+- **Nominatim NL-restrictie** — Fallback geocoder gebruikt `countrycodes=nl` zodat postcode-resultaten niet meer per ongeluk naar gelijknamige straten in andere landen kunnen mappen.
+- **Gebruikers & Rollen redesign**:
+  - Kolomtitel "Voornaam & achternaam" → **"Voor- en achternaam"**.
+  - "Snelle weergave"-tekstknop → compact **oog-icoontje** (Eye) met tooltip, geen ruimteverspilling meer.
+  - **Horizontale scrollbar verwijderd** — `overflow-x-auto` weg, tabel `min-w` verwijderd.
+  - **Paginering** met keuzevakje "Per pagina" (20/50/100/200, default 20) + Vorige/Volgende-knoppen. Voorkeur opgeslagen in `localStorage` (`pb_user_page_size`).
+  - Voetregel toont `1–20 van N` en `Pagina 1 / M`.
+- **About OTAP** — 04 · ACCEPTATIE tekst aangepast: nu "**3 revisierondes** inbegrepen" (was "5 hoofd + 3 extra").
+- **Testing**: smoke-test geverifieerd — pagination + Eye icoon + kolomkiezer werken; bidirectional autofill test: typen van `Grote Markt 1, 9711JV Groningen` in Adres → postcode 9711JV en huisnummer 1 automatisch ingevuld, Plaats/Regio uit API. City/Region velden `readOnly=true` bevestigd.
+
+### Feb 2026 — Iteration 24 (v0.6.0-Beta) — Portal profile + Batch C polish
 - **Klantportaal profielbewerking** — nieuwe `/portal/profile` pagina (route + link in portal header). Iedere ingelogde klant kan zelf voornaam, achternaam, weergavenaam, bedrijf, telefoon (met landcode picker), volledig adres (met postcode-autofill), avatar (uit 40 presets) OF eigen foto/webcam-upload aanpassen. Backend `GET /portal/profile` en `PUT /portal/profile` toegevoegd in `zoho_portal.py` (writes gaan naar `db.zoho_users`).
 - **Avatar library uitgebreid tot 40 varianten + verbeteringen**
   - 10 mannelijk + 10 vrouwelijk + 10 nieuwe **subculturen** (Gothic, Emo, Artist, Rocker, Punk, Skater, Preppy, Vintage, Sporty, Anime — met verschillende DiceBear-styles voor visuele diversiteit) + 10 robots.

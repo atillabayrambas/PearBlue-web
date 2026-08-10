@@ -12,6 +12,7 @@ import { COUNTRIES } from "../data/countries";
 import { Avatar } from "../components/Avatar";
 import { PhoneInput } from "../components/PhoneInput";
 import { usePostalLookup } from "../hooks/usePostalLookup";
+import { extractNlPostcode, extractHouseNumber } from "../hooks/usePostalLookup";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
 
@@ -72,14 +73,29 @@ const RegistrationForm = () => {
   const country = COUNTRIES.find((c) => c.code === form.country) || COUNTRIES[0];
 
   const autofill = async () => {
-    if (!form.postal_code || form.country !== "NL") return;
+    if (form.country !== "NL") return;
+    // Bidirectional: allow the user to type in either postcode/huisnummer or full address
+    let pc = form.postal_code;
+    let hn = form.house_number;
+    if (!pc) {
+      const found = extractNlPostcode(form.address);
+      if (found) pc = found;
+    }
+    if (!hn) {
+      const strip = form.address.replace(NL_POSTCODE_RE || /(\d{4}\s?[A-Za-z]{2})/, "");
+      const h = extractHouseNumber(strip);
+      if (h) hn = h;
+    }
+    if (!pc) return;
     setLookingUp(true);
-    const res = await lookup(form.postal_code, form.house_number);
+    const res = await lookup(pc, hn);
     setLookingUp(false);
     if (!res) return;
     setForm((f) => ({
       ...f,
-      address: res.street ? `${res.street}${f.house_number ? " " + f.house_number : ""}` : f.address,
+      postal_code: pc,
+      house_number: hn || f.house_number,
+      address: res.street ? `${res.street}${hn ? " " + hn : ""}` : f.address,
       city: res.city || f.city,
       region: res.region || f.region,
     }));
@@ -154,17 +170,17 @@ const RegistrationForm = () => {
         </label>
         <label className="block sm:col-span-3">
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Address" : "Adres"} *</span>
-          <input required value={form.address} onChange={change("address")} type="text" placeholder={lang === "en" ? "Auto-filled from postcode" : "Wordt automatisch ingevuld"} data-testid="portal-reg-address"
+          <input required value={form.address} onChange={change("address")} onBlur={autofill} type="text" placeholder={lang === "en" ? "Street & number OR full address" : "Straat & huisnummer of volledig adres"} data-testid="portal-reg-address"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>
       </div>
       {lookingUp && <p className="text-[11px] text-muted-fg -mt-2">{lang === "en" ? "Looking up address…" : "Adres opzoeken…"}</p>}
-      {/* City/country/region row — auto-filled but overridable */}
+      {/* City/country/region row — read-only, auto-filled from postcode API */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "City" : "Plaats"}</span>
-          <input value={form.city} onChange={change("city")} type="text" data-testid="portal-reg-city"
-            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+          <input value={form.city} readOnly type="text" data-testid="portal-reg-city"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent px-4 py-2.5 text-sm outline-none text-strong opacity-70 cursor-not-allowed" />
         </label>
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Country" : "Land"}</span>
@@ -179,16 +195,8 @@ const RegistrationForm = () => {
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg leading-tight" title={lang === "en" ? "Region / province" : "Regio / provincie"}>
             {lang === "en" ? "Region" : "Regio"}
           </span>
-          {(country?.regions || []).length > 0 ? (
-            <select value={form.region} onChange={change("region")} data-testid="portal-reg-region"
-              className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong">
-              <option value="">{lang === "en" ? "— Choose —" : "— Kies —"}</option>
-              {country.regions.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          ) : (
-            <input value={form.region} onChange={change("region")} type="text" placeholder={lang === "en" ? "State / region" : "Staat / regio"} data-testid="portal-reg-region"
-              className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-          )}
+          <input value={form.region} readOnly type="text" placeholder={lang === "en" ? "Auto-filled" : "Wordt automatisch ingevuld"} data-testid="portal-reg-region"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent px-4 py-2.5 text-sm outline-none text-strong opacity-70 cursor-not-allowed" />
         </label>
       </div>
       <label className="block">

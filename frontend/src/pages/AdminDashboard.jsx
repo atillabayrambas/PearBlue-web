@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert, Euro, Menu } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert, Euro, Menu, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
@@ -14,7 +14,7 @@ import { Avatar } from "../components/Avatar";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { PhoneInput } from "../components/PhoneInput";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { usePostalLookup } from "../hooks/usePostalLookup";
+import { usePostalLookup, extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE } from "../hooks/usePostalLookup";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const PEARBLUE_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/djwgz9jk_PearBlue%20logo-10.webp";
@@ -1170,7 +1170,7 @@ const generatePearAvatar = (seed) => {
 
 const USER_COL_DEFS = [
   { key: "email", label: "E-mail", labelEn: "Email", default: true, fixed: true },
-  { key: "name", label: "Voornaam & achternaam", labelEn: "Name", default: true },
+  { key: "name", label: "Voor- en achternaam", labelEn: "First & last name", default: true },
   { key: "role", label: "Rol", labelEn: "Role", default: true },
   { key: "company", label: "Bedrijf", labelEn: "Company", default: true },
   { key: "phone", label: "Telefoon", labelEn: "Phone", default: false },
@@ -1199,7 +1199,10 @@ const UsersAdmin = () => {
   const [quickViewUser, setQuickViewUser] = useState(null); // read-only detail email
   const [cols, setCols] = useState(readUserCols);
   const [colMenuOpen, setColMenuOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(() => Number(localStorage.getItem("pb_user_page_size")) || 20);
+  const [page, setPage] = useState(1);
   const persistCols = (next) => { setCols(next); try { localStorage.setItem("pb_user_cols", JSON.stringify(next)); } catch { /* ignore */ } };
+  const setPageSizePersist = (n) => { setPageSize(n); setPage(1); try { localStorage.setItem("pb_user_page_size", String(n)); } catch { /* ignore */ } };
   const toggleCol = (k) => {
     if (cols.includes(k)) persistCols(cols.filter((c) => c !== k));
     else persistCols([...cols, k]);
@@ -1282,15 +1285,26 @@ const UsersAdmin = () => {
         </form>
       </section>
 
-      <section className="surface border border-app rounded-2xl overflow-x-auto mb-6">
+      <section className="surface border border-app rounded-2xl mb-6">
         {loading ? <p className="p-6 text-muted-fg text-sm">Laden…</p> : (
           <>
-            {/* Column toggle */}
+            {/* Column toggle + page size */}
             <div className="px-4 py-2 border-b border-app flex flex-wrap items-center gap-2 relative">
               <span className="text-[10px] uppercase tracking-widest text-muted-fg">{users.length} gebruiker(s)</span>
-              <button type="button" onClick={() => setColMenuOpen((v) => !v)} className="ml-auto text-xs rounded-full border border-app px-3 py-1 hover:border-pear-500 inline-flex items-center gap-1" data-testid="users-col-menu-toggle">
-                <SettingsIcon className="h-3.5 w-3.5" /> Kolommen
-              </button>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-1 text-xs text-muted-fg">
+                  Per pagina
+                  <select value={pageSize} onChange={(e) => setPageSizePersist(Number(e.target.value))} className="rounded-lg surface-2 border border-app px-2 py-1 text-xs" data-testid="users-page-size">
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                  </select>
+                </label>
+                <button type="button" onClick={() => setColMenuOpen((v) => !v)} className="text-xs rounded-full border border-app px-3 py-1 hover:border-pear-500 inline-flex items-center gap-1" data-testid="users-col-menu-toggle">
+                  <SettingsIcon className="h-3.5 w-3.5" /> Kolommen
+                </button>
+              </div>
               {colMenuOpen && (
                 <div className="absolute top-full right-2 mt-1 w-56 surface border border-app rounded-2xl shadow-lg z-30 p-2" data-testid="users-col-menu">
                   {USER_COL_DEFS.map((c) => (
@@ -1310,7 +1324,7 @@ const UsersAdmin = () => {
                 </div>
               )}
             </div>
-          <table className="w-full text-sm min-w-[720px]" data-testid="cms-users-table">
+          <table className="w-full text-sm" data-testid="cms-users-table">
             <thead className="text-xs uppercase tracking-widest text-muted-fg">
               <tr>
                 {visibleCols.map((c) => (
@@ -1320,7 +1334,7 @@ const UsersAdmin = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-app">
-              {users.map((u) => {
+              {users.slice((page - 1) * pageSize, page * pageSize).map((u) => {
                 const initial = (u.first_name || "").trim().charAt(0).toUpperCase();
                 const nameDisplay = (u.first_name || u.last_name)
                   ? `${u.first_name || ""} ${initial ? initial + "." : ""} ${u.last_name || ""}`.trim().replace(/\s+/g, " ")
@@ -1381,9 +1395,11 @@ const UsersAdmin = () => {
                       <button
                         onClick={() => setQuickViewUser(u.email)}
                         data-testid={`user-view-${u.email}`}
-                        className="inline-flex items-center gap-1 text-xs text-pear-500 hover:bg-pear-50 px-2.5 py-1 rounded-full border border-pear-500"
+                        aria-label="Snelle weergave"
+                        title="Snelle weergave"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-pear-500 text-pear-500 hover:bg-pear-50"
                       >
-                        Snelle weergave
+                        <Eye className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setEditingUser(u.email)}
@@ -1405,6 +1421,23 @@ const UsersAdmin = () => {
               })}
             </tbody>
           </table>
+          {/* Pagination footer */}
+          {users.length > pageSize && (
+            <div className="px-4 py-2 border-t border-app flex flex-wrap items-center justify-between gap-2 text-xs" data-testid="users-pagination">
+              <span className="text-muted-fg">
+                {`${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, users.length)} van ${users.length}`}
+              </span>
+              <div className="inline-flex items-center gap-1">
+                <button type="button" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="inline-flex items-center gap-1 rounded-full border border-app px-3 py-1 hover:border-pear-500 disabled:opacity-40 disabled:cursor-not-allowed" data-testid="users-page-prev">
+                  <ChevronLeft className="h-3 w-3" /> Vorige
+                </button>
+                <span className="px-2 text-muted-fg">Pagina {page} / {Math.ceil(users.length / pageSize)}</span>
+                <button type="button" disabled={page >= Math.ceil(users.length / pageSize)} onClick={() => setPage((p) => Math.min(Math.ceil(users.length / pageSize), p + 1))} className="inline-flex items-center gap-1 rounded-full border border-app px-3 py-1 hover:border-pear-500 disabled:opacity-40 disabled:cursor-not-allowed" data-testid="users-page-next">
+                  Volgende <ChevronRight className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          )}
           </>
         )}
       </section>
@@ -1571,13 +1604,26 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
   const set = (k) => (e) => setDetails((d) => ({ ...(d || {}), [k]: e.target.value }));
 
   const autofillFromPostcode = async () => {
-    if (!details?.postal_code) return;
+    let pc = details?.postal_code;
+    let hn = details?.house_number || details?.house;
+    if (!pc && details?.address) {
+      const found = extractNlPostcode(details.address);
+      if (found) pc = found;
+    }
+    if (!hn && details?.address) {
+      const strip = details.address.replace(NL_POSTCODE_RE, "");
+      const h = extractHouseNumber(strip);
+      if (h) hn = h;
+    }
+    if (!pc) return;
     setLookingUp(true);
-    const res = await lookup(details.postal_code, details.house_number || details.house || "");
+    const res = await lookup(pc, hn || "");
     setLookingUp(false);
     if (res) {
       setDetails((d) => ({ ...(d || {}),
-        address: res.street ? `${res.street}${(d?.house_number || d?.house) ? " " + (d.house_number || d.house) : ""}` : d?.address,
+        postal_code: pc,
+        house_number: hn || d?.house_number,
+        address: res.street ? `${res.street}${hn ? " " + hn : ""}` : d?.address,
         city: res.city || d?.city,
         region: res.region || d?.region,
         country: res.country === "NL" ? "Nederland" : (res.country || d?.country || "Nederland"),
@@ -1637,7 +1683,7 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Adres *</span>
-                <input required value={details.address || ""} onChange={set("address")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-address" />
+                <input required value={details.address || ""} onChange={set("address")} onBlur={autofillFromPostcode} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-address" placeholder="Straat + huisnr of volledig adres" />
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Postcode *</span>
@@ -1652,15 +1698,15 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Plaats</span>
-                <input value={details.city || ""} onChange={set("city")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-city" />
+                <input value={details.city || ""} readOnly className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong opacity-70 cursor-not-allowed" data-testid="user-details-city" />
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Provincie / regio</span>
-                <input value={details.region || ""} onChange={set("region")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-region" />
+                <input value={details.region || ""} readOnly className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong opacity-70 cursor-not-allowed" data-testid="user-details-region" />
               </label>
               <label className="block">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Land</span>
-                <input value={details.country || "Nederland"} onChange={set("country")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-country" />
+                <input value={details.country || "Nederland"} readOnly className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong opacity-70 cursor-not-allowed" data-testid="user-details-country" />
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Telefoon</span>

@@ -6,7 +6,7 @@ import { ArrowLeft, Save, Loader2, Camera, User, MapPin, Phone } from "lucide-re
 import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
-import { usePostalLookup } from "../hooks/usePostalLookup";
+import { usePostalLookup, extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE } from "../hooks/usePostalLookup";
 import { PhoneInput } from "../components/PhoneInput";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { Avatar } from "../components/Avatar";
@@ -47,13 +47,27 @@ export default function PortalProfile() {
   const set = (k) => (e) => setMe((m) => ({ ...(m || {}), [k]: e.target.value }));
 
   const autofill = async () => {
-    if (!me?.postal_code || (me.country && !/nederland|netherlands|nl/i.test(me.country))) return;
+    if (me?.country && !/nederland|netherlands|nl/i.test(me.country)) return;
+    let pc = me?.postal_code;
+    let hn = me?.house_number;
+    if (!pc && me?.address) {
+      const found = extractNlPostcode(me.address);
+      if (found) pc = found;
+    }
+    if (!hn && me?.address) {
+      const strip = me.address.replace(NL_POSTCODE_RE, "");
+      const h = extractHouseNumber(strip);
+      if (h) hn = h;
+    }
+    if (!pc) return;
     setLookingUp(true);
-    const r = await lookup(me.postal_code, me.house_number);
+    const r = await lookup(pc, hn);
     setLookingUp(false);
     if (!r) { toast.error(nl ? "Adres niet gevonden" : "Address not found"); return; }
     setMe((m) => ({ ...(m || {}),
-      address: r.street ? `${r.street}${m.house_number ? " " + m.house_number : ""}` : m.address,
+      postal_code: pc,
+      house_number: hn || m.house_number,
+      address: r.street ? `${r.street}${hn ? " " + hn : ""}` : m.address,
       city: r.city || m.city,
       region: r.region || m.region,
       country: r.country === "NL" ? "Nederland" : (r.country || m.country || "Nederland"),
@@ -167,19 +181,19 @@ export default function PortalProfile() {
               </label>
               <label className="block sm:col-span-3">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Adres" : "Address"}</span>
-                <input value={me.address || ""} onChange={set("address")} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="portal-profile-address" />
+                <input value={me.address || ""} onChange={set("address")} onBlur={autofill} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="portal-profile-address" />
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Plaats" : "City"}</span>
-                <input value={me.city || ""} onChange={set("city")} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="portal-profile-city" />
+                <input value={me.city || ""} readOnly className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm opacity-70 cursor-not-allowed" data-testid="portal-profile-city" />
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Regio" : "Region"}</span>
-                <input value={me.region || ""} onChange={set("region")} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="portal-profile-region" />
+                <input value={me.region || ""} readOnly className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm opacity-70 cursor-not-allowed" data-testid="portal-profile-region" />
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Land" : "Country"}</span>
-                <input value={me.country || "Nederland"} onChange={set("country")} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="portal-profile-country" />
+                <input value={me.country || "Nederland"} readOnly className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm opacity-70 cursor-not-allowed" data-testid="portal-profile-country" />
               </label>
             </div>
           </section>
