@@ -121,7 +121,23 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **Changelog data**: minor version format Vx.x.x nu ondersteund (v0.7.1-Beta live).
 - **Versie sync**: footer + CMS sidebar tonen nu **v0.7.1-Beta**.
 
-### Feb 2026 — Iteration 18 (this session, v0.5.4-Beta)
+### Feb 2026 — Iteration 19 (this session, v0.5.5-Beta)
+- **Password Reset UI-pagina** op `/admin/reset-password?token=…` — verify-token GET/apply POST volledig gekoppeld met backend (was al gebouwd). Foutafhandeling voor invalid/expired tokens + succes-flow met 2s redirect naar login.
+- **Klantportaal aanvragen uitgebreid** — nieuwe verplichte velden adres + postcode, optioneel plaats + regio + land. Land-dropdown met emoji-vlaggen 🇳🇱🇧🇪🇩🇪🇫🇷🇬🇧🇺🇸🌍; regio wisselt van SELECT (NL 12 provincies, BE, DE, FR, GB) naar text-input voor US/Ander land. Backend `PortalRegistrationCreate/PortalRegistration` uitgebreid.
+- **Backend UserDetailsUpdate** uitgebreid met `region` + `phone` — `GET /admin/users/{email}/details` retourneert nu alle 12 velden.
+- **Avatar-component gedeeld** — verplaatst van inline in AdminDashboard.jsx naar `/app/frontend/src/components/Avatar.jsx`. Gebruikt in CMS sidebar én in klantportaal welkomstblok naast naam.
+- **Klantverhalen marquee** — 60s → 22s cyclus (bijna 3x sneller), 5x replicated array (was 3x) zodat auto-scroll geen lege plekken toont zelfs bij grote viewport; drag-to-scroll blijft werken; hover-pauze.
+- **FloatingReviewTicker** — toont nu naast quote ook naam + bedrijf ("Super tof!" — TEST, PEARBLUE).
+- **Assignee-labels** — dropdowns tonen NOOIT meer volledig e-mailadres. Prioriteit: first_name+last_name → display_name → local-part van e-mail.
+- **CMS mobile header** — Versietekst en logo verwijderd; enkel hamburger + "Terug naar site"-knop → compacter en meer bruikbaar.
+- **CMS mobile hamburger click-outside** — nieuwe `cms-mobile-backdrop` overlay sluit menu bij tik/klik buiten.
+- **CMS zijmenu-logo** — h-12 lg:h-14 (was h-8), gecentreerd met `mx-auto`.
+- **CMS notificatie-badges** — compacter (min-w 18px, h-4, rode pil).
+- **Homepage hero mobile** — kortere overline "WEBSITES · IT · CYBERSECURITY" (geen em-dash); H1 fits binnen 390-viewport (H1 breedte 342px < 390px).
+- **Calculator knoppen** — 1 horizontale rij met `overflow-x-auto`, kortere labels op mobile ("Leeg"/"Deel"/"Offerte + wensen").
+- **Home lang variabele** — was `const { t }` → nu `const { t, lang }` (fix voor "lang is not defined" runtime error).
+
+### Feb 2026 — Iteration 18 (v0.5.4-Beta)
 - **Global theme-aware form styling** — nieuwe base layer in `index.css` zorgt dat ALLE `<select>`, `<input>`, `<textarea>` en `<option>` de themakleur volgen (surface bg, text-strong tekst, muted placeholder, 0.7 opacity disabled). Fixt de witte-op-witte dropdowns overal in CMS (Berichten, Feedback, Reviews, Portaal, Brevo).
 - **CMS mobile hamburger + PearBlue-logo header** — nieuwe `cms-mobile-header` boven de content op < lg, met hamburger toggle en versie-tag. Zijmenu klapt uit/in.
 - **CMS sidebar upgraded** — PearBlue-logo bovenaan, profielfoto (Avatar met random pear-avatar of initialen) naast display-name, taal (NL/EN) en thema (Licht/Donker/Auto) toggle onderaan.

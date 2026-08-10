@@ -229,29 +229,35 @@ function CalculatorModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden"
       onClick={onClose}
       data-testid="pricing-calc-modal"
+      style={{ height: "100dvh" }}
     >
       <div
-        className="w-full max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col border border-app bg-white dark:bg-slate-900"
+        className="w-full max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-app bg-white dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
-        style={{ backgroundColor: "var(--pb-bg-solid, white)" }}
+        style={{ backgroundColor: "var(--pb-bg-solid, white)", maxHeight: "100dvh", height: "100dvh" }}
       >
-        <header className="px-6 py-4 border-b border-app flex items-center justify-between bg-white dark:bg-slate-900">
-          <div>
-            <div className="font-heading text-xl font-semibold text-strong flex items-center gap-2">
-              <Calculator className="h-5 w-5 text-pear-500" />
-              {lang === "en" ? "Cost calculator" : "Kostencalculator"}
+        <header className="px-4 sm:px-6 py-3 sm:py-4 border-b border-app flex items-start justify-between gap-3 bg-white dark:bg-slate-900 shrink-0" style={{ paddingTop: "max(env(safe-area-inset-top), 12px)" }}>
+          <div className="min-w-0 flex-1">
+            <div className="font-heading text-lg sm:text-xl font-semibold text-strong flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-pear-500 shrink-0" />
+              <span className="truncate">{lang === "en" ? "Cost calculator" : "Kostencalculator"}</span>
             </div>
-            <p className="text-xs text-muted-fg mt-0.5">
+            <p className="text-[11px] sm:text-xs text-muted-fg mt-0.5 line-clamp-2">
               {lang === "en"
                 ? "Estimate only — final quote may differ based on scope and requirements."
                 : "Slechts een schatting — de definitieve offerte kan afwijken op basis van scope en wensen."}
             </p>
           </div>
-          <button onClick={onClose} className="text-muted-fg hover:text-strong text-2xl leading-none" data-testid="pricing-calc-close">
-            <X className="h-6 w-6" />
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-full p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-strong active:scale-95 transition-transform"
+            data-testid="pricing-calc-close"
+            aria-label={lang === "en" ? "Close" : "Sluiten"}
+          >
+            <X className="h-5 w-5" />
           </button>
         </header>
 

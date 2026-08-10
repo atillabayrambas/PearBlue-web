@@ -85,7 +85,7 @@ const AdminSidebar = () => {
       )}
 
       <aside
-        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "fixed inset-y-0 left-0 z-40 w-72 rounded-none lg:relative lg:z-auto lg:inset-auto lg:w-64" : "hidden lg:block"}`}
+        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "fixed inset-y-0 left-0 z-40 w-72 rounded-none overflow-y-auto lg:relative lg:z-auto lg:inset-auto lg:w-64 lg:overflow-visible" : "hidden lg:block"}`}
         data-testid="cms-sidebar"
       >
         {/* Logo + close for mobile — larger, centered */}
@@ -884,25 +884,30 @@ const RegistrationsAdmin = () => {
         <div className="surface border border-app rounded-2xl divide-y divide-app">
           {visible.map((r, i) => (
             <div key={r.id || i} className="p-4" data-testid={`cms-registration-${r.id}`}>
-              <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-strong truncate">{r.name}</p>
+                    <p className="font-semibold text-strong break-words">{r.name}</p>
                     <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold ${STATUS_STYLE[r.status] || "bg-slate-200 text-slate-700"}`}>{r.status}</span>
                   </div>
-                  <p className="text-xs text-muted-fg mt-0.5">
+                  <p className="text-xs text-muted-fg mt-0.5 break-words">
                     {r.email}{r.company ? ` · ${r.company}` : ""}{r.phone ? ` · ${r.phone}` : ""} · {new Date(r.created_at).toLocaleString("nl-NL")}
                   </p>
-                  {r.message && <p className="text-sm text-strong/80 mt-2 whitespace-pre-wrap">{r.message}</p>}
-                  {r.admin_note && <p className="text-xs text-muted-fg italic mt-2">Notitie: {r.admin_note}</p>}
+                  {(r.address || r.postal_code || r.city) && (
+                    <p className="text-xs text-muted-fg mt-0.5 break-words">
+                      {[r.address, r.postal_code, r.city, r.region, r.country].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {r.message && <p className="text-sm text-strong/80 mt-2 whitespace-pre-wrap break-words">{r.message}</p>}
+                  {r.admin_note && <p className="text-xs text-muted-fg italic mt-2 break-words">Notitie: {r.admin_note}</p>}
                   {r.assigned_to && <div className="mt-2"><AssigneeChip email={r.assigned_to} assignees={assignees} size={22} /></div>}
                 </div>
-                <div className="flex flex-col gap-2 shrink-0">
+                <div className="flex flex-col gap-2 sm:shrink-0 w-full sm:w-auto sm:min-w-[180px]">
                   {r.status === "pending" && (
                     <select
                       value={r.assigned_to || ""}
                       onChange={(e) => assign(r.id, e.target.value || null)}
-                      className="text-xs rounded-lg border border-app surface px-2 py-1"
+                      className="text-xs rounded-lg border border-app surface px-2 py-1.5 w-full"
                       data-testid={`registration-assignee-${r.id}`}
                     >
                       <option value="">— Niet toegewezen —</option>
@@ -915,14 +920,14 @@ const RegistrationsAdmin = () => {
                     </select>
                   )}
                   {r.status === "pending" && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button onClick={() => review(r.id, "approved")} disabled={busy === r.id}
-                      className="inline-flex items-center gap-1 text-xs font-semibold rounded-full bg-pear-500 text-white px-3 py-1.5 hover:bg-pear-600 disabled:opacity-50"
+                      className="flex-1 inline-flex items-center justify-center gap-1 text-xs font-semibold rounded-full bg-pear-500 text-white px-3 py-1.5 hover:bg-pear-600 disabled:opacity-50"
                       data-testid={`registration-approve-${r.id}`}>
                       <Check className="h-3.5 w-3.5" /> Goedkeuren
                     </button>
                     <button onClick={() => review(r.id, "rejected")} disabled={busy === r.id}
-                      className="inline-flex items-center gap-1 text-xs font-semibold rounded-full surface-2 text-red-500 border border-red-200 px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+                      className="flex-1 inline-flex items-center justify-center gap-1 text-xs font-semibold rounded-full surface-2 text-red-500 border border-red-200 px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
                       data-testid={`registration-reject-${r.id}`}>
                       <XCircle className="h-3.5 w-3.5" /> Afwijzen
                     </button>
@@ -1071,25 +1076,25 @@ const ReviewsAdmin = () => {
         <div className="surface border border-app rounded-2xl divide-y divide-app">
           {visible.map((r) => (
             <div key={r.id} className="p-4" data-testid={`cms-review-${r.id}`}>
-              <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <p className="font-semibold text-strong">{r.name}</p>
+                    <p className="font-semibold text-strong break-words">{r.name}</p>
                     <StarsRow n={r.rating} />
                     {r.approved && <span className="text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold bg-pear-100 text-pear-700">Live</span>}
                     {r.featured && <span className="text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold bg-amber-100 text-amber-700">Uitgelicht</span>}
                   </div>
-                  <p className="text-xs text-muted-fg mt-0.5">
+                  <p className="text-xs text-muted-fg mt-0.5 break-words">
                     {[r.company, r.project].filter(Boolean).join(" · ")} · {new Date(r.created_at).toLocaleString("nl-NL")}
                   </p>
-                  <p className="text-sm text-strong/90 mt-2 whitespace-pre-wrap">&ldquo;{r.quote}&rdquo;</p>
+                  <p className="text-sm text-strong/90 mt-2 whitespace-pre-wrap break-words">&ldquo;{r.quote}&rdquo;</p>
                   {r.assigned_to && <div className="mt-2"><AssigneeChip email={r.assigned_to} assignees={assignees} size={22} /></div>}
                 </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 sm:shrink-0 w-full sm:w-auto sm:min-w-[180px]">
                   <select
                     value={r.assigned_to || ""}
                     onChange={(e) => patch(r.id, { assigned_to: e.target.value || null })}
-                    className="text-xs rounded-lg border border-app surface px-2 py-1"
+                    className="text-xs rounded-lg border border-app surface px-2 py-1 w-full sm:w-auto"
                     data-testid={`review-assignee-${r.id}`}
                   >
                     <option value="">— Niet toegewezen —</option>
@@ -1101,21 +1106,21 @@ const ReviewsAdmin = () => {
                     )}
                   </select>
                   <button onClick={() => patch(r.id, { approved: !r.approved })} disabled={busy === r.id}
-                    className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-3 py-1.5 disabled:opacity-50 ${
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-1.5 disabled:opacity-50 ${
                       r.approved ? "surface-2 text-strong border border-app" : "bg-pear-500 text-white hover:bg-pear-600"
                     }`}
                     data-testid={`review-approve-${r.id}`}>
                     <Check className="h-3.5 w-3.5" /> {r.approved ? "Intrekken" : "Goedkeuren"}
                   </button>
                   <button onClick={() => patch(r.id, { featured: !r.featured, approved: true })} disabled={busy === r.id}
-                    className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-3 py-1.5 disabled:opacity-50 ${
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-1.5 disabled:opacity-50 ${
                       r.featured ? "surface-2 text-strong border border-app" : "bg-amber-500 text-white hover:bg-amber-600"
                     }`}
                     data-testid={`review-feature-${r.id}`}>
-                    <Sparkles className="h-3.5 w-3.5" /> {r.featured ? "Van homepage" : "Op homepage"}
+                    <Sparkles className="h-3.5 w-3.5" /> {r.featured ? "Van home" : "Op home"}
                   </button>
                   <button onClick={() => remove(r.id)} disabled={busy === r.id}
-                    className="inline-flex items-center gap-1 text-xs font-semibold rounded-full surface-2 text-red-500 border border-red-200 px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-full surface-2 text-red-500 border border-red-200 px-2.5 py-1.5 hover:bg-red-50 disabled:opacity-50"
                     data-testid={`review-delete-${r.id}`}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -1236,9 +1241,9 @@ const UsersAdmin = () => {
         </form>
       </section>
 
-      <section className="surface border border-app rounded-2xl overflow-hidden mb-6">
+      <section className="surface border border-app rounded-2xl overflow-x-auto mb-6">
         {loading ? <p className="p-6 text-muted-fg text-sm">Laden…</p> : (
-          <table className="w-full text-sm" data-testid="cms-users-table">
+          <table className="w-full text-sm min-w-[720px]" data-testid="cms-users-table">
             <thead className="text-xs uppercase tracking-widest text-muted-fg">
               <tr>
                 <th className="text-left px-4 py-3">E-mail</th>
@@ -1900,8 +1905,8 @@ const FeedbackAdmin = () => {
                 {filtered(list).map((f) => {
                   const st = FEEDBACK_STATUS.find((s) => s.key === (f.status || "new")) || FEEDBACK_STATUS[0];
                   return (
-                    <div key={f.id} className="p-4 border-b border-app/50 last:border-0" data-testid={`fb-row-${f.id}`}>
-                      <div className="flex flex-wrap items-start gap-3">
+                    <div key={f.id} className="p-3 sm:p-4 border-b border-app/50 last:border-0" data-testid={`fb-row-${f.id}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                     <div className="flex gap-3 items-start flex-1 min-w-0">
                       <Avatar name={f.email || "Anon"} email={f.email} size={36} />
                       <div className="flex-1 min-w-0">
@@ -1909,15 +1914,15 @@ const FeedbackAdmin = () => {
                             <span className={`text-[10px] uppercase font-bold rounded-full px-2 py-0.5 ${st.color}`}>{st.label}</span>
                             {f.rating && <span className="text-xs text-pear-500">{"★".repeat(f.rating)}</span>}
                             <span className="text-[10px] text-muted-fg">{new Date(f.created_at).toLocaleString("nl-NL")}</span>
-                            {f.email && <span className="text-[10px] text-muted-fg">· {f.email}</span>}
+                            {f.email && <span className="text-[10px] text-muted-fg break-all">· {f.email}</span>}
                           </div>
-                          <p className="text-sm text-strong mt-1 whitespace-pre-wrap">{f.message}</p>
+                          <p className="text-sm text-strong mt-1 whitespace-pre-wrap break-words">{f.message}</p>
                           {f.assigned_to && (
                             <div className="mt-1"><AssigneeChip email={f.assigned_to} assignees={assignees} size={22} /></div>
                           )}
                         </div>
                     </div>
-                        <div className="flex flex-col gap-1.5 shrink-0 min-w-[180px]">
+                        <div className="flex flex-col gap-1.5 sm:shrink-0 w-full sm:w-auto sm:min-w-[180px]">
                           <select
                             value={f.status || "new"}
                             onChange={(e) => setStatus(f.id, e.target.value)}
@@ -2341,7 +2346,7 @@ const AdminLayout = ({ children }) => {
   }, []);
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-      <div className="mb-6 text-sm">
+      <div className="mb-6 text-sm hidden lg:block">
         <Link to="/" className="text-muted-fg hover:text-pear-500">← Terug naar site</Link>
       </div>
       <div className="flex flex-col lg:flex-row gap-8">

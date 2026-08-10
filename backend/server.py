@@ -2506,8 +2506,74 @@ logger = logging.getLogger(__name__)
 async def on_startup():
     await seed_admin()
     await seed_portfolio()
+    await seed_virus_scans()
     # Background poller for review invites (runs every ~15 min)
     asyncio.create_task(review_poller(db, _send_email))
+
+
+async def seed_virus_scans():
+    """One-shot: create 3 mock virus-scanner records so the CMS list can be reviewed.
+
+    Real scanner integration (ClamAV, VirusTotal or Bitdefender GravityZone) is
+    not wired yet — these mocks stay until credentials arrive.
+    """
+    try:
+        existing = await db.virus_scans.count_documents({})
+        if existing >= 3:
+            return
+        now = datetime.now(timezone.utc)
+        mocks = [
+            {
+                "id": "mock-vs-1",
+                "filename": "invoice_scan_2026Q1.zip",
+                "path": "/uploads/mailbox/2026-02-08/invoice_scan_2026Q1.zip",
+                "size_bytes": 452_320,
+                "threat_name": "Trojan.Generic.KDZ.98123",
+                "engine": "mock (bitdefender-simulator)",
+                "severity": "high",
+                "quarantined": True,
+                "quarantined_at": (now - timedelta(hours=6)).isoformat(),
+                "detected_at": (now - timedelta(hours=6)).isoformat(),
+                "acknowledged": False,
+                "source": "email-attachment",
+                "note": "MOCKED — verbind een echte scanner om automatisch te scannen.",
+            },
+            {
+                "id": "mock-vs-2",
+                "filename": "cv-lucas.docm",
+                "path": "/uploads/portal/1234/cv-lucas.docm",
+                "size_bytes": 89_112,
+                "threat_name": "Macro.Downloader.Agent",
+                "engine": "mock (bitdefender-simulator)",
+                "severity": "medium",
+                "quarantined": True,
+                "quarantined_at": (now - timedelta(hours=32)).isoformat(),
+                "detected_at": (now - timedelta(hours=32)).isoformat(),
+                "acknowledged": False,
+                "source": "portal-upload",
+                "note": "MOCKED — Word-macro met verdachte downloader.",
+            },
+            {
+                "id": "mock-vs-3",
+                "filename": "photo_lastminute.jpg.exe",
+                "path": "/uploads/chat/session-84/photo_lastminute.jpg.exe",
+                "size_bytes": 1_204_881,
+                "threat_name": "PUA.DoubleExtension.Suspicious",
+                "engine": "mock (heuristic)",
+                "severity": "low",
+                "quarantined": False,
+                "restored_at": None,
+                "detected_at": (now - timedelta(days=2)).isoformat(),
+                "acknowledged": False,
+                "source": "chatbot-upload",
+                "note": "MOCKED — dubbele extensie, gebruiker geïnformeerd.",
+            },
+        ]
+        for m in mocks:
+            await db.virus_scans.update_one({"id": m["id"]}, {"$setOnInsert": m}, upsert=True)
+        logger.info("virus_scans seeded (mocked)")
+    except Exception as e:
+        logger.warning(f"seed_virus_scans failed: {e}")
 
 
 # Static seed content — case studies from /app/frontend/src/data/projects.js
