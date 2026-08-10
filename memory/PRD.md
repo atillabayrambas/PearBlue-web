@@ -21,6 +21,23 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 20 (this session, v0.5.6-Beta) — Ticket Threads CMS
+- **Nieuwe CMS-detailpagina** `/admin/messages/:msgId` — volledige conversational thread-weergave per contactbericht, analoog aan `/portal/tickets/:id`.
+- **AdminMessageThread.jsx** — timeline die origineel bericht + admin-replies + interne notities chronologisch toont; klant-berichten in surface-2, admin-antwoorden in pear-blue tint, notities in amber-card. Statuschips, prioriteitschips, "Vergrendeld"-badge bij afgeronde items voor niet-admins.
+- **Antwoord-panel** met onderwerp-veld, textarea, bijlage-picker (multi-file, max 20 MB), "E-mail naar klant sturen"-toggle en `Verstuur antwoord`-knop. Automatische status-flip naar `in_progress` (behoudt `done` als reeds afgerond via `$cond`-pipeline).
+- **Bijlagen** — upload via multipart, download via `Content-Disposition attachment`-header, verwijder-icoon. Base64 payload wordt uit list-responses gestripped (bandwidth-vriendelijk).
+- **Internal note** panel binnen dezelfde pagina; verschijnt als geel-gemarkeerde kaart in de timeline.
+- **Meta-acties** — status/prioriteit-selects, mark-as-spam/undo, mailto-link → open in mail-client.
+- **Backend endpoints** (allemaal `require_permission("messages")`):
+  - `GET /api/admin/contact/{msg_id}` — detail + strip base64
+  - `POST /api/admin/contact/{msg_id}/reply` — reply, e-mail via Resend, status-transitie
+  - `POST /api/admin/contact/{msg_id}/attachments` — multipart upload, base64-opslag
+  - `GET /api/admin/contact/{msg_id}/attachments/{aid}` — binary download
+  - `DELETE /api/admin/contact/{msg_id}/attachments/{aid}` — bijlage verwijderen
+- **MongoDB-fix** — Alle push-operaties (`replies`, `attachments`, `notes`) gebruiken nu aggregation-pipeline updates (`$concatArrays` + `$ifNull`) om te werken op oude docs waarin het veld `null` was i.p.v. array.
+- **MessagesAdmin (list view)** — nieuwe "Bekijk gesprek →" knop per item die naar de threadpagina navigeert.
+- **Testing**: pytest 13/13 + Playwright frontend end-to-end (`/app/test_reports/iteration_20.json`).
+
 ### Feb 2026 — Iterations 1–6
 - 5-page site, NL/EN switcher, dark/light theme
 - Admin CMS (projects, messages, settings, GA4 config)
