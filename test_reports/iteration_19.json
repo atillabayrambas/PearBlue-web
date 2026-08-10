@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 19 (v0.5.5-Beta) — Backend + Frontend testing. All 15 pytest backend tests PASS (password reset verify+apply, portal registration with address/postal/city/region/country, user details region+phone, regression: counters/financials/roles(8)/assignees/quote/virus). Frontend verified: /admin/reset-password?token=fake shows reset-password-page + reset-invalid banner (Ongeldig token). /portal registration on desktop shows portal-reg-address/postal/city/country/region — country SELECT lists flags (🇳🇱 Netherlands, 🇧🇪 Belgium, 🇩🇪 Germany, 🇫🇷 France, 🇬🇧 UK); region is SELECT for NL with 12 provinces (Drenthe..Zuid-Holland); switching country to US turns region into INPUT. Home mobile (390x844): floating-review-ticker shows quote+name+company (\"Super tof!\" — Test, PearBlue), hero-eyebrow renders shortened 'Websites · IT · Cybersecurity' on mobile (no dash), H1 fully within viewport (width 342 < 390), no horizontal overflow (body sw=390 == window 390). reviews-marquee present with 5 replicated review cards. CMS mobile: cms-mobile-header shows only Menu icon + '← Terug naar site' link (no version text, no PearBlue logo — only the back-arrow SVG icon); toggle opens sidebar + cms-mobile-backdrop, clicking backdrop closes sidebar; cms-sidebar-logo present (~33x48). Assignee dropdowns on /admin/messages, /admin/feedback, /admin/reviews, /admin/registrations all show 'admin · Super Admin' / 'beheer · Super Admin' — NO email visible in any option (verified across 76 selects). Pricing calculator buttons (clear/save/share/request-quote) render in single horizontal row (Y-diff=0px, flex-direction:row, overflow-x:auto). Portal welcome Avatar wired via shared Avatar component (data-testid=user-avatar / user-avatar-initials) — code-verified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration19.py",
+    "/app/test_reports/pytest/iter19_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Password reset flow implementation is clean: JWT with purpose=reset + 1h exp, verify + apply endpoints correctly reject expired/wrong-purpose/invalid tokens; reset_url is no longer returned in response body (only in email) — good security posture.",
+    "PortalRegistrationCreate + PortalRegistration models expanded consistently with address/postal_code/city/region/country; server persists and returns all fields.",
+    "UserDetailsUpdate + GET /admin/users/{email}/details include region and phone; PUT persists both.",
+    "Assignee options exclude email (display_name || first+last || email local-part fallback) — verified UX rule holds across all 4 admin pages.",
+    "Portal welcome uses shared Avatar component; profile_picture prop threaded through; good DRY refactor from previous inline avatar.",
+    "Minor: /app/backend/server.py is 2552 lines — exceeds the 700-line file-size guideline. Recommend splitting into routers (auth, portal, admin_users, virus, financials) for maintainability. (Non-blocking, informational.)"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (all acceptance criteria met)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026!",
+  "seed_data_creation": "Created 1 test portal registration via /api/portal/register with unique email test_iter19_<ts>@example.com (address=Kerkstraat 1, postal=1234AB, region=Noord-Holland). Admin user details temporarily set region=Noord-Holland, phone=0612345678. Admin password was temporarily changed to TempReset2026! then restored to PearBlue2026!.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 19 fully passes both backend (15/15 pytest) and frontend (reset-password page, portal registration form with country flags & region NL provinces / US text input, home mobile hero+floating ticker+eyebrow no dash, reviews-marquee 5x, CMS mobile header no logo/no version + Terug naar site + backdrop click-close, sidebar centered logo, assignee dropdowns no-email, pricing calc buttons horizontal row). Portal welcome Avatar with data-testid=user-avatar was verified in code (Portal.jsx line 287-292) — cannot be exercised via Playwright without Zoho OAuth. Test file: /app/backend/tests/test_iteration19.py. Backend server.py is 2552 lines — main agent should consider splitting in future iterations.",
+  "rca of the issue": "N/A — no defects found in iteration 19 scope."
+}

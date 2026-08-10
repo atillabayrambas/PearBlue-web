@@ -21,7 +21,7 @@ const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transi
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 
 export default function Home() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   usePageSeo({ title: "Home", description: "PearBlue — websites, ICT-diensten en cybersecurity. Fris, modern en betaalbaar voor de nieuwe generatie ondernemers.", path: "/" });
   const [preview, setPreview] = useState(PORTFOLIO_PROJECTS.slice(0, 4));
 
@@ -44,9 +44,10 @@ export default function Home() {
         </div>
         <div className="max-w-7xl mx-auto px-6 lg:px-10 pt-20 pb-24 lg:pt-28 lg:pb-32 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative">
           <motion.div initial="hidden" animate="show" variants={stagger} className="lg:col-span-7">
-            <motion.p variants={fadeUp} className="overline mb-5 leading-relaxed break-words" data-testid="hero-eyebrow">
-              <Sparkles className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />
-              {t("hero.eyebrow")}
+            <motion.p variants={fadeUp} className="overline mb-5 leading-relaxed break-words max-w-[92%]" data-testid="hero-eyebrow">
+              <Sparkles className="inline h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 -mt-0.5" />
+              <span className="sm:hidden">{lang === "en" ? "Websites · IT · Cybersecurity" : "Websites · IT · Cybersecurity"}</span>
+              <span className="hidden sm:inline">{t("hero.eyebrow")}</span>
             </motion.p>
             <motion.h1 variants={fadeUp} className="font-heading font-light text-4xl sm:text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tighter text-strong break-words" data-testid="hero-title">
               {t("hero.title_1")}{" "}

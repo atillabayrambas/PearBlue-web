@@ -9,6 +9,7 @@ import { useLang } from "../i18n/LanguageContext";
 import { useTheme } from "../theme/ThemeContext";
 import { AnalyticsAdmin } from "./AdminAnalytics";
 import { FinancialsAdmin } from "./AdminFinancials";
+import { Avatar } from "../components/Avatar";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const PEARBLUE_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/djwgz9jk_PearBlue%20logo-10.webp";
@@ -63,25 +64,36 @@ const AdminSidebar = () => {
   const themeIcon = mode === "light" ? "☀️" : mode === "dark" ? "🌙" : "🖥️";
   return (
     <>
-      {/* Mobile hamburger header — visible only < lg */}
-      <div className="lg:hidden sticky top-0 z-40 -mx-6 sm:-mx-10 mb-4 flex items-center gap-3 px-4 py-3 surface border-b border-app" data-testid="cms-mobile-header">
-        <button onClick={() => setMobileOpen((v) => !v)} className="p-2 rounded-lg surface-2 hover:bg-pear-100/50" aria-label="Menu" data-testid="cms-mobile-toggle">
+      {/* Mobile hamburger header — compact, "Terug naar site" instead of version tag, no logo (logo stays in sidebar) */}
+      <div className="lg:hidden sticky top-0 z-40 -mx-6 sm:-mx-10 mb-3 flex items-center gap-2 px-3 py-2 surface border-b border-app" data-testid="cms-mobile-header">
+        <button onClick={() => setMobileOpen((v) => !v)} className="p-1.5 rounded-lg surface-2 hover:bg-pear-100/50" aria-label="Menu" aria-expanded={mobileOpen} data-testid="cms-mobile-toggle">
           <Menu className="h-5 w-5 text-strong" />
         </button>
-        <img src={PEARBLUE_LOGO} alt="PearBlue" className="h-7 w-auto" onError={(e) => { e.target.style.display = 'none'; }} />
-        <span className="font-heading font-semibold text-sm text-strong ml-auto truncate">CMS · v0.5.4-Beta</span>
+        <Link to="/" className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-strong hover:text-pear-500 px-3 py-1.5 rounded-full border border-app" data-testid="cms-mobile-back">
+          ← Terug naar site
+        </Link>
       </div>
 
+      {/* Click-outside overlay (mobile only) */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+          data-testid="cms-mobile-backdrop"
+          aria-hidden="true"
+        />
+      )}
+
       <aside
-        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "block" : "hidden lg:block"}`}
+        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "fixed inset-y-0 left-0 z-40 w-72 rounded-none lg:relative lg:z-auto lg:inset-auto lg:w-64" : "hidden lg:block"}`}
         data-testid="cms-sidebar"
       >
-        {/* Logo + close for mobile */}
-        <div className="flex items-center justify-between mb-4 lg:mb-6">
-          <img src={PEARBLUE_LOGO} alt="PearBlue" className="h-8 w-auto" data-testid="cms-sidebar-logo" onError={(e) => { e.target.style.display = 'none'; }} />
-          <button onClick={() => setMobileOpen(false)} className="lg:hidden p-1.5 rounded-lg hover:bg-pear-100/50" aria-label="Sluit menu" data-testid="cms-mobile-close">
+        {/* Logo + close for mobile — larger, centered */}
+        <div className="flex items-center justify-between mb-5 lg:mb-6">
+          <button onClick={() => setMobileOpen(false)} className="lg:hidden p-1.5 rounded-lg hover:bg-pear-100/50 order-2" aria-label="Sluit menu" data-testid="cms-mobile-close">
             <XCircle className="h-5 w-5 text-strong" />
           </button>
+          <img src={PEARBLUE_LOGO} alt="PearBlue" className="h-12 lg:h-14 w-auto mx-auto order-1" data-testid="cms-sidebar-logo" onError={(e) => { e.target.style.display = 'none'; }} />
         </div>
 
         {/* Profile summary with avatar */}
@@ -111,7 +123,7 @@ const AdminSidebar = () => {
               <span className="flex-1">{i.label}</span>
               {i.badge > 0 && (
                 <span
-                  className="inline-flex items-center justify-center min-w-[20px] h-5 rounded-full bg-pear-500 text-white text-[10px] font-bold px-1.5 shadow-[0_0_0_2px_var(--pb-surface,_white)]"
+                  className="inline-flex items-center justify-center min-w-[18px] h-4 rounded-full bg-red-500 text-white text-[9px] font-bold px-1"
                   data-testid={`badge-${i.testid}`}
                 >
                   {i.badge > 99 ? "99+" : i.badge}
@@ -150,7 +162,7 @@ const AdminSidebar = () => {
           <LogOut className="h-4 w-4" /> Uitloggen
         </button>
         <div className="mt-4 pt-3 border-t border-app text-[10px] text-muted-fg text-center">
-          PearBlue CMS · v0.5.4-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
+          PearBlue CMS · v0.5.5-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
         </div>
       </aside>
     </>
@@ -164,33 +176,24 @@ const authHeaderFromStorage = () => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
-// Avatar helper — pear-themed initials fallback when no profile picture is set.
-const Avatar = ({ name, email, profilePicture, size = 32 }) => {
-  const label = (name || email || "?").trim();
-  const initials = label.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "?";
-  // Deterministic color from name
-  const hash = [...label].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0);
-  const hue = Math.abs(hash) % 360;
-  return profilePicture ? (
-    <img src={profilePicture} alt={label} width={size} height={size} className="rounded-full object-cover" data-testid="user-avatar" />
-  ) : (
-    <div
-      className="rounded-full flex items-center justify-center font-heading font-semibold text-white shadow-sm"
-      style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${hue} 70% 55%), hsl(${(hue + 40) % 360} 65% 45%))`, fontSize: size * 0.4 }}
-      data-testid="user-avatar-initials"
-    >{initials}</div>
-  );
-};
+// (Avatar helper moved to /app/frontend/src/components/Avatar.jsx)
 
 // Turn "chat_support" → "Chat support"; "super_admin" → "Super admin"
 const prettyRole = (r) => (r || "").split("_").map((w) => w ? w[0].toUpperCase() + w.slice(1) : "").join(" ").trim();
 
 // Preferred display label for an assignee row from /api/admin/assignees.
-// Falls back gracefully to display_name → email if names aren't set.
+// Prefers "First Last"; falls back to display_name; only falls back to email
+// when nothing else is available.
 const assigneeLabel = (a) => {
   if (!a) return "—";
   const full = [a.first_name, a.last_name].filter(Boolean).join(" ").trim();
-  return full || a.display_name || a.email;
+  if (full) return full;
+  if (a.display_name && !a.display_name.includes("@")) return a.display_name;
+  // As a last resort, use the local-part of the email so we never surface the
+  // full address in a dropdown (per user request).
+  const email = a.email || "";
+  const local = email.split("@")[0] || email;
+  return local;
 };
 
 // Small chip showing an assignee's avatar + name + role. Used in the CMS lists.

@@ -8,6 +8,8 @@ import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
 import { ReviewForm } from "../components/Reviews";
 import { LocalCaptcha, ConsentText } from "../components/LocalCaptcha";
+import { COUNTRIES } from "../data/countries";
+import { Avatar } from "../components/Avatar";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
 
@@ -58,17 +60,27 @@ const startLogin = () => {
 const RegistrationForm = () => {
   const { lang } = useLang();
   const t = (k) => PT[k]?.[lang] || PT[k]?.nl || k;
-  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "" });
+  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "", address: "", postal_code: "", city: "", region: "", country: "NL" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [captchaOk, setCaptchaOk] = useState(false);
-  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value, ...(k === "country" ? { region: "" } : {}) });
+  const country = COUNTRIES.find((c) => c.code === form.country) || COUNTRIES[0];
   const submit = async (e) => {
     e.preventDefault();
     if (!captchaOk) { toast.error(lang === "en" ? "Please confirm you are not a robot" : "Bevestig eerst dat je geen robot bent"); return; }
+    // Required fields per user request: address + postal_code
+    if (!form.address || !form.postal_code) {
+      toast.error(lang === "en" ? "Please fill in your address and postal code" : "Vul je adres en postcode in");
+      return;
+    }
     setSending(true);
     try {
-      await axios.post(`${API}/portal/register`, { ...form, language: lang });
+      await axios.post(`${API}/portal/register`, {
+        ...form,
+        country: country ? (lang === "en" ? country.en : country.nl) : form.country,
+        language: lang,
+      });
       setDone(true);
       toast.success(t("regSuccessToast"));
     } catch (err) {
@@ -107,6 +119,48 @@ const RegistrationForm = () => {
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{t("regPhone")}</span>
           <input value={form.phone} onChange={change("phone")} type="tel" data-testid="portal-reg-phone"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+        </label>
+      </div>
+      {/* Address block */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Address" : "Adres"} *</span>
+          <input required value={form.address} onChange={change("address")} type="text" placeholder={lang === "en" ? "Street & number" : "Straat & huisnummer"} data-testid="portal-reg-address"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Postal code" : "Postcode"} *</span>
+          <input required value={form.postal_code} onChange={change("postal_code")} type="text" data-testid="portal-reg-postal"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+        </label>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "City" : "Plaats"}</span>
+          <input value={form.city} onChange={change("city")} type="text" data-testid="portal-reg-city"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Country" : "Land"}</span>
+          <select value={form.country} onChange={change("country")} data-testid="portal-reg-country"
+            className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong">
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.flag} {lang === "en" ? c.en : c.nl}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Region / province" : "Regio / provincie"}</span>
+          {(country?.regions || []).length > 0 ? (
+            <select value={form.region} onChange={change("region")} data-testid="portal-reg-region"
+              className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong">
+              <option value="">{lang === "en" ? "— Choose —" : "— Kies —"}</option>
+              {country.regions.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          ) : (
+            <input value={form.region} onChange={change("region")} type="text" placeholder={lang === "en" ? "State / region" : "Staat / regio"} data-testid="portal-reg-region"
+              className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+          )}
         </label>
       </div>
       <label className="block">
@@ -229,10 +283,18 @@ export default function Portal() {
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-12" data-testid="page-portal">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
-        <div className="min-w-0">
-          <p className="overline mb-2">{lang === "en" ? "Client portal" : "Klantportaal"}</p>
-          <h1 className="font-heading text-2xl sm:text-3xl md:text-4xl font-medium text-strong break-words">{t("headerHi")}{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
-          {me.user?.email && <p className="text-sm text-muted-fg mt-1 break-all">{me.user.email}</p>}
+        <div className="flex items-center gap-4 min-w-0">
+          <Avatar
+            name={me.user?.display_name || me.user?.email}
+            email={me.user?.email}
+            profilePicture={me.user?.profile_picture}
+            size={56}
+          />
+          <div className="min-w-0">
+            <p className="overline mb-2">{lang === "en" ? "Client portal" : "Klantportaal"}</p>
+            <h1 className="font-heading text-2xl sm:text-3xl md:text-4xl font-medium text-strong break-words">{t("headerHi")}{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
+            {me.user?.email && <p className="text-sm text-muted-fg mt-1 break-all">{me.user.email}</p>}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           {isAdmin && (

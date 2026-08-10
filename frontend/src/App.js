@@ -29,6 +29,7 @@ import PrivacyPage from "@/pages/PrivacyPage";
 import PricingListPage from "@/pages/PricingListPage";
 import ChangelogPage from "@/pages/ChangelogPage";
 import AdminLogin from "@/pages/AdminLogin";
+import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import AdminDashboard from "@/pages/AdminDashboard";
 
 const ScrollToTop = () => {
@@ -70,6 +71,7 @@ function Shell() {
           <Route path="/pricing" element={<PricingListPage />} />
           <Route path="/changelog" element={<ChangelogPage />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           <Route path="*" element={<Home />} />
         </Routes>

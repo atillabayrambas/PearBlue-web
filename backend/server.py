@@ -227,6 +227,11 @@ class PortalRegistration(BaseModel):
     phone: Optional[str] = None
     message: Optional[str] = None
     language: Optional[str] = "nl"
+    address: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    region: Optional[str] = None
+    country: Optional[str] = None
     status: str = "pending"  # pending | approved | rejected
     admin_note: Optional[str] = None
     assigned_to: Optional[str] = None
@@ -241,6 +246,12 @@ class PortalRegistrationCreate(BaseModel):
     phone: Optional[str] = Field(None, max_length=40)
     message: Optional[str] = Field(None, max_length=2000)
     language: Optional[str] = "nl"
+    # Address block (required by the new portal registration UX)
+    address: Optional[str] = Field(None, max_length=200)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    city: Optional[str] = Field(None, max_length=120)
+    region: Optional[str] = Field(None, max_length=120)
+    country: Optional[str] = Field(None, max_length=80)
 
 
 class RegistrationReview(BaseModel):
@@ -1688,6 +1699,28 @@ async def public_changelog():
     """
     entries = [
         {
+            "version": "0.5.5-Beta",
+            "date": "2026-02-10",
+            "type": "feature",
+            "highlights": [
+                "Password Reset UI-pagina op /admin/reset-password?token=… (backend en frontend werken volledig)",
+                "Klantportaal aanvragen: adres, postcode, plaats, regio + land met 🇳🇱🇧🇪🇩🇪🇫🇷🇬🇧🇺🇸 emoji-vlaggen. Regio-lijst reageert op landkeuze (NL toont NL-provincies)",
+                "Klantportaal welkomstblok: profielfoto (Avatar-component gedeeld tussen CMS en portaal) naast naam ingelogde klant",
+                "Reviews marquee (Home) — 22s cyclus (2x sneller), 5x replicated array voor naadloos oneindig scrollen zonder lege plekken",
+                "Floating review pill toont nu naam + bedrijf naast quote (was alleen quote)",
+                "Assignee-labels tonen enkel voornaam+achternaam (fallback display_name of email local-part) — geen e-mail meer in dropdowns",
+                "CMS mobile header: 'Terug naar site' knop ipv versietekst, geen logo (logo staat in hamburger-menu), compactere layout",
+                "CMS mobile hamburger: klik buiten menu (backdrop) sluit het menu",
+                "CMS zijmenu-logo: groter en gecentreerd bovenaan (h-12 lg:h-14)",
+                "CMS badges: kleinere rode pillen (18px min-width) direct naast label voor compactere weergave",
+                "Homepage hero mobile: kortere overline 'WEBSITES · IT · CYBERSECURITY' + text-4xl H1 past netjes binnen phone-kaders",
+                "Calculator: knoppen in 1 horizontale rij met scroll ipv wrap, kortere labels op mobile ('Leeg', 'Deel', 'Offerte + wensen')",
+                "Backend: UserDetailsUpdate + user_details endpoint uitgebreid met region + phone",
+                "Backend: PortalRegistrationCreate + PortalRegistration uitgebreid met address/postal_code/city/region/country",
+                "Avatar-component naar /app/frontend/src/components/Avatar.jsx verplaatst voor herbruik",
+            ],
+        },
+        {
             "version": "0.5.4-Beta",
             "date": "2026-02-10",
             "type": "fix",
@@ -2068,7 +2101,9 @@ class UserDetailsUpdate(BaseModel):
     address: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
+    region: Optional[str] = None
     country: Optional[str] = None
+    phone: Optional[str] = None
     company: Optional[str] = None
     kvk: Optional[str] = None
     tax_id: Optional[str] = None
@@ -2086,7 +2121,9 @@ async def user_details(email: str, current=Depends(require_permission("users")))
         "address": doc.get("address") or "",
         "postal_code": doc.get("postal_code") or "",
         "city": doc.get("city") or "",
+        "region": doc.get("region") or "",
         "country": doc.get("country") or "Nederland",
+        "phone": doc.get("phone") or "",
         "company": doc.get("company") or "",
         "kvk": doc.get("kvk") or "",
         "tax_id": doc.get("tax_id") or "",

@@ -149,37 +149,35 @@ export const FeaturedReviews = () => {
   const [reviews, setReviews] = useState([]);
   const scrollerRef = useRef(null);
   const trackRef = useRef(null);
-  const dragRef = useRef({ dragging: false, startX: 0, startScroll: 0, pointerId: null });
+  const dragRef = useRef({ dragging: false, startX: 0, startScroll: 0, moved: false });
   const [paused, setPaused] = useState(false);
   useEffect(() => {
     axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
   }, []);
   if (!reviews.length) return null;
-  // Triple the list so drag scrolling can wrap around smoothly
-  const loop = [...reviews, ...reviews, ...reviews];
+  // Quintuple the list so drag can wrap without ever exposing empty space
+  const loop = [...reviews, ...reviews, ...reviews, ...reviews, ...reviews];
 
   const onPointerDown = (e) => {
     if (!scrollerRef.current) return;
-    dragRef.current = {
-      dragging: true,
-      startX: e.clientX,
-      startScroll: scrollerRef.current.scrollLeft,
-      pointerId: e.pointerId,
-    };
+    dragRef.current.dragging = true;
+    dragRef.current.startX = e.clientX;
+    dragRef.current.startScroll = scrollerRef.current.scrollLeft;
+    dragRef.current.moved = false;
     scrollerRef.current.setPointerCapture?.(e.pointerId);
     setPaused(true);
   };
   const onPointerMove = (e) => {
     if (!dragRef.current.dragging || !scrollerRef.current) return;
-    e.preventDefault();
     const dx = e.clientX - dragRef.current.startX;
+    if (Math.abs(dx) > 3) dragRef.current.moved = true;
     scrollerRef.current.scrollLeft = dragRef.current.startScroll - dx;
   };
   const endDrag = () => {
     if (!dragRef.current.dragging) return;
     dragRef.current.dragging = false;
-    // Resume marquee after 1.5s of no drag
-    setTimeout(() => setPaused(false), 1500);
+    // Resume marquee shortly after
+    setTimeout(() => setPaused(false), 800);
   };
 
   return (
@@ -203,7 +201,7 @@ export const FeaturedReviews = () => {
         <div
           ref={trackRef}
           className="flex gap-5 w-max"
-          style={{ animation: paused ? "none" : "pb-marquee-fast 32s linear infinite" }}
+          style={{ animation: paused ? "none" : "pb-marquee-fast 22s linear infinite" }}
           data-testid="reviews-marquee"
         >
           {loop.map((r, i) => (
@@ -225,7 +223,8 @@ export const FeaturedReviews = () => {
       <p className="mt-3 text-[11px] text-muted-fg text-center" data-testid="reviews-hint">
         Sleep om te scrollen · hover of tik om te pauzeren
       </p>
-      <style>{`@keyframes pb-marquee-fast { from { transform: translateX(0); } to { transform: translateX(-33.333%); } }`}</style>
+      {/* Translate by 20% (100/5) each cycle so a full loop returns to start with all 5 copies covering the viewport */}
+      <style>{`@keyframes pb-marquee-fast { from { transform: translateX(0); } to { transform: translateX(-20%); } }`}</style>
     </section>
   );
 };
@@ -257,10 +256,12 @@ export const FloatingReviewTicker = () => {
           data-testid="floating-review-card"
         >
           <ReviewStars rating={r.rating} size={3} />
-          <p className="text-xs sm:text-sm text-strong/90 truncate flex-1">&ldquo;{r.quote}&rdquo;</p>
-          <span className="text-[10px] uppercase tracking-widest text-muted-fg shrink-0 hidden sm:inline">
-            — {r.name}
-          </span>
+          <div className="text-xs sm:text-sm text-strong/90 truncate flex-1 min-w-0">
+            <span className="italic">&ldquo;{r.quote}&rdquo;</span>
+            <span className="text-[10px] uppercase tracking-widest text-muted-fg ml-2 whitespace-nowrap">
+              — {r.name}{r.company ? `, ${r.company}` : ""}
+            </span>
+          </div>
         </motion.div>
       </AnimatePresence>
     </div>

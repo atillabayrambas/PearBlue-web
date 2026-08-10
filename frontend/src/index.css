@@ -141,7 +141,7 @@ body {
 }
 
 .overline {
-  @apply text-xs tracking-[0.24em] uppercase font-bold text-pear-500;
+  @apply text-[10px] sm:text-xs tracking-[0.14em] sm:tracking-[0.24em] uppercase font-bold text-pear-500;
 }
 
 .pear-blob {

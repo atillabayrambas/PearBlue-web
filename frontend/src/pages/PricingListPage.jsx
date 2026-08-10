@@ -397,34 +397,31 @@ function CalculatorModal({ onClose }) {
               ? "Estimate only — final quote may differ. Setup is one-off, monthly costs recur, hourly rates are billed ad-hoc."
               : "Slechts een schatting — offerte kan afwijken. Setup is eenmalig, maandelijkse kosten zijn doorlopend, uurtarieven worden los gefactureerd."}
           </p>
-          <div className="mt-2 flex flex-wrap gap-1.5 sm:gap-2 justify-end">
-            <button type="button" onClick={clearWishlist} className="text-[11px] sm:text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full border border-app hover:border-red-400 hover:text-red-500" data-testid="pricing-calc-clear">
-              {lang === "en" ? "Clear" : "Leegmaken"}
+          <div className="mt-2 flex flex-nowrap gap-1.5 justify-end overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+            <button type="button" onClick={clearWishlist} className="text-[11px] shrink-0 px-2.5 py-1 rounded-full border border-app hover:border-red-400 hover:text-red-500" data-testid="pricing-calc-clear">
+              {lang === "en" ? "Clear" : "Leeg"}
             </button>
-            <div className="relative inline-block group" data-testid="pricing-calc-save-wrap">
-              <button type="button" onClick={saveWishlist} className="btn-secondary" data-testid="pricing-calc-save">
-                <Save className="h-4 w-4" /> {lang === "en" ? "Save wishlist" : "Wishlist opslaan"}
-                <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 text-strong text-[10px] font-bold" data-testid="pricing-calc-save-info" aria-label="info">i</span>
+            <div className="relative inline-block group shrink-0" data-testid="pricing-calc-save-wrap">
+              <button type="button" onClick={saveWishlist} className="text-[11px] px-2.5 py-1 rounded-full border border-app hover:border-pear-500 inline-flex items-center gap-1" data-testid="pricing-calc-save">
+                <Save className="h-3 w-3" /> {lang === "en" ? "Save" : "Opslaan"}
               </button>
               <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg bg-slate-900 text-white text-[11px] p-2.5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-10">
                 {lang === "en"
-                  ? "Saved locally in cookies/cache if you accepted cookies — otherwise only kept in this tab. Log in to your portal to store permanently on your profile."
-                  : "Opgeslagen in cookies/cache mits cookies geaccepteerd — anders alleen in dit tabblad. Log in op je portaal om het permanent aan je profiel te koppelen."}
+                  ? "Saved locally in cookies/cache if you accepted cookies — otherwise only kept in this tab."
+                  : "Opgeslagen in cookies/cache mits geaccepteerd — anders alleen in dit tabblad."}
               </div>
             </div>
-            <button type="button" onClick={shareLink} className="btn-secondary" data-testid="pricing-calc-share">
-              <Share2 className="h-4 w-4" /> {lang === "en" ? "Share" : "Delen"}
+            <button type="button" onClick={shareLink} className="text-[11px] shrink-0 px-2.5 py-1 rounded-full border border-app hover:border-pear-500 inline-flex items-center gap-1" data-testid="pricing-calc-share">
+              <Share2 className="h-3 w-3" /> {lang === "en" ? "Share" : "Deel"}
             </button>
             <button
               type="button"
               onClick={() => setOpenQuote(true)}
-              className="btn-primary"
+              className="text-[11px] shrink-0 px-3 py-1 rounded-full bg-pear-500 text-white font-semibold hover:bg-pear-600 inline-flex items-center gap-1"
               data-testid="pricing-calc-request-quote"
             >
-              {lang === "en"
-                ? "Request quote & send calculation and wishes"
-                : "Offerte aanvragen en calculatie en wensen mee verzenden"}
-              <ArrowRight className="h-4 w-4" />
+              {lang === "en" ? "Request quote" : "Offerte + wensen"}
+              <ArrowRight className="h-3 w-3" />
             </button>
           </div>
           {/* Feedback widget inside modal (compact) */}
