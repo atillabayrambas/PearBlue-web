@@ -9,6 +9,7 @@ import { useLang } from "../i18n/LanguageContext";
 import { useTheme } from "../theme/ThemeContext";
 import { AnalyticsAdmin } from "./AdminAnalytics";
 import { FinancialsAdmin } from "./AdminFinancials";
+import AdminMessageThread from "./AdminMessageThread";
 import { Avatar } from "../components/Avatar";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -776,6 +777,11 @@ const MessagesAdmin = () => {
                       className="text-xs rounded-full px-3 py-1 border border-pear-500 text-pear-500 hover:bg-pear-50"
                       data-testid={`msg-reply-${m.id || i}`}
                     >Antwoord via e-mail</a>
+                    <Link
+                      to={`/admin/messages/${m.id}`}
+                      className="text-xs rounded-full px-3 py-1 border border-pear-500 bg-pear-500 text-white hover:bg-pear-600"
+                      data-testid={`msg-open-thread-${m.id || i}`}
+                    >Bekijk gesprek →</Link>
                   </div>
                     );
                   })()}
@@ -2375,6 +2381,7 @@ export default function AdminDashboard() {
           <Route path="scripts" element={<ScriptsAdmin />} />
           <Route path="settings" element={<SettingsAdmin />} />
           <Route path="messages" element={<MessagesAdmin />} />
+          <Route path="messages/:msgId" element={<AdminMessageThread />} />
           <Route path="feedback" element={<FeedbackAdmin />} />
           <Route path="cybersecurity" element={<CybersecurityAdmin />} />
           <Route path="virusscanner" element={<VirusScannerAdmin />} />

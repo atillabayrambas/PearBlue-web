@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status, UploadFile, File
+from fastapi.responses import Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
+import base64
 import html as _html
 import re as _re
 from datetime import datetime, timezone, timedelta
@@ -109,6 +111,8 @@ class ContactMessage(BaseModel):
     priority: Optional[str] = "P3"
     assigned_to: Optional[str] = None
     notes: Optional[list] = None
+    replies: Optional[list] = None
+    attachments: Optional[list] = None
     spam: Optional[bool] = False
     spam_reason: Optional[str] = None
 
@@ -538,6 +542,11 @@ async def list_contacts(current=Depends(require_admin)):
     for i in items:
         if isinstance(i.get('created_at'), str):
             i['created_at'] = datetime.fromisoformat(i['created_at'])
+        # Strip heavy attachment payloads from list view
+        if i.get("attachments"):
+            i["attachments"] = [
+                {k: v for k, v in a.items() if k != "data_b64"} for a in i["attachments"]
+            ]
     return items
 
 
@@ -1604,10 +1613,128 @@ async def add_contact_note(msg_id: str, payload: dict, current=Depends(require_p
     if not text or len(text) > 2000:
         raise HTTPException(400, "Invalid note text")
     note = {"id": str(uuid.uuid4()), "text": text, "by": current.get("email"), "at": datetime.now(timezone.utc).isoformat()}
-    res = await db.contact_messages.update_one({"id": msg_id}, {"$push": {"notes": note}})
+    res = await db.contact_messages.update_one(
+        {"id": msg_id},
+        [{"$set": {"notes": {"$concatArrays": [{"$ifNull": ["$notes", []]}, [note]]}}}],
+    )
     if res.matched_count == 0:
         raise HTTPException(404, "Message not found")
     return note
+
+
+# ---- Ticket Threads CMS: single message detail + replies + attachments ----
+@api_router.get("/admin/contact/{msg_id}")
+async def get_contact_message(msg_id: str, current=Depends(require_permission("messages"))):
+    doc = await db.contact_messages.find_one({"id": msg_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Message not found")
+    # Strip heavy base64 payload from attachments; keep metadata only
+    if doc.get("attachments"):
+        doc["attachments"] = [
+            {k: v for k, v in a.items() if k != "data_b64"} for a in doc["attachments"]
+        ]
+    return doc
+
+
+class ReplyPayload(BaseModel):
+    body: str = Field(..., min_length=1, max_length=10000)
+    subject: Optional[str] = Field(None, max_length=200)
+    send_email: bool = True
+
+
+@api_router.post("/admin/contact/{msg_id}/reply")
+async def reply_contact_message(msg_id: str, payload: ReplyPayload, current=Depends(require_permission("messages"))):
+    doc = await db.contact_messages.find_one({"id": msg_id})
+    if not doc:
+        raise HTTPException(404, "Message not found")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    subject = (payload.subject or f"Re: {doc.get('subject') or 'PearBlue'}").strip()[:200]
+    reply = {
+        "id": str(uuid.uuid4()),
+        "direction": "out",  # admin -> client
+        "author": current.get("email"),
+        "body": payload.body.strip(),
+        "subject": subject,
+        "at": now_iso,
+        "email_sent": False,
+    }
+    # Send email via Resend if configured and requested
+    if payload.send_email and RESEND_API_KEY and doc.get("email"):
+        html_body = (
+            "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#0A192F;'>"
+            "<div style='background:#02C0FF;color:#fff;padding:20px;border-radius:12px 12px 0 0;'>"
+            f"<h2 style='margin:0;'>PearBlue — {_html.escape(subject)}</h2></div>"
+            "<div style='background:#fff;padding:24px;'>"
+            f"<div style='white-space:pre-wrap;line-height:1.55;'>{_html.escape(payload.body).replace(chr(10), '<br/>')}</div>"
+            "<hr style='margin:24px 0;border:none;border-top:1px solid #eee;'/>"
+            f"<p style='font-size:12px;color:#666;'>Beantwoord dit e-mailbericht om verder te reageren.<br/>Referentie: #{doc.get('id')}</p>"
+            "</div></div>"
+        )
+        ok = await _send_email(doc["email"], subject, html_body, reply_to=SENDER_EMAIL)
+        reply["email_sent"] = bool(ok)
+    await db.contact_messages.update_one(
+        {"id": msg_id},
+        [{"$set": {
+            "replies": {"$concatArrays": [{"$ifNull": ["$replies", []]}, [reply]]},
+            "updated_at": now_iso,
+            "status": {"$cond": [{"$eq": ["$status", "done"]}, "done", "in_progress"]},
+        }}],
+    )
+    await _log_activity(current.get("email"), "message.reply", msg_id, {"email_sent": reply["email_sent"]})
+    return reply
+
+
+@api_router.post("/admin/contact/{msg_id}/attachments")
+async def upload_contact_attachment(msg_id: str, file: UploadFile = File(...), current=Depends(require_permission("messages"))):
+    doc = await db.contact_messages.find_one({"id": msg_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Message not found")
+    raw = await file.read()
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(413, "File too large (>20 MB)")
+    attach = {
+        "id": str(uuid.uuid4()),
+        "name": file.filename or "file",
+        "mime": file.content_type or "application/octet-stream",
+        "size": len(raw),
+        "data_b64": base64.b64encode(raw).decode("ascii"),
+        "by": current.get("email"),
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.contact_messages.update_one(
+        {"id": msg_id},
+        [{"$set": {"attachments": {"$concatArrays": [{"$ifNull": ["$attachments", []]}, [attach]]}}}],
+    )
+    # Do not return the base64 payload back in the response (keep it small)
+    return {"id": attach["id"], "name": attach["name"], "mime": attach["mime"], "size": attach["size"], "by": attach["by"], "at": attach["at"]}
+
+
+@api_router.get("/admin/contact/{msg_id}/attachments/{attach_id}")
+async def download_contact_attachment(msg_id: str, attach_id: str, current=Depends(require_permission("messages"))):
+    doc = await db.contact_messages.find_one({"id": msg_id}, {"attachments": 1})
+    if not doc:
+        raise HTTPException(404, "Message not found")
+    att = next((a for a in (doc.get("attachments") or []) if a.get("id") == attach_id), None)
+    if not att or not att.get("data_b64"):
+        raise HTTPException(404, "Attachment not found")
+    try:
+        raw = base64.b64decode(att["data_b64"])
+    except Exception:
+        raise HTTPException(500, "Attachment corrupt")
+    return Response(
+        content=raw,
+        media_type=att.get("mime") or "application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename=\"{att.get('name', 'file')}\""},
+    )
+
+
+@api_router.delete("/admin/contact/{msg_id}/attachments/{attach_id}")
+async def delete_contact_attachment(msg_id: str, attach_id: str, current=Depends(require_permission("messages"))):
+    res = await db.contact_messages.update_one({"id": msg_id}, {"$pull": {"attachments": {"id": attach_id}}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Message not found")
+    return {"status": "deleted"}
+
 
 
 # ---- Bulk actions for messages ----

@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 20 — Ticket Threads CMS. Backend: 13/13 pytest tests PASS covering auth guards on 5 endpoints (401/403), GET /api/admin/contact/{id} thread detail (200 + 404), POST reply (email_sent=false since Resend does send but flag toggled false via send_email=false; status transitions to in_progress; preserves 'done' when already done via $cond), POST attachment upload (multipart, 20MB limit, response strips data_b64), GET binary download (Content-Disposition attachment; filename), DELETE attachment ($pull), regression: POST notes on same doc via aggregation-pipeline update, regression: GET /api/contact list strips data_b64 from attachment metadata, invalid empty reply body rejected (422). Frontend: Verified admin login, /admin/messages list shows 'Bekijk gesprek →' link with data-testid=msg-open-thread-{id} (inside a collapsed <details> row — expanded via details.open=true for automation). Navigated to /admin/messages/{id}, verified data-testid=cms-message-thread renders subject, priority/status chips, action bar (status/priority selects, Markeer als spam, Open in mail-client), Gesprek timeline (original + 2 admin replies + 1 amber-highlighted internal note), reply panel (subject+body inputs, send-email toggle, file picker, Verstuur button), note panel. End-to-end verified: sending a reply appears in timeline; internal note appears in amber card; file upload attaches to reply and appears in attachments list; delete-attachment removes it after confirm dialog; status change to 'done' reflects 'Afgerond' badge; priority change to 'P1' reflects immediately.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/messages (assignee dropdown)", "issues": ["React hydration warning: <span> rendered as child of <option> at AdminDashboard.jsx:755 — browsers strip nested span in <option>, so it prints a console warning 'In HTML, <span> cannot be a child of <option>. This will cause a hydration error.' Non-blocking but noisy in dev. Suggest concatenating the display text into a single string inside <option> instead of wrapping with <span>."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration20.py",
+    "/app/test_reports/pytest/iter20_results.xml"
+  ],
+  "action_items": [
+    "(Optional/minor) Remove nested <span> inside <option> in AdminDashboard assignee <select> (line ~755) to silence React hydration warning.",
+    "Note: RESEND_API_KEY IS configured in /app/backend/.env (contrary to review-request note). Reply endpoint therefore WILL attempt to actually send email when send_email=true (default). Backend test used send_email=false to avoid real emails; frontend E2E also unchecked the toggle. Main agent may want to double-check the env note vs actual config to avoid surprising outbound emails during future tests."
+  ],
+  "critical_code_review_comments": [
+    "Aggregation-pipeline update pattern ($concatArrays + $ifNull) used consistently for replies/notes/attachments — safe for legacy docs where fields are missing/null. Verified via tests (all pass on newly-created doc which starts without these fields).",
+    "reply endpoint uses $cond to preserve 'done' status ($cond: [{$eq:['$status','done']}, 'done', 'in_progress']) — verified by test_reply_preserves_done_status.",
+    "Upload/download endpoints correctly strip base64 payload from thread/list responses (both GET /admin/contact/{id} and GET /contact) — verified by test_list_contact_strips_base64.",
+    "server.py is now 2744 lines (was 2552 in iter19). Splitting into routers (messages, portal, auth, etc.) is overdue per 700-line guideline. Non-blocking, informational.",
+    "download endpoint returns Content-Disposition with filename correctly; media_type falls back to application/octet-stream — good.",
+    "Auth: all 5 new endpoints require admin permission — verified (return 403 without token).",
+    "Attachment 20MB size guard uses len(raw) after full read — for very large uploads this loads the entire body into memory before checking. Acceptable for CMS use case but noted."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all acceptance criteria met)"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026!",
+  "seed_data_creation": "Created 3 test contact messages via POST /api/contact (TEST_ui_iter20, TEST_ui_iter20b, TEST_ui_iter20c) during backend + frontend runs. All cleaned up via POST /api/admin/contact/bulk-delete at end of each test suite. Backend pytest fixture module-scoped auto-cleanup also applied.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 20 Ticket Threads CMS fully passes. Test file: /app/backend/tests/test_iteration20.py. Frontend URL pattern: /admin/messages/{msgId} — page has data-testid=cms-message-thread. NOTE: msg-open-thread-{id} button on list view is inside a collapsed <details> element (data-testid=cms-message-{index}) — you must open the details (click summary or set details.open=true) before Playwright can see the link. Admin token stored in localStorage under key 'pb_admin_token'. RESEND_API_KEY is actually set in backend/.env, so any reply with send_email=true will send a real email — always pass send_email=false in tests. Locked-mode test (status=done + non-super-admin) skipped as noted allowed by request. server.py is now 2744 lines — file-size split still pending. AdminDashboard has one noisy hydration warning (span child of option at line 755).",
+  "rca of the issue": "N/A — no defects found in iteration 20 scope. Only one minor cosmetic React warning noted (span-inside-option) predating this iteration."
+}
