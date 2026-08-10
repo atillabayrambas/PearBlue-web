@@ -99,7 +99,8 @@ const SERVICES = {
   cyber: {
     key: "cyber",
     icon: ShieldCheck,
-    priceFrom: "€5 p/machine p/maand",
+    priceFrom_nl: "€5 p/machine p/maand",
+    priceFrom_en: "€5 /machine /month",
     hero_img: IMG.cyber_hero,
     title_nl: "Cybersecurity — Bitdefender GravityZone",
     title_en: "Cybersecurity — Bitdefender GravityZone",
@@ -167,7 +168,7 @@ export default function Services() {
                   <svc.icon className="h-6 w-6" />
                 </div>
                 <span className="inline-block text-xs uppercase tracking-widest bg-pear-100 text-pear-700 rounded-full px-3 py-1.5 font-semibold mb-4">
-                  {lang === "nl" ? "vanaf" : "from"} {svc.priceFrom}
+                  {lang === "nl" ? "vanaf" : "from"} {svc.priceFrom || svc[`priceFrom_${lang}`] || svc.priceFrom_nl}
                 </span>
                 <h2 className="font-heading text-3xl sm:text-4xl font-medium tracking-tight text-strong leading-tight">
                   {lang === "nl" ? svc.title_nl : svc.title_en}

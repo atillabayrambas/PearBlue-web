@@ -121,7 +121,28 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - **Changelog data**: minor version format Vx.x.x nu ondersteund (v0.7.1-Beta live).
 - **Versie sync**: footer + CMS sidebar tonen nu **v0.7.1-Beta**.
 
-### Feb 2026 — Iteration 17 (this session, v0.5.3-Beta)
+### Feb 2026 — Iteration 18 (this session, v0.5.4-Beta)
+- **Global theme-aware form styling** — nieuwe base layer in `index.css` zorgt dat ALLE `<select>`, `<input>`, `<textarea>` en `<option>` de themakleur volgen (surface bg, text-strong tekst, muted placeholder, 0.7 opacity disabled). Fixt de witte-op-witte dropdowns overal in CMS (Berichten, Feedback, Reviews, Portaal, Brevo).
+- **CMS mobile hamburger + PearBlue-logo header** — nieuwe `cms-mobile-header` boven de content op < lg, met hamburger toggle en versie-tag. Zijmenu klapt uit/in.
+- **CMS sidebar upgraded** — PearBlue-logo bovenaan, profielfoto (Avatar met random pear-avatar of initialen) naast display-name, taal (NL/EN) en thema (Licht/Donker/Auto) toggle onderaan.
+- **AdminSidebar duplicaat opgeruimd** — er stond een oude versie die dood-code was.
+- **Reviews upgrade**:
+  - Verwijderd de duplicaat `FeaturedReviewsCompact` op Home; nu alleen 1 marquee midden op de pagina.
+  - Marquee-snelheid van 60s → 32s (~2x sneller), triple-array voor smoother wrap-around.
+  - **Drag-to-scroll** met muis/vinger: pointer-events pauzeren de marquee tijdens slepen; auto-resume na 1.5s.
+- **Homepage hero-titel** — schaalt van `text-4xl` op mobile tot `text-7xl` op lg (was `text-5xl` als base wat overflow gaf).
+- **Calculator mobile** — compact 3-kolom grid altijd (vs. sm+ vertical stack); alleen totalen in cellen, subtotal/vat labels verborgen op mobile. Buttons kleiner (`!text-xs !px-4`). List blijft daardoor zichtbaar.
+- **Klantportaal facturen** — View/PDF/Print hebben nu 3 verschillende gedragingen:
+  - **View** → axios-fetch PDF als blob + inline-modal met `<iframe>` (`portal-pdf-preview-modal`)
+  - **PDF** → blob-URL in nieuw tabblad
+  - **Print** → blob-URL in nieuw venster + `print()`; fallback: verborgen iframe voor popup-blockers
+- **Klantportaal admin-shortcut overflow** — flex-wrap + compactere buttons voorkomen dat de Manage-knop de Uitlog-knop uit beeld duwt.
+- **Cybersecurity CMS sticky-column** — bg was `bg-app` (bestaat niet in Tailwind), dus transparent en overlappend. Vervangen door `surface` klasse met `border-l` scheiding — geen overlap meer op tablet.
+- **Bulk `bg-app` → `surface`** in AdminDashboard.jsx: alle 23 voorkomens vervangen (opgeloste selects in Berichten, Feedback, Cybersecurity, etc.).
+- **Services page**: `priceFrom` nu taal-specifiek (`priceFrom_nl` + `priceFrom_en`) — cybersecurity "vanaf €5 p/machine p/maand" → "from €5 /machine /month".
+- **Footer Klantportaal** vertaalt correct naar "Client portal" in Engels.
+
+### Feb 2026 — Iteration 17 (v0.5.3-Beta)
 - **Nieuwe rol 'CRM'** met permissions `{users, chat, tickets, messages, feedback, reviews}`; kan reset-mails sturen voor klanten (naast super_admin/beheerder/admin).
 - **Extended user editor modal** in Gebruikers CMS — geen paginanavigatie, alle bewerkingen op één plek. Verplicht: voornaam, achternaam, adres, postcode. Optioneel: plaats, land, bedrijfsnaam, KVK, BTW. E-mail-notificatie naar klant via `/api/admin/users/{email}/notify-updated` (MOCKED Zoho 2-way sync).
 - **Random pear+robot avatar** generator (DiceBear bottts-neutral + PearBlue palet). Iedereen (moderator/beheerder/admin) kan random-avatar toewijzen of terugzetten op initialen.

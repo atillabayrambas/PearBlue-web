@@ -171,4 +171,23 @@ body {
 
 @layer base {
   [data-debug-wrapper="true"] { display: contents !important; }
+
+  /* Theme-aware default styling for form controls across the CMS */
+  select, input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), textarea {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--text-strong));
+    border-color: hsl(var(--border));
+  }
+  select:focus, input:focus, textarea:focus {
+    outline: 2px solid rgba(2, 192, 255, 0.35);
+    outline-offset: 1px;
+  }
+  ::placeholder { color: hsl(var(--text-muted)); opacity: 0.75; }
+  /* Dropdown option text — some browsers ignore parent bg color */
+  select option { background-color: hsl(var(--surface)); color: hsl(var(--text-strong)); }
+  /* Dark mode-friendly disabled state */
+  select:disabled, input:disabled, textarea:disabled {
+    background-color: hsl(var(--surface-2));
+    opacity: 0.7;
+  }
 }

@@ -7,7 +7,7 @@ import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
 import { usePageSeo } from "../hooks/usePageSeo";
-import { FeaturedReviews, FeaturedReviewsCompact, FloatingReviewTicker } from "../components/Reviews";
+import { FeaturedReviews, FloatingReviewTicker } from "../components/Reviews";
 import { TrustStats } from "../components/TrustStats";
 import { TrustpilotWidget } from "../components/TrustpilotWidget";
 
@@ -44,11 +44,11 @@ export default function Home() {
         </div>
         <div className="max-w-7xl mx-auto px-6 lg:px-10 pt-20 pb-24 lg:pt-28 lg:pb-32 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative">
           <motion.div initial="hidden" animate="show" variants={stagger} className="lg:col-span-7">
-            <motion.p variants={fadeUp} className="overline mb-5" data-testid="hero-eyebrow">
+            <motion.p variants={fadeUp} className="overline mb-5 leading-relaxed break-words" data-testid="hero-eyebrow">
               <Sparkles className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />
               {t("hero.eyebrow")}
             </motion.p>
-            <motion.h1 variants={fadeUp} className="font-heading font-light text-5xl sm:text-6xl lg:text-7xl leading-[1.02] tracking-tighter text-strong" data-testid="hero-title">
+            <motion.h1 variants={fadeUp} className="font-heading font-light text-4xl sm:text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tighter text-strong break-words" data-testid="hero-title">
               {t("hero.title_1")}{" "}
               <span className="text-gradient-pear font-medium">{t("hero.title_accent")}</span>{" "}
               {t("hero.title_2")}
@@ -109,7 +109,6 @@ export default function Home() {
       {/* TRUST STATS + auto-scrolling reviews marquee (middle of page, infinite loop) */}
       <TrustStats />
       <FeaturedReviews />
-      <FeaturedReviewsCompact />
 
       {/* TRUSTPILOT WIDGET (optional, activates when BUSINESS_UNIT_ID is set) */}
       <TrustpilotWidget />

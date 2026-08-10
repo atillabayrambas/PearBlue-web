@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 18 UX/UI polish verification — desktop (1920), tablet (768) and mobile (390) viewports. Verified: reviews section is single (featured=1, compact=0) with drag-to-scroll hint 'Sleep om te scrollen · hover of tik om te pauzeren'; drag on reviews-scroller works. Home hero h1 on mobile 390 renders fully within viewport, no horizontal overflow (body scrollWidth 390 == window 390). CMS mobile: cms-mobile-header + cms-mobile-toggle + cms-sidebar-logo + cms-sidebar-profile + cms-sidebar-lang + cms-sidebar-theme all present; toggle expands hidden→visible sidebar with logo, avatar + email, lang/theme toggles rendered. CMS form fields (light theme) on /admin/feedback, /admin/messages, /admin/reviews, /admin/registrations: all selects (fb-*, msg-*, review-*, registration-*) render bg=rgb(255,255,255) with dark text rgb(11,25,45) on body bg=rgb(249,250,251) — readable, NOT white-on-white. Cybersecurity CMS on tablet: cs-open-virus-scanner visible, sticky right column has surface bg (rgba(240,251,255,0.5)); however border-left computed value is 0px (see minor issue). Services EN cyber card renders 'from €5 /machine /month' correctly. Portal invoice buttons wired to 3 distinct handlers (viewInline / openPdfNewTab / printPdf) with unique testids and portal-pdf-preview-modal iframe view. Portal admin/logout buttons present. Version banner shows v0.5.4-Beta throughout.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Footer", "issue": "Client portal link renders literal untranslated key 'footer.portal' instead of 'Klantportaal'/'Client portal'. Root cause in /app/frontend/src/components/Footer.jsx line 90: uses `t('footer.portal') || (lang==='en'? 'Client portal':'Klantportaal')`. When translation key is missing, most i18n libs return the key string itself (truthy), so the fallback never triggers. Fix: compare against key or use ternary on lang directly, e.g. `lang==='en' ? 'Client portal' : 'Klantportaal'` — or check `t('footer.portal') === 'footer.portal' ? fallback : t('footer.portal')`. Add the actual translation keys in the i18n dictionaries. Observed on both NL and EN footers ('footer.portal' literal present in both).", "selector": "[data-testid='footer-link-portal']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Cybersecurity CMS (tablet 768)", "issues": ["Sticky right action column has 'surface' background (rgba(240,251,255,0.5)) but computed border-left is '0px solid rgb(225,231,239)' — the border-left width is 0, so no visual separator appears between the sticky column and the scrolled cells. Add `border-l` (Tailwind) or explicit border-left-width so the sticky column visibly separates from datetime/status cells during horizontal scroll."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "HIGH: Footer 'footer.portal' i18n bug — either register the key in NL/EN translation JSON or replace with a plain ternary on `lang`. Currently the link visibly reads 'footer.portal' on all pages in both languages.",
+    "MEDIUM: Cybersecurity CMS sticky-right column border-left width is 0px; add a visible left border (e.g., `border-l border-app`) so the sticky action column is clearly separated when the table scrolls horizontally."
+  ],
+  "critical_code_review_comments": [
+    "i18n fallback anti-pattern in Footer.jsx (line 90): `t(key) || fallback` never triggers fallback because most i18n libs return the key literal when the translation is missing. Prefer an explicit lang-based ternary or a safe-translate helper.",
+    "Portal.jsx invoice buttons correctly use 3 separate handlers and unique testids; blob URLs are revoked on modal close (good hygiene).",
+    "AdminSidebar mobile toggle correctly changes display from none→block; verified programmatically. Consider ARIA-expanded on the toggle for a11y."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only test)", "frontend": "90%"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 18 tested. Two frontend defects reported: (1) Footer i18n 'footer.portal' literal shows instead of Klantportaal/Client portal — see Footer.jsx line 90. (2) Cybersecurity CMS sticky right column missing visible border-left. All other Iteration-18 acceptance criteria pass: single reviews marquee with drag+hint, mobile hero h1 fits, CMS mobile hamburger/sidebar/profile/lang/theme, CMS form selects theme-aware (bg=white on light bg=#f9fafb, dark readable text), Services EN cybersecurity card shows 'from €5 /machine /month', portal invoice buttons have 3 distinct handlers + modal iframe, admin/logout portal buttons visible. Dark-theme select bg was not verified interactively (theme toggle behind sidebar which auto-closes on navigation) — main agent can self-verify via css var inspection on `.dark select` in index.css.",
+  "rca of the issue": "Footer bug RCA: `t('footer.portal') || fallback` — react-i18next (and most i18n frameworks) returns the missing key as a string when no translation exists; a non-empty string is truthy so the `|| fallback` branch is dead code. Reproduction: load any page → scroll to footer → observe 'footer.portal' as link label in both NL and EN. Mitigation: add translation entries `footer.portal` = 'Klantportaal' (nl) / 'Client portal' (en) OR change code to `lang==='en' ? 'Client portal' : 'Klantportaal'`."
+}

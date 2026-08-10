@@ -367,38 +367,38 @@ function CalculatorModal({ onClose }) {
           </div>
         </div>
 
-        {/* Combined totals footer — 3 stacked blocks: One-off / Monthly / Hourly with BTW */}
-        <footer className="border-t border-app px-4 py-3 bg-pear-50/50 dark:bg-slate-800">
-          <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-2">
+        {/* Combined totals footer — compact 3-col grid on all screens so the list stays visible */}
+        <footer className="border-t border-app px-3 sm:px-4 py-2.5 sm:py-3 bg-pear-50/50 dark:bg-slate-800 shrink-0">
+          <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1.5">
             {lang === "en" ? `Combined (${totals.activeSvcs.length || 0}/3 services)` : `Gecombineerd (${totals.activeSvcs.length || 0}/3 diensten)`}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-2.5" data-testid="pricing-calc-col-oneoff">
-              <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "One-off" : "Eenmalig"}</div>
-              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong" data-testid="pricing-calc-subtotal">{money(totals.combined.subtotal)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong" data-testid="pricing-calc-vat">{money(totals.combined.btw)}</span></div>
-              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold"><span className="text-strong">{lang === "en" ? "Total" : "Totaal"}</span><span className="font-mono text-pear-600" data-testid="pricing-calc-total-inclvat">{money(totals.combined.grandTotal)}</span></div>
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-[10px] sm:text-xs">
+            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-1.5 sm:p-2.5" data-testid="pricing-calc-col-oneoff">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "One-off" : "Eenmalig"}</div>
+              <div className="flex justify-between gap-1"><span className="text-muted-fg hidden sm:inline">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong truncate" data-testid="pricing-calc-subtotal">{money(totals.combined.subtotal)}</span></div>
+              <div className="flex justify-between gap-1"><span className="text-muted-fg hidden sm:inline">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong truncate" data-testid="pricing-calc-vat">{money(totals.combined.btw)}</span></div>
+              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold gap-1"><span className="text-strong hidden sm:inline">{lang === "en" ? "Total" : "Totaal"}</span><span className="font-mono text-pear-600 truncate" data-testid="pricing-calc-total-inclvat">{money(totals.combined.grandTotal)}</span></div>
             </div>
-            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-2.5" data-testid="pricing-calc-col-monthly">
-              <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "Monthly (recurring)" : "Maandelijks (vast)"}</div>
-              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong">{money(totals.combined.monthly)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong">{money(totals.combined.monthlyBtw)}</span></div>
-              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold"><span className="text-strong">{lang === "en" ? "Total /mo" : "Totaal /m"}</span><span className="font-mono text-pear-600" data-testid="pricing-calc-monthly-total">{money(totals.combined.monthlyTotal)}</span></div>
+            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-1.5 sm:p-2.5" data-testid="pricing-calc-col-monthly">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "Monthly" : "Maandelijks"}</div>
+              <div className="flex justify-between gap-1"><span className="text-muted-fg hidden sm:inline">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong truncate">{money(totals.combined.monthly)}</span></div>
+              <div className="flex justify-between gap-1"><span className="text-muted-fg hidden sm:inline">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong truncate">{money(totals.combined.monthlyBtw)}</span></div>
+              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold gap-1"><span className="text-strong hidden sm:inline">{lang === "en" ? "/mo" : "/m"}</span><span className="font-mono text-pear-600 truncate" data-testid="pricing-calc-monthly-total">{money(totals.combined.monthlyTotal)}</span></div>
             </div>
-            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-2.5" data-testid="pricing-calc-col-hourly">
-              <div className="text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "Hourly (ad-hoc)" : "Uurlijks (los)"}</div>
-              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong">{money(totals.combined.hourly)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-fg">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong">{money(totals.combined.hourly * VAT_RATE)}</span></div>
-              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold"><span className="text-strong">{lang === "en" ? "Total /hr" : "Totaal /uur"}</span><span className="font-mono text-pear-600" data-testid="pricing-calc-hourly-total">{money(totals.combined.hourly * (1 + VAT_RATE))}</span></div>
+            <div className="rounded-lg border border-app bg-white/50 dark:bg-slate-900/50 p-1.5 sm:p-2.5" data-testid="pricing-calc-col-hourly">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-widest text-muted-fg mb-1">{lang === "en" ? "Hourly" : "Uurlijks"}</div>
+              <div className="flex justify-between gap-1"><span className="text-muted-fg hidden sm:inline">{lang === "en" ? "Subtotal" : "Subtotaal"}</span><span className="font-mono text-strong truncate">{money(totals.combined.hourly)}</span></div>
+              <div className="flex justify-between gap-1"><span className="text-muted-fg hidden sm:inline">{lang === "en" ? "VAT 21%" : "BTW 21%"}</span><span className="font-mono text-strong truncate">{money(totals.combined.hourly * VAT_RATE)}</span></div>
+              <div className="flex justify-between border-t border-app/50 mt-1 pt-1 font-semibold gap-1"><span className="text-strong hidden sm:inline">{lang === "en" ? "/hr" : "/uur"}</span><span className="font-mono text-pear-600 truncate" data-testid="pricing-calc-hourly-total">{money(totals.combined.hourly * (1 + VAT_RATE))}</span></div>
             </div>
           </div>
-          <p className="mt-2 text-[10px] text-muted-fg leading-relaxed">
+          <p className="mt-1.5 sm:mt-2 text-[9px] sm:text-[10px] text-muted-fg leading-tight hidden sm:block">
             {lang === "en"
               ? "Estimate only — final quote may differ. Setup is one-off, monthly costs recur, hourly rates are billed ad-hoc."
               : "Slechts een schatting — offerte kan afwijken. Setup is eenmalig, maandelijkse kosten zijn doorlopend, uurtarieven worden los gefactureerd."}
           </p>
-          <div className="mt-2 flex flex-wrap gap-2 justify-end">
-            <button type="button" onClick={clearWishlist} className="text-xs px-3 py-1.5 rounded-full border border-app hover:border-red-400 hover:text-red-500" data-testid="pricing-calc-clear">
+          <div className="mt-2 flex flex-wrap gap-1.5 sm:gap-2 justify-end">
+            <button type="button" onClick={clearWishlist} className="text-[11px] sm:text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full border border-app hover:border-red-400 hover:text-red-500" data-testid="pricing-calc-clear">
               {lang === "en" ? "Clear" : "Leegmaken"}
             </button>
             <div className="relative inline-block group" data-testid="pricing-calc-save-wrap">

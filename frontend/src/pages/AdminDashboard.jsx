@@ -2,14 +2,16 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert, Euro } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, Plus, Trash2, Save, ExternalLink, BarChart3, UserPlus, Check, XCircle, Star, Sparkles, Send, Clock, Users, Code, ShieldCheck, ShieldX, MessageSquare, ShieldAlert, Euro, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
+import { useTheme } from "../theme/ThemeContext";
 import { AnalyticsAdmin } from "./AdminAnalytics";
 import { FinancialsAdmin } from "./AdminFinancials";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const PEARBLUE_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/djwgz9jk_PearBlue%20logo-10.webp";
 
 const RequireAdmin = ({ children }) => {
   const { isAdmin, loading } = useAuth();
@@ -19,21 +21,26 @@ const RequireAdmin = ({ children }) => {
 };
 
 const AdminSidebar = () => {
-  const { logout, user, authHeader } = useAuth();
+  const { user, logout } = useAuth();
+  const { lang, setLang } = useLang();
+  const { mode, setMode } = useTheme();
   const [counters, setCounters] = useState({});
+  const [profile, setProfile] = useState(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const r = await axios.get(`${API}/admin/counters`, { headers: authHeader() });
-        if (alive) setCounters(r.data || {});
-      } catch { /* ignore */ }
-    };
+    const load = () => axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => setCounters(r.data || {})).catch(() => {});
     load();
-    const t = setInterval(load, 60000);
-    return () => { alive = false; clearInterval(t); };
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (!user?.email) return;
+    axios.get(`${API}/admin/users/${encodeURIComponent(user.email)}/details`, { headers: authHeaderFromStorage() })
+      .then((r) => setProfile(r.data))
+      .catch(() => {});
+  }, [user?.email]);
+  // Close mobile menu when navigating (route change) — done via NavLink onClick below
   const role = user?.role || "";
   const canSeeFinancials = ["super_admin", "admin", "beheerder", "financien"].includes(role);
   const items = [
@@ -51,50 +58,110 @@ const AdminSidebar = () => {
     { to: "/admin/scripts", label: "Custom scripts", icon: Code, testid: "cms-nav-scripts" },
     { to: "/admin/settings", label: "Site instellingen", icon: SettingsIcon, testid: "cms-nav-settings" },
   ];
+  const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || user?.display_name || user?.email;
+  const nextTheme = { light: "dark", dark: "system", system: "light" }[mode] || "light";
+  const themeIcon = mode === "light" ? "☀️" : mode === "dark" ? "🌙" : "🖥️";
   return (
-    <aside className="lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start" data-testid="cms-sidebar">
-      <div className="mb-6">
-        <p className="text-[11px] uppercase tracking-widest text-muted-fg">Ingelogd als</p>
-        <p className="font-heading font-semibold text-strong text-sm mt-1 truncate">{user?.email || "admin"}</p>
+    <>
+      {/* Mobile hamburger header — visible only < lg */}
+      <div className="lg:hidden sticky top-0 z-40 -mx-6 sm:-mx-10 mb-4 flex items-center gap-3 px-4 py-3 surface border-b border-app" data-testid="cms-mobile-header">
+        <button onClick={() => setMobileOpen((v) => !v)} className="p-2 rounded-lg surface-2 hover:bg-pear-100/50" aria-label="Menu" data-testid="cms-mobile-toggle">
+          <Menu className="h-5 w-5 text-strong" />
+        </button>
+        <img src={PEARBLUE_LOGO} alt="PearBlue" className="h-7 w-auto" onError={(e) => { e.target.style.display = 'none'; }} />
+        <span className="font-heading font-semibold text-sm text-strong ml-auto truncate">CMS · v0.5.4-Beta</span>
       </div>
-      <nav className="flex flex-col gap-1">
-        {items.map((i) => (
-          <NavLink
-            key={i.to}
-            to={i.to}
-            end={i.end}
-            data-testid={i.testid}
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                isActive ? "bg-pear-500 text-white" : "text-strong hover:bg-pear-100/60"
-              }`
-            }
-          >
-            <i.icon className="h-4 w-4" />
-            <span className="flex-1">{i.label}</span>
-            {i.badge > 0 && (
-              <span
-                className="inline-flex items-center justify-center min-w-[20px] h-5 rounded-full bg-pear-500 text-white text-[10px] font-bold px-1.5 shadow-[0_0_0_2px_var(--pb-surface,_white)]"
-                data-testid={`badge-${i.testid}`}
-              >
-                {i.badge > 99 ? "99+" : i.badge}
-              </span>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-      <button
-        onClick={logout}
-        className="mt-6 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm text-red-500 border border-red-200 hover:bg-red-50 dark:hover:bg-red-500/10"
-        data-testid="cms-logout"
+
+      <aside
+        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "block" : "hidden lg:block"}`}
+        data-testid="cms-sidebar"
       >
-        <LogOut className="h-4 w-4" /> Uitloggen
-      </button>
-      <div className="mt-6 pt-4 border-t border-app text-[10px] text-muted-fg text-center">
-        PearBlue CMS · v0.5.3-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
-      </div>
-    </aside>
+        {/* Logo + close for mobile */}
+        <div className="flex items-center justify-between mb-4 lg:mb-6">
+          <img src={PEARBLUE_LOGO} alt="PearBlue" className="h-8 w-auto" data-testid="cms-sidebar-logo" onError={(e) => { e.target.style.display = 'none'; }} />
+          <button onClick={() => setMobileOpen(false)} className="lg:hidden p-1.5 rounded-lg hover:bg-pear-100/50" aria-label="Sluit menu" data-testid="cms-mobile-close">
+            <XCircle className="h-5 w-5 text-strong" />
+          </button>
+        </div>
+
+        {/* Profile summary with avatar */}
+        <div className="mb-6 flex items-center gap-3" data-testid="cms-sidebar-profile">
+          <Avatar name={displayName} email={user?.email} profilePicture={profile?.profile_picture} size={40} />
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-widest text-muted-fg">Ingelogd als</p>
+            <p className="font-heading font-semibold text-strong text-sm mt-0.5 truncate">{displayName}</p>
+          </div>
+        </div>
+
+        <nav className="flex flex-col gap-1">
+          {items.map((i) => (
+            <NavLink
+              key={i.to}
+              to={i.to}
+              end={i.end}
+              onClick={() => setMobileOpen(false)}
+              data-testid={i.testid}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  isActive ? "bg-pear-500 text-white" : "text-strong hover:bg-pear-100/60"
+                }`
+              }
+            >
+              <i.icon className="h-4 w-4" />
+              <span className="flex-1">{i.label}</span>
+              {i.badge > 0 && (
+                <span
+                  className="inline-flex items-center justify-center min-w-[20px] h-5 rounded-full bg-pear-500 text-white text-[10px] font-bold px-1.5 shadow-[0_0_0_2px_var(--pb-surface,_white)]"
+                  data-testid={`badge-${i.testid}`}
+                >
+                  {i.badge > 99 ? "99+" : i.badge}
+                </span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Language + theme quick toggles */}
+        <div className="mt-5 flex items-center justify-between gap-2 rounded-xl surface-2 px-3 py-2" data-testid="cms-sidebar-prefs">
+          <button
+            type="button"
+            onClick={() => setLang(lang === "nl" ? "en" : "nl")}
+            className="flex-1 text-xs font-semibold text-strong hover:text-pear-500 uppercase tracking-widest"
+            data-testid="cms-sidebar-lang"
+          >
+            🌐 {lang.toUpperCase()}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode(nextTheme)}
+            title={`Thema: ${mode}`}
+            className="flex-1 text-xs font-semibold text-strong hover:text-pear-500 uppercase tracking-widest"
+            data-testid="cms-sidebar-theme"
+          >
+            {themeIcon} {mode === "light" ? "Licht" : mode === "dark" ? "Donker" : "Auto"}
+          </button>
+        </div>
+
+        <button
+          onClick={logout}
+          className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm text-red-500 border border-red-200 hover:bg-red-50 dark:hover:bg-red-500/10"
+          data-testid="cms-logout"
+        >
+          <LogOut className="h-4 w-4" /> Uitloggen
+        </button>
+        <div className="mt-4 pt-3 border-t border-app text-[10px] text-muted-fg text-center">
+          PearBlue CMS · v0.5.4-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
+        </div>
+      </aside>
+    </>
   );
+};
+
+// Helper to read auth token straight from localStorage (used inside effects
+// that fire before `useAuth` context is available).
+const authHeaderFromStorage = () => {
+  const t = localStorage.getItem("pb_admin_token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
 // Avatar helper — pear-themed initials fallback when no profile picture is set.
@@ -579,12 +646,12 @@ const MessagesAdmin = () => {
             }`}
           >
             {t.label}
-            <span className="text-[10px] rounded-full bg-app px-1.5 py-0.5">{counts[t.key]}</span>
+            <span className="text-[10px] rounded-full surface px-1.5 py-0.5">{counts[t.key]}</span>
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2 text-xs">
           <span className="text-muted-fg">Sorteer op:</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value)} className="text-xs rounded-lg border border-app bg-app px-2 py-1" data-testid="msg-sort">
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="text-xs rounded-lg border border-app surface px-2 py-1" data-testid="msg-sort">
             <option value="date">Datum</option>
             <option value="name">Naam</option>
             <option value="priority">Prioriteit</option>
@@ -656,7 +723,7 @@ const MessagesAdmin = () => {
                     <select
                       value={m.status || "new"}
                       onChange={(e) => patch(m.id, { status: e.target.value })}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
+                      className="text-xs rounded-lg border border-app surface px-2 py-1 disabled:opacity-50"
                       data-testid={`msg-status-${m.id || i}`}
                       disabled={disabled}
                     >
@@ -666,7 +733,7 @@ const MessagesAdmin = () => {
                     <select
                       value={m.priority || "P3"}
                       onChange={(e) => patch(m.id, { priority: e.target.value })}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
+                      className="text-xs rounded-lg border border-app surface px-2 py-1 disabled:opacity-50"
                       data-testid={`msg-priority-${m.id || i}`}
                       disabled={disabled}
                     >
@@ -675,7 +742,7 @@ const MessagesAdmin = () => {
                     <select
                       value={m.assigned_to || ""}
                       onChange={(e) => patch(m.id, { assigned_to: e.target.value || null })}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
+                      className="text-xs rounded-lg border border-app surface px-2 py-1 disabled:opacity-50"
                       data-testid={`msg-assignee-${m.id || i}`}
                       disabled={disabled}
                     >
@@ -721,7 +788,7 @@ const MessagesAdmin = () => {
                     </div>
                   )}
                   <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.target); addNote(m.id, fd.get("note")); e.target.reset(); }} className="flex gap-2 pt-2">
-                    <input name="note" placeholder="Interne notitie…" className="flex-1 rounded-lg border border-app bg-app px-3 py-1.5 text-xs" data-testid={`msg-note-input-${m.id || i}`} />
+                    <input name="note" placeholder="Interne notitie…" className="flex-1 rounded-lg border border-app surface px-3 py-1.5 text-xs" data-testid={`msg-note-input-${m.id || i}`} />
                     <button type="submit" className="text-xs rounded-full px-3 py-1 border border-app hover:border-pear-500" data-testid={`msg-note-submit-${m.id || i}`}>Toevoegen</button>
                   </form>
                 </div>
@@ -832,7 +899,7 @@ const RegistrationsAdmin = () => {
                     <select
                       value={r.assigned_to || ""}
                       onChange={(e) => assign(r.id, e.target.value || null)}
-                      className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                      className="text-xs rounded-lg border border-app surface px-2 py-1"
                       data-testid={`registration-assignee-${r.id}`}
                     >
                       <option value="">— Niet toegewezen —</option>
@@ -1019,7 +1086,7 @@ const ReviewsAdmin = () => {
                   <select
                     value={r.assigned_to || ""}
                     onChange={(e) => patch(r.id, { assigned_to: e.target.value || null })}
-                    className="text-xs rounded-lg border border-app bg-app px-2 py-1"
+                    className="text-xs rounded-lg border border-app surface px-2 py-1"
                     data-testid={`review-assignee-${r.id}`}
                   >
                     <option value="">— Niet toegewezen —</option>
@@ -1716,7 +1783,7 @@ const CybersecurityAdmin = () => {
                       <span className="text-xs text-red-500 font-semibold">Geblokkeerd</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 bg-app">
+                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 surface border-l border-app">
                     {b.unblocked ? (
                       <button
                         onClick={() => toggle(b, false)}
@@ -1851,7 +1918,7 @@ const FeedbackAdmin = () => {
                           <select
                             value={f.status || "new"}
                             onChange={(e) => setStatus(f.id, e.target.value)}
-                            className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
+                            className="text-xs rounded-lg border border-app surface px-2 py-1 disabled:opacity-50"
                             data-testid={`fb-status-${f.id}`}
                             disabled={(f.status === "done") && !["super_admin","admin"].includes(user?.role)}
                           >
@@ -1860,7 +1927,7 @@ const FeedbackAdmin = () => {
                           <select
                             value={f.assigned_to || ""}
                             onChange={(e) => assign(f.id, e.target.value || null)}
-                            className="text-xs rounded-lg border border-app bg-app px-2 py-1 disabled:opacity-50"
+                            className="text-xs rounded-lg border border-app surface px-2 py-1 disabled:opacity-50"
                             data-testid={`fb-assignee-${f.id}`}
                             disabled={(f.status === "done") && !["super_admin","admin"].includes(user?.role)}
                           >
@@ -1892,7 +1959,7 @@ const FeedbackAdmin = () => {
 
       {openItem && (
         <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setOpenItem(null)} data-testid="fb-notes-modal">
-          <div className="w-full max-w-lg bg-app border border-app rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg surface border border-app rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
                 <div className="font-heading font-semibold text-strong">Notities</div>
@@ -1912,7 +1979,7 @@ const FeedbackAdmin = () => {
               ))}
             </div>
             <form onSubmit={async (e) => { e.preventDefault(); const fd = new FormData(e.target); await addNote(openItem.id, fd.get("note")); e.target.reset(); }} className="flex gap-2">
-              <input name="note" placeholder="Voeg een notitie toe…" className="flex-1 rounded-xl border border-app bg-app px-3 py-2 text-sm" data-testid="fb-note-input" />
+              <input name="note" placeholder="Voeg een notitie toe…" className="flex-1 rounded-xl border border-app surface px-3 py-2 text-sm" data-testid="fb-note-input" />
               <button type="submit" className="btn-primary" data-testid="fb-note-submit">Toevoegen</button>
             </form>
           </div>
@@ -2011,12 +2078,12 @@ const MailboxesAdmin = () => {
             </button>
           ) : (
             <form onSubmit={add} className="surface border border-app rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="mailbox-form">
-              <input required placeholder="Label (bv. Support)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-label" />
-              <input required type="email" placeholder="you@pearblue.nl" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-email" />
-              <input required placeholder="IMAP host (imap.provider.com)" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-host" />
-              <input type="number" placeholder="Port" value={form.port} onChange={(e) => setForm({ ...form, port: parseInt(e.target.value, 10) || 993 })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-port" />
-              <input required placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-username" />
-              <input required type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" data-testid="mailbox-input-password" />
+              <input required placeholder="Label (bv. Support)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-label" />
+              <input required type="email" placeholder="you@pearblue.nl" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-email" />
+              <input required placeholder="IMAP host (imap.provider.com)" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-host" />
+              <input type="number" placeholder="Port" value={form.port} onChange={(e) => setForm({ ...form, port: parseInt(e.target.value, 10) || 993 })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-port" />
+              <input required placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-username" />
+              <input required type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-password" />
               <label className="flex items-center gap-2 text-xs md:col-span-2">
                 <input type="checkbox" checked={form.use_ssl} onChange={(e) => setForm({ ...form, use_ssl: e.target.checked })} className="accent-pear-500" data-testid="mailbox-input-ssl" />
                 SSL/TLS (aanbevolen)
@@ -2090,14 +2157,14 @@ const BrevoAdmin = () => {
             placeholder={settings.api_key_set ? "•••••• (leeg laten om huidige te behouden)" : "xkeysib-xxxxxxxxxxxxx"}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-app bg-app px-3 py-2 text-sm font-mono"
+            className="mt-1 w-full rounded-lg border border-app surface px-3 py-2 text-sm font-mono"
             data-testid="brevo-api-key"
           />
           <p className="text-[11px] text-muted-fg mt-1">Haal je API-sleutel op via app.brevo.com → SMTP &amp; API → API Keys. Alleen v3 keys.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input value={settings.from_email} onChange={(e) => setSettings({ ...settings, from_email: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" placeholder="Verzend-e-mail" data-testid="brevo-from-email" />
-          <input value={settings.from_name} onChange={(e) => setSettings({ ...settings, from_name: e.target.value })} className="rounded-lg border border-app bg-app px-3 py-2 text-sm" placeholder="Verzendnaam" data-testid="brevo-from-name" />
+          <input value={settings.from_email} onChange={(e) => setSettings({ ...settings, from_email: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" placeholder="Verzend-e-mail" data-testid="brevo-from-email" />
+          <input value={settings.from_name} onChange={(e) => setSettings({ ...settings, from_name: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" placeholder="Verzendnaam" data-testid="brevo-from-name" />
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={settings.enabled} onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })} className="accent-pear-500" data-testid="brevo-enabled" />
@@ -2244,10 +2311,10 @@ const ChangelogAdmin = () => {
       </h2>
       <p className="text-sm text-muted-fg mt-1 mb-6">Alle uitgebrachte versies van het platform. Huidige versie: <strong>v{data.current || "?"}</strong></p>
       <div className="relative pl-6">
-        <div className="absolute left-2 top-1 bottom-1 w-px bg-app" />
+        <div className="absolute left-2 top-1 bottom-1 w-px surface" />
         {data.entries.map((e, i) => (
           <div key={e.version} className="relative mb-8" data-testid={`cms-changelog-${e.version}`}>
-            <div className={`absolute -left-6 top-1.5 w-3 h-3 rounded-full ${i === 0 ? "bg-pear-500 ring-4 ring-pear-500/20" : "bg-app border-2 border-pear-300"}`} />
+            <div className={`absolute -left-6 top-1.5 w-3 h-3 rounded-full ${i === 0 ? "bg-pear-500 ring-4 ring-pear-500/20" : "surface border-2 border-pear-300"}`} />
             <div className="flex items-baseline gap-3 flex-wrap">
               <h3 className="font-heading text-xl font-semibold text-strong">v{e.version}</h3>
               <span className="text-xs text-muted-fg">{new Date(e.date).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}</span>

@@ -169,6 +169,7 @@ export default function Portal() {
     path: "/portal",
   });
   const [me, setMe] = useState({ loading: true, authenticated: false, user: null });
+  const [pdfPreview, setPdfPreview] = useState(null); // { url, invoice_id }
   const location = useLocation();
   const { isAdmin } = useAuth();
 
@@ -227,19 +228,19 @@ export default function Portal() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 lg:px-10 py-12" data-testid="page-portal">
-      <div className="flex items-center justify-between gap-4 mb-10">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
+        <div className="min-w-0">
           <p className="overline mb-2">{lang === "en" ? "Client portal" : "Klantportaal"}</p>
-          <h1 className="font-heading text-3xl sm:text-4xl font-medium text-strong">{t("headerHi")}{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
-          {me.user?.email && <p className="text-sm text-muted-fg mt-1">{me.user.email}</p>}
+          <h1 className="font-heading text-2xl sm:text-3xl md:text-4xl font-medium text-strong break-words">{t("headerHi")}{me.user?.display_name ? `, ${me.user.display_name}` : ""}</h1>
+          {me.user?.email && <p className="text-sm text-muted-fg mt-1 break-all">{me.user.email}</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           {isAdmin && (
-            <Link to="/admin" className="btn-primary" data-testid="portal-admin-shortcut">
+            <Link to="/admin" className="btn-primary !px-4 !py-2 !text-xs" data-testid="portal-admin-shortcut">
               <ShieldCheck className="h-4 w-4" /> {t("manage")}
             </Link>
           )}
-          <button onClick={logout} className="btn-secondary" data-testid="portal-logout">
+          <button onClick={logout} className="btn-secondary !px-4 !py-2 !text-xs" data-testid="portal-logout">
             <LogOut className="h-4 w-4" /> {t("logout")}
           </button>
         </div>
@@ -270,10 +271,50 @@ export default function Portal() {
                 return new Intl.NumberFormat("nl-NL", { style: "currency", currency }).format(n);
               } catch { return `€ ${n.toFixed(2)}`; }
             };
-            const openPdf = (invoice_id) => window.open(`${API}/portal/invoices/${invoice_id}/pdf`, "_blank");
+            // PDF backend needs the portal-session cookie — fetch as blob then use it 3 ways:
+            //  · View → inline modal
+            //  · PDF  → open blob URL in new tab (uses temp URL, no re-auth needed)
+            //  · Print → open blob URL in new window and trigger print()
+            const fetchPdfBlob = async (invoice_id) => {
+              try {
+                const res = await axios.get(`${API}/portal/invoices/${invoice_id}/pdf`, {
+                  responseType: "blob",
+                  withCredentials: true,
+                });
+                return URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+              } catch (e) {
+                toast.error(lang === "en" ? "Could not load PDF" : "Kon PDF niet laden");
+                return null;
+              }
+            };
+            const openPdfNewTab = async (invoice_id) => {
+              const url = await fetchPdfBlob(invoice_id);
+              if (url) window.open(url, "_blank", "noopener,noreferrer");
+            };
             const printPdf = async (invoice_id) => {
-              const w = window.open(`${API}/portal/invoices/${invoice_id}/pdf`, "_blank");
-              if (w) w.addEventListener("load", () => w.print());
+              const url = await fetchPdfBlob(invoice_id);
+              if (!url) return;
+              // On mobile Safari, an iframe print() is more reliable than opening a new window.
+              const w = window.open(url, "_blank");
+              if (w) {
+                w.addEventListener("load", () => { try { w.focus(); w.print(); } catch { /* ignore */ } });
+              } else {
+                // Popup blocked — fallback: hidden iframe print
+                const iframe = document.createElement("iframe");
+                iframe.style.position = "fixed";
+                iframe.style.right = "0";
+                iframe.style.bottom = "0";
+                iframe.style.width = "0";
+                iframe.style.height = "0";
+                iframe.style.border = "0";
+                iframe.src = url;
+                iframe.onload = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch { /* ignore */ } };
+                document.body.appendChild(iframe);
+              }
+            };
+            const viewInline = async (invoice_id) => {
+              const url = await fetchPdfBlob(invoice_id);
+              if (url) setPdfPreview({ url, invoice_id });
             };
             return (
               <ul className="space-y-3" data-testid="portal-invoices-list">
@@ -296,10 +337,10 @@ export default function Portal() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        <button onClick={() => openPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-view-invoice-${inv.invoice_id}`}>
+                        <button onClick={() => viewInline(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-view-invoice-${inv.invoice_id}`}>
                           <Eye className="h-3 w-3" /> {t("view")}
                         </button>
-                        <button onClick={() => openPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-pdf-invoice-${inv.invoice_id}`}>
+                        <button onClick={() => openPdfNewTab(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-pdf-invoice-${inv.invoice_id}`}>
                           <Download className="h-3 w-3" /> {t("pdf")}
                         </button>
                         <button onClick={() => printPdf(inv.invoice_id)} className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500" data-testid={`portal-print-invoice-${inv.invoice_id}`}>
@@ -389,6 +430,30 @@ export default function Portal() {
         </div>
         <ReviewForm compact />
       </section>
+
+      {pdfPreview && (
+        <div
+          className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3"
+          onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }}
+          data-testid="portal-pdf-preview-modal"
+        >
+          <div
+            className="w-full max-w-4xl h-[92vh] surface rounded-2xl overflow-hidden flex flex-col border border-app"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="px-4 py-3 border-b border-app flex items-center justify-between shrink-0">
+              <span className="text-sm font-semibold text-strong">{t("invoices")} — {pdfPreview.invoice_id}</span>
+              <button
+                onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }}
+                className="text-muted-fg hover:text-strong text-2xl leading-none px-2"
+                data-testid="portal-pdf-preview-close"
+                aria-label="close"
+              >×</button>
+            </header>
+            <iframe title="PDF preview" src={pdfPreview.url} className="flex-1 w-full bg-slate-800" data-testid="portal-pdf-preview-frame" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

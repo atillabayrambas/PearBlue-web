@@ -1688,6 +1688,24 @@ async def public_changelog():
     """
     entries = [
         {
+            "version": "0.5.4-Beta",
+            "date": "2026-02-10",
+            "type": "fix",
+            "highlights": [
+                "Theme-aware styling voor ALLE selects, inputs en textareas — geen witte-op-witte vakjes meer in CMS (thema-adaptief bg + border + option kleuren)",
+                "CMS mobiel: nieuwe hamburger header met PearBlue-logo + versie-badge, zijmenu klapt uit/in",
+                "CMS zijmenu: PearBlue logo bovenaan + profielfoto naast naam ingelogde gebruiker + taal (NL/EN) en thema-toggle onderaan",
+                "Homepage klantverhalen: 2x weergave opgelost — enkele oneindige marquee (32s ipv 60s, ~2x sneller) met drag-to-scroll + hover-pauze",
+                "Homepage hero-titel: schaalt netjes op smalle telefoons (text-4xl base) — geen half-doorgesneden titels meer",
+                "Calculator mobiel: compact 3-kolom-grid altijd zichtbaar zodat de lijst met keuzes leesbaar blijft; totalen samengevoegd in kleinere blokken",
+                "Klantportaal facturen: View toont PDF-preview modal in-page · PDF opent in nieuw tabblad via blob-URL · Print triggert direct printerscherm (fallback via hidden iframe voor popup-blockers)",
+                "Klantportaal admin-shortcut + Uitloggen knop: geen overloop meer op smalle schermen (flex-wrap)",
+                "Cybersecurity CMS: sticky rechterkolom heeft nu themakleur (surface) ipv transparant — geen overlap met tabelcellen op tablet",
+                "Services page: 'vanaf €5 p/machine p/maand' vertaalt nu correct naar 'from €5 /machine /month' in Engels",
+                "Footer 'Klantportaal' vertaalt naar 'Client portal' in Engels",
+            ],
+        },
+        {
             "version": "0.5.3-Beta",
             "date": "2026-02-08",
             "type": "feature",

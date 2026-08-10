@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Send, CheckCircle2, ExternalLink } from "lucide-react";
@@ -147,12 +147,41 @@ export const ReviewStars = ({ rating, size = 4 }) => (
 
 export const FeaturedReviews = () => {
   const [reviews, setReviews] = useState([]);
+  const scrollerRef = useRef(null);
+  const trackRef = useRef(null);
+  const dragRef = useRef({ dragging: false, startX: 0, startScroll: 0, pointerId: null });
+  const [paused, setPaused] = useState(false);
   useEffect(() => {
     axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
   }, []);
   if (!reviews.length) return null;
-  // Duplicate the list so the CSS animation can seamlessly loop
-  const loop = [...reviews, ...reviews];
+  // Triple the list so drag scrolling can wrap around smoothly
+  const loop = [...reviews, ...reviews, ...reviews];
+
+  const onPointerDown = (e) => {
+    if (!scrollerRef.current) return;
+    dragRef.current = {
+      dragging: true,
+      startX: e.clientX,
+      startScroll: scrollerRef.current.scrollLeft,
+      pointerId: e.pointerId,
+    };
+    scrollerRef.current.setPointerCapture?.(e.pointerId);
+    setPaused(true);
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current.dragging || !scrollerRef.current) return;
+    e.preventDefault();
+    const dx = e.clientX - dragRef.current.startX;
+    scrollerRef.current.scrollLeft = dragRef.current.startScroll - dx;
+  };
+  const endDrag = () => {
+    if (!dragRef.current.dragging) return;
+    dragRef.current.dragging = false;
+    // Resume marquee after 1.5s of no drag
+    setTimeout(() => setPaused(false), 1500);
+  };
+
   return (
     <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20" data-testid="featured-reviews">
       <div className="max-w-2xl mb-10">
@@ -160,12 +189,21 @@ export const FeaturedReviews = () => {
         <h2 className="font-heading text-4xl sm:text-5xl font-medium tracking-tight text-strong">Wat onze klanten zeggen.</h2>
       </div>
       <div
-        className="relative overflow-hidden group"
-        data-testid="reviews-scroller"
+        ref={scrollerRef}
+        className="relative overflow-x-auto cursor-grab active:cursor-grabbing select-none [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
         style={{ maskImage: "linear-gradient(to right, transparent, #000 6%, #000 94%, transparent)", WebkitMaskImage: "linear-gradient(to right, transparent, #000 6%, #000 94%, transparent)" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        data-testid="reviews-scroller"
       >
         <div
-          className="flex gap-5 w-max animate-[pb-marquee_60s_linear_infinite] group-hover:[animation-play-state:paused]"
+          ref={trackRef}
+          className="flex gap-5 w-max"
+          style={{ animation: paused ? "none" : "pb-marquee-fast 32s linear infinite" }}
           data-testid="reviews-marquee"
         >
           {loop.map((r, i) => (
@@ -184,7 +222,10 @@ export const FeaturedReviews = () => {
           ))}
         </div>
       </div>
-      <style>{`@keyframes pb-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
+      <p className="mt-3 text-[11px] text-muted-fg text-center" data-testid="reviews-hint">
+        Sleep om te scrollen · hover of tik om te pauzeren
+      </p>
+      <style>{`@keyframes pb-marquee-fast { from { transform: translateX(0); } to { transform: translateX(-33.333%); } }`}</style>
     </section>
   );
 };
