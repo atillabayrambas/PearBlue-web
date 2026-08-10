@@ -1783,7 +1783,7 @@ const CybersecurityAdmin = () => {
                       <span className="text-xs text-red-500 font-semibold">Geblokkeerd</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 surface border-l border-app">
+                  <td className="px-3 py-2 text-right whitespace-nowrap sticky right-0 surface border-l-2 border-app shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)]">
                     {b.unblocked ? (
                       <button
                         onClick={() => toggle(b, false)}

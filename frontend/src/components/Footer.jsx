@@ -87,7 +87,7 @@ export const Footer = () => {
             <li><Link to="/over-ons" className="hover:text-pear-500" data-testid="footer-link-about">{t("nav.about")}</Link></li>
             <li><Link to="/diensten" className="hover:text-pear-500" data-testid="footer-link-services">{t("nav.services")}</Link></li>
             <li><Link to="/portfolio" className="hover:text-pear-500" data-testid="footer-link-portfolio">{t("nav.portfolio")}</Link></li>
-            <li><Link to="/portal" className="hover:text-pear-500" data-testid="footer-link-portal">{t("footer.portal") || (lang === "en" ? "Client portal" : "Klantportaal")}</Link></li>
+            <li><Link to="/portal" className="hover:text-pear-500" data-testid="footer-link-portal">{lang === "en" ? "Client portal" : "Klantportaal"}</Link></li>
             <li><Link to="/contact" className="hover:text-pear-500" data-testid="footer-link-contact">{t("nav.contact")}</Link></li>
             <li><Link to="/voorwaarden" className="hover:text-pear-500" data-testid="footer-link-terms">{lang === "en" ? "Terms" : "Voorwaarden"}</Link></li>
             <li><Link to="/privacybeleid" className="hover:text-pear-500" data-testid="footer-link-privacy">{lang === "en" ? "Privacy" : "Privacybeleid"}</Link></li>
