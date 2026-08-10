@@ -11,6 +11,7 @@ import { AnalyticsAdmin } from "./AdminAnalytics";
 import { FinancialsAdmin } from "./AdminFinancials";
 import AdminMessageThread from "./AdminMessageThread";
 import { Avatar } from "../components/Avatar";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const PEARBLUE_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_sheet-converter-68/artifacts/djwgz9jk_PearBlue%20logo-10.webp";
@@ -29,6 +30,7 @@ const AdminSidebar = () => {
   const [counters, setCounters] = useState({});
   const [profile, setProfile] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  useBodyScrollLock(mobileOpen);
   useEffect(() => {
     const load = () => axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => setCounters(r.data || {})).catch(() => {});
     load();
@@ -86,8 +88,9 @@ const AdminSidebar = () => {
       )}
 
       <aside
-        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "fixed inset-y-0 left-0 z-40 w-72 rounded-none overflow-y-auto lg:relative lg:z-auto lg:inset-auto lg:w-64 lg:overflow-visible" : "hidden lg:block"}`}
+        className={`lg:w-64 shrink-0 surface border border-app rounded-2xl p-5 self-start lg:sticky lg:top-6 ${mobileOpen ? "fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] rounded-none overflow-y-auto overscroll-contain lg:relative lg:z-auto lg:inset-auto lg:w-64 lg:overflow-visible" : "hidden lg:block"}`}
         data-testid="cms-sidebar"
+        style={mobileOpen ? { WebkitOverflowScrolling: "touch", height: "100dvh", maxHeight: "100dvh", paddingTop: "max(env(safe-area-inset-top), 20px)", paddingBottom: "max(env(safe-area-inset-bottom), 20px)", boxSizing: "border-box" } : undefined}
       >
         {/* Logo + close for mobile — larger, centered */}
         <div className="flex items-center justify-between mb-5 lg:mb-6">
@@ -1411,9 +1414,9 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
   const set = (k) => (e) => setDetails((d) => ({ ...(d || {}), [k]: e.target.value }));
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose} data-testid="user-details-modal">
-      <div className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto border border-app bg-white dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
-        <header className="px-6 py-4 border-b border-app flex items-center justify-between">
+    <div className="pb-modal" style={{ zIndex: 80 }} onClick={onClose} data-testid="user-details-modal">
+      <div className="pb-modal-card w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <header className="px-6 py-4 border-b border-app flex items-center justify-between shrink-0 surface">
           <div>
             <div className="font-heading text-lg font-semibold text-strong">Gebruiker bewerken</div>
             <p className="text-xs text-muted-fg">{email}</p>
@@ -1421,7 +1424,7 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
           <button onClick={onClose} className="text-muted-fg hover:text-strong text-2xl leading-none" data-testid="user-details-close">×</button>
         </header>
         {!details ? <p className="p-6 text-muted-fg">Laden…</p> : (
-          <form onSubmit={save} className="p-6 space-y-5">
+          <form onSubmit={save} className="pb-modal-body p-6 space-y-5 surface">
             {/* Avatar */}
             <div className="flex items-center gap-4">
               <Avatar name={`${details.first_name || ""} ${details.last_name || ""}`.trim() || email} email={email} profilePicture={details.profile_picture} size={64} />
@@ -1972,8 +1975,8 @@ const FeedbackAdmin = () => {
       )}
 
       {openItem && (
-        <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setOpenItem(null)} data-testid="fb-notes-modal">
-          <div className="w-full max-w-lg surface border border-app rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="pb-modal" onClick={() => setOpenItem(null)} data-testid="fb-notes-modal">
+          <div className="pb-modal-card w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
                 <div className="font-heading font-semibold text-strong">Notities</div>

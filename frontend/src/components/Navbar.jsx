@@ -36,7 +36,7 @@ const ThemeSwitcher = () => {
         <CurrentIcon className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-44 surface border border-app rounded-2xl shadow-[0_20px_50px_rgba(10,25,47,0.12)] p-1.5 z-[60]" data-testid="theme-menu">
+        <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-44 surface border border-app rounded-2xl shadow-[0_20px_50px_rgba(10,25,47,0.12)] p-1.5 z-[60]" data-testid="theme-menu">
           {options.map((o) => (
             <button
               key={o.key}

@@ -191,3 +191,70 @@ body {
     opacity: 0.7;
   }
 }
+
+/* ---- iOS/Android safe area padding on the sticky top navbar ---- */
+.glass-nav { padding-top: env(safe-area-inset-top, 0); }
+
+/* ---- Global modal utility (mobile-first) ----
+   Use .pb-modal on the fixed overlay and .pb-modal-card on the inner card.
+   The card is centered, capped at 100dvh minus safe-area padding, and
+   has a scrollable body pattern via internal flex+overflow-y-auto. */
+.pb-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 0;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  overscroll-behavior: contain;
+}
+@media (min-width: 640px) {
+  .pb-modal { align-items: center; padding: 1rem; }
+}
+.pb-modal-card {
+  width: 100%;
+  max-width: 48rem;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0));
+  display: flex;
+  flex-direction: column;
+  border-radius: 1.5rem 1.5rem 0 0;
+  overflow: hidden;
+  background: hsl(var(--surface));
+  color: hsl(var(--text-strong));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+@media (min-width: 640px) {
+  .pb-modal-card { border-radius: 1.5rem; }
+}
+.pb-modal-body { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+/* Solid surface variable — for legacy inline `var(--pb-bg-solid, white)` refs to work in both themes */
+:root { --pb-bg-solid: hsl(var(--surface)); }
+.dark { --pb-bg-solid: hsl(var(--surface)); }
+
+/* Lock body scroll when a modal / sidebar overlay is open */
+body.pb-lock-scroll { overflow: hidden; touch-action: none; }
+
+/* Hide the floating chatbot launcher on mobile when a modal / overlay is open
+   so it doesn't cover the primary CTA. Kept visible on desktop. */
+@media (max-width: 639px) {
+  body.pb-lock-scroll [data-testid="chatbot-launcher"],
+  body.pb-lock-scroll [data-testid="chatbot-panel"] {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(120%) !important;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+}
+/* On desktop keep the chatbot but move it slightly left when a modal is open
+   so it never covers the Request-quote CTA in the calculator */
+@media (min-width: 640px) {
+  body.pb-lock-scroll [data-testid="chatbot-launcher"] { transform: translateX(-4rem) !important; }
+}

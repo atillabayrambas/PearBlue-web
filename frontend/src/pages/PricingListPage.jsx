@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Calculator, Globe, Server, ShieldCheck, ArrowRight, Info, Save, Share2, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { CATEGORIES, PRICING, itemsByCat, priceLabel, smartAverage, SERVICES, SERVICE_OF_CAT } from "../data/pricing";
 import { FeedbackWidget } from "../components/FeedbackWidget";
 
@@ -227,20 +228,42 @@ function CalculatorModal({ onClose }) {
 
   const tabCategories = CATEGORIES.filter((c) => SERVICE_OF_CAT[c.key] === tab);
 
+  // Lock body scroll while modal is open (also hides the floating chatbot on mobile)
+  useBodyScrollLock(true);
+
+  // Swipe-down-to-close (mobile). Track touch start Y on the header handle
+  // and close if the user drags at least 80px downward within 400ms.
+  const dragRef = useRef({ y: 0, t: 0 });
+  const onDragStart = (e) => {
+    const y = e.touches?.[0]?.clientY ?? 0;
+    dragRef.current = { y, t: Date.now() };
+  };
+  const onDragEnd = (e) => {
+    const y = e.changedTouches?.[0]?.clientY ?? 0;
+    const dy = y - dragRef.current.y;
+    const dt = Date.now() - dragRef.current.t;
+    if (dy > 80 && dt < 500) onClose();
+  };
+
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden"
+      className="pb-modal"
       onClick={onClose}
       data-testid="pricing-calc-modal"
-      style={{ height: "100dvh" }}
     >
       <div
-        className="w-full max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-app bg-white dark:bg-slate-900"
+        className="pb-modal-card w-full max-w-3xl"
         onClick={(e) => e.stopPropagation()}
-        style={{ backgroundColor: "var(--pb-bg-solid, white)", maxHeight: "100dvh", height: "100dvh" }}
       >
-        <header className="px-4 sm:px-6 py-3 sm:py-4 border-b border-app flex items-start justify-between gap-3 bg-white dark:bg-slate-900 shrink-0" style={{ paddingTop: "max(env(safe-area-inset-top), 12px)" }}>
-          <div className="min-w-0 flex-1">
+        <header
+          className="px-4 sm:px-6 py-3 sm:py-4 border-b border-app flex items-start justify-between gap-3 surface shrink-0 relative"
+          onTouchStart={onDragStart}
+          onTouchEnd={onDragEnd}
+          data-testid="pricing-calc-header"
+        >
+          {/* Swipe-down handle (mobile only) */}
+          <div className="sm:hidden absolute top-1.5 left-1/2 -translate-x-1/2 w-10 h-1.5 rounded-full bg-slate-300/70 dark:bg-slate-600/70" aria-hidden="true" />
+          <div className="min-w-0 flex-1 pt-2 sm:pt-0">
             <div className="font-heading text-lg sm:text-xl font-semibold text-strong flex items-center gap-2">
               <Calculator className="h-5 w-5 text-pear-500 shrink-0" />
               <span className="truncate">{lang === "en" ? "Cost calculator" : "Kostencalculator"}</span>
@@ -262,7 +285,7 @@ function CalculatorModal({ onClose }) {
         </header>
 
         {/* Service tabs */}
-        <div className="border-b border-app flex bg-white dark:bg-slate-900" data-testid="pricing-calc-service-tabs">
+        <div className="border-b border-app flex surface" data-testid="pricing-calc-service-tabs">
           {SERVICES.map((s) => {
             const Icon = SERVICE_ICON[s.key];
             return (
@@ -280,7 +303,7 @@ function CalculatorModal({ onClose }) {
           })}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 bg-white dark:bg-slate-900">
+        <div className="pb-modal-body px-6 py-4 space-y-6 surface">
           {tabCategories.length === 0 || tabCategories.every((c) => itemsByCat(c.key).every((i) => i.tbd)) ? (
             <div className="text-sm text-muted-fg text-center py-8">
               {lang === "en" ? "Prices for this service will be published soon. Contact us for a custom quote." : "Prijzen voor deze dienst worden binnenkort gepubliceerd. Neem contact op voor maatwerk."}
@@ -499,13 +522,12 @@ function QuoteFromCalculator({ onClose, totals, lang, customText }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose} data-testid="quote-from-calc-modal">
+    <div className="pb-modal" style={{ zIndex: 80 }} onClick={onClose} data-testid="quote-from-calc-modal">
       <div
-        className="w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto border border-app bg-white dark:bg-slate-900"
+        className="pb-modal-card w-full max-w-xl"
         onClick={(e) => e.stopPropagation()}
-        style={{ backgroundColor: "var(--pb-bg-solid, white)" }}
       >
-        <header className="px-6 py-4 border-b border-app flex items-center justify-between">
+        <header className="px-6 py-4 border-b border-app flex items-center justify-between shrink-0 surface">
           <div>
             <div className="font-heading text-lg font-semibold text-strong">
               {lang === "en" ? "Request quote & send calculation" : "Offerte + calculatie versturen"}
@@ -518,20 +540,20 @@ function QuoteFromCalculator({ onClose, totals, lang, customText }) {
           </div>
           <button onClick={onClose} className="text-muted-fg hover:text-strong" data-testid="quote-from-calc-close"><X className="h-6 w-6" /></button>
         </header>
-        <form onSubmit={submit} className="p-6 space-y-4">
+        <form onSubmit={submit} className="pb-modal-body p-6 space-y-4 surface">
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="block">
               <span className="text-xs uppercase tracking-widest text-muted-fg">{lang === "en" ? "Name" : "Naam"} *</span>
-              <input required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="quote-name" />
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="quote-name" />
             </label>
             <label className="block">
               <span className="text-xs uppercase tracking-widest text-muted-fg">E-mail *</span>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="quote-email" />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="quote-email" />
             </label>
           </div>
           <label className="block">
             <span className="text-xs uppercase tracking-widest text-muted-fg">{lang === "en" ? "Company" : "Bedrijf"}</span>
-            <input value={company} onChange={(e) => setCompany(e.target.value)} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="quote-company" />
+            <input value={company} onChange={(e) => setCompany(e.target.value)} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="quote-company" />
           </label>
           <label className="block">
             <span className="block text-xs uppercase tracking-widest text-muted-fg font-bold">
@@ -550,7 +572,7 @@ function QuoteFromCalculator({ onClose, totals, lang, customText }) {
               placeholder={lang === "en"
                 ? "e.g. Fresh, modern and playful — with a nod to nature. Similar to X or Y. Target audience: …"
                 : "bijv. Fris, modern en speels — met een knipoog naar de natuur. Vergelijkbaar met X of Y. Doelgroep: …"}
-              className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong resize-y"
+              className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm resize-y"
               data-testid="quote-story"
             />
           </label>

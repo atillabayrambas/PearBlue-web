@@ -21,7 +21,18 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 20 (this session, v0.5.6-Beta) — Ticket Threads CMS
+### Feb 2026 — Iteration 21 (this session, v0.5.7-Beta) — Mobile blockers batch A
+- **Global `.pb-modal` utility** (in `index.css`) — mobile-first bottom-sheet on <640px, centered on ≥640px, capped at `100dvh` minus safe-area, internal flex+`.pb-modal-body` scroll pattern. Solid theme-aware background via `--pb-bg-solid` variable. Removes legacy `bg-white dark:bg-slate-900` + broken `var(--pb-bg-solid, white)` inline overrides across CalculatorModal, QuoteFromCalculator, User details editor and Feedback notes modal.
+- **Body scroll lock** — new `hooks/useBodyScrollLock.js` adds `body.pb-lock-scroll`. Prevents underlying page from scrolling when Calculator modal or CMS mobile sidebar is open.
+- **Chatbot creative repositioning** — via CSS, when any modal/drawer is open the floating chatbot launcher fades out and slides down on mobile (opacity 0 + translateY 120%) so it never covers the "Request quote" CTA. On desktop it slides 4rem left for the same reason.
+- **Safe-area padding** — sticky navbar (`.glass-nav`) now respects `env(safe-area-inset-top)` so it paints under the iOS notch/status bar, removing the "space above header when scrolled to top".
+- **Calculator swipe-to-close** — mobile-only drag handle bar at the top of the modal header. Touch-drag ≥ 80px downward within 500ms closes the modal. Close button (X) stays sticky in the header.
+- **Quote-from-Calculator modal** — now uses `.pb-modal` + inherits surface theme; the white-in-dark bug is gone.
+- **CMS mobile sidebar** — sets explicit `height: 100dvh` + `box-sizing: border-box` so `overflow-y-auto` actually kicks in (was `clientHeight === scrollHeight` before, blocking scroll). Now full-screen, safe-area padded and can scroll independently of the underlying page. Backdrop tap still closes. Body-scroll locked via `useBodyScrollLock`.
+- **Frontend hamburger theme dropdown** — repositioned to `left-0 sm:right-0` so it no longer overflows the mobile menu on the left side.
+- **Reviews marquee true infinite loop** — rebuilt to a 2-copy CSS marquee translating `translateX(0)` → `translateX(-50%)` for a seamless loop; also 22s → 18s for faster feel. Auto-pads to ≥6 cards if fewer real reviews exist so the strip never runs empty on wide viewports.
+
+### Feb 2026 — Iteration 20 (v0.5.6-Beta) — Ticket Threads CMS
 - **Nieuwe CMS-detailpagina** `/admin/messages/:msgId` — volledige conversational thread-weergave per contactbericht, analoog aan `/portal/tickets/:id`.
 - **AdminMessageThread.jsx** — timeline die origineel bericht + admin-replies + interne notities chronologisch toont; klant-berichten in surface-2, admin-antwoorden in pear-blue tint, notities in amber-card. Statuschips, prioriteitschips, "Vergrendeld"-badge bij afgeronde items voor niet-admins.
 - **Antwoord-panel** met onderwerp-veld, textarea, bijlage-picker (multi-file, max 20 MB), "E-mail naar klant sturen"-toggle en `Verstuur antwoord`-knop. Automatische status-flip naar `in_progress` (behoudt `done` als reeds afgerond via `$cond`-pipeline).

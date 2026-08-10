@@ -155,8 +155,11 @@ export const FeaturedReviews = () => {
     axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
   }, []);
   if (!reviews.length) return null;
-  // Quintuple the list so drag can wrap without ever exposing empty space
-  const loop = [...reviews, ...reviews, ...reviews, ...reviews, ...reviews];
+  // Duplicate the list so the CSS marquee can loop seamlessly.
+  // Ensure we always have enough cards to fill any viewport by repeating
+  // until we have at least 10 items, then doubling for the CSS -50% loop.
+  const base = reviews.length < 6 ? Array.from({ length: Math.ceil(6 / reviews.length) }, () => reviews).flat() : reviews;
+  const loop = [...base, ...base];
 
   const onPointerDown = (e) => {
     if (!scrollerRef.current) return;
@@ -201,7 +204,7 @@ export const FeaturedReviews = () => {
         <div
           ref={trackRef}
           className="flex gap-5 w-max"
-          style={{ animation: paused ? "none" : "pb-marquee-fast 22s linear infinite" }}
+          style={{ animation: paused ? "none" : "pb-marquee-fast 18s linear infinite" }}
           data-testid="reviews-marquee"
         >
           {loop.map((r, i) => (
@@ -223,8 +226,8 @@ export const FeaturedReviews = () => {
       <p className="mt-3 text-[11px] text-muted-fg text-center" data-testid="reviews-hint">
         Sleep om te scrollen · hover of tik om te pauzeren
       </p>
-      {/* Translate by 20% (100/5) each cycle so a full loop returns to start with all 5 copies covering the viewport */}
-      <style>{`@keyframes pb-marquee-fast { from { transform: translateX(0); } to { transform: translateX(-20%); } }`}</style>
+      {/* Translate by 50% each cycle so a full loop returns to start seamlessly with 2 copies */}
+      <style>{`@keyframes pb-marquee-fast { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
     </section>
   );
 };
