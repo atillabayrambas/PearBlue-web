@@ -21,7 +21,14 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 25 (this session, v0.6.1-Beta) — UsersAdmin polish + bidirectional postcode
+### Feb 2026 — Iteration 26 (this session, v0.6.3-Beta) — Avatar library uitgebreid
+- **Rode-mond avatars verwijderd** — de oude `adventurer` / `big-smile` / `micah` subculture-avatars produceerden soms een rode frownmond (die op een streep onder de kin leek). Alles omgezet naar `avataaars` met vaste `mouth=smile,default,twinkle` filter zodat er nooit meer een boze mond verschijnt.
+- **Meer diverse mannelijk & vrouwelijk** — MASC_SEEDS uitgebreid van 10 naar 15 (Kai, Liam, Mika, Noah, Oscar toegevoegd) en FEM_SEEDS van 10 naar 15 (Lisa, Mira, Nora, Olivia, Puck toegevoegd). Meer huidskleur- en stijl-variatie in dezelfde style-family.
+- **Tab hernoemd** — "Subculturen" → **"Overige"**. Same 10 unique seeds voor diverse looks.
+- **Totaal 50 avatars** in "Alles" tab (15 + 15 + 10 + 10).
+- **Testing**: full smoke test bevestigt schone rendering — geen frown-lijnen meer, alle 4 tabs (Alles / Mannelijk / Vrouwelijk / Overige / Robots) tonen enkel happy-face resultaten. Ook custom kleur-picker en upload/webcam werken zoals voorheen.
+
+### Feb 2026 — Iteration 25 (v0.6.1-Beta / .6.2-Beta) — UsersAdmin polish + bidirectional postcode
 - **Bidirectionele postcode-autofill** — Adres-veld triggert nu ook autofill: als de gebruiker een volledig adres met NL-postcode invult, wordt de postcode automatisch geëxtraheerd (regex `\d{4}\s?[A-Za-z]{2}`), evenals het huisnummer. Werkt op: portaal-aanmeldformulier, `/portal/profile` én CMS gebruikersrollen edit-modal.
 - **Plaats / Regio / Land nu read-only** — Deze velden zijn alleen nog te wijzigen door de postcode API. Voorkomt inconsistente data en handmatige typos. Op alle 3 formulieren.
 - **Nominatim NL-restrictie** — Fallback geocoder gebruikt `countrycodes=nl` zodat postcode-resultaten niet meer per ongeluk naar gelijknamige straten in andere landen kunnen mappen.

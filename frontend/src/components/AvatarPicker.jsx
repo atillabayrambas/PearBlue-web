@@ -14,23 +14,34 @@ import { toast } from "sonner";
 
 const DICEBEAR = "https://api.dicebear.com/9.x";
 
-const MASC_SEEDS = ["arjan", "bram", "cees", "daan", "erik", "finn", "gijs", "hugo", "ivo", "joris"];
-const FEM_SEEDS = ["anna", "bea", "carla", "demi", "eva", "fien", "gabi", "hana", "iris", "julia"];
+// 15 masculine seeds — more variety across ethnicities & styles.
+const MASC_SEEDS = [
+  "arjan", "bram", "cees", "daan", "erik",
+  "finn", "gijs", "hugo", "ivo", "joris",
+  "kai", "liam", "mika", "noah", "oscar",
+];
+// 15 feminine seeds — more variety.
+const FEM_SEEDS = [
+  "anna", "bea", "carla", "demi", "eva",
+  "fien", "gabi", "hana", "iris", "julia",
+  "lisa", "mira", "nora", "olivia", "puck",
+];
+// 10 robots — playful sci-fi look.
 const ROBOT_SEEDS = ["pear", "leaf", "sun", "cloud", "wave", "rock", "star", "moon", "spark", "core"];
-// Subcultures use different DiceBear styles per seed to keep visual diversity while
-// avoiding the risky avataaars enum values that can 400 the API.
-// Docs: https://www.dicebear.com/styles/
-const SUBCULTURES = [
-  { seed: "gothic-01", label: "Gothic", style: "adventurer" },
-  { seed: "emo-04", label: "Emo", style: "adventurer" },
-  { seed: "artist-11", label: "Artist", style: "micah" },
-  { seed: "rocker-17", label: "Rocker", style: "adventurer" },
-  { seed: "punk-22", label: "Punk", style: "adventurer" },
-  { seed: "skater-28", label: "Skater", style: "micah" },
-  { seed: "preppy-32", label: "Preppy", style: "micah" },
-  { seed: "vintage-40", label: "Vintage", style: "micah" },
-  { seed: "sporty-45", label: "Sporty", style: "adventurer" },
-  { seed: "anime-51", label: "Anime", style: "big-smile" },
+// 10 "Overige" — distinctive avataaars variants using the same happy-mouth
+// filter as MASC/FEM so we NEVER get the red-frown line the older subculture
+// styles produced. Diversity comes from unique seeds.
+const OVERIGE_SEEDS = [
+  { seed: "artist-11", label: "Artist" },
+  { seed: "curly-14", label: "Curly" },
+  { seed: "casual-22", label: "Casual" },
+  { seed: "preppy-32", label: "Preppy" },
+  { seed: "vintage-40", label: "Vintage" },
+  { seed: "sporty-45", label: "Sporty" },
+  { seed: "cool-51", label: "Cool" },
+  { seed: "trendy-58", label: "Trendy" },
+  { seed: "chill-63", label: "Chill" },
+  { seed: "creative-72", label: "Creative" },
 ];
 
 export const AVATAR_PALETTE = [
@@ -57,7 +68,7 @@ const buildUrl = (style, seed, bg, extras = "") => {
 export const buildAvatarLibrary = (bg) => ([
   ...MASC_SEEDS.map((s, i) => ({ id: `masc-${i}`, url: buildUrl("avataaars", `${s}-m`, bg), category: "masculine", seed: s })),
   ...FEM_SEEDS.map((s, i) => ({ id: `fem-${i}`, url: buildUrl("avataaars", `${s}-f`, bg), category: "feminine", seed: s })),
-  ...SUBCULTURES.map((sc, i) => ({ id: `sub-${i}`, url: buildUrl(sc.style, sc.seed, bg), category: "subculture", seed: sc.label })),
+  ...OVERIGE_SEEDS.map((sc, i) => ({ id: `over-${i}`, url: buildUrl("avataaars", sc.seed, bg), category: "overige", seed: sc.label })),
   ...ROBOT_SEEDS.map((s, i) => ({ id: `bot-${i}`, url: buildUrl("bottts-neutral", s, bg), category: "robots", seed: s })),
 ]);
 
@@ -156,7 +167,7 @@ export const AvatarPicker = ({ currentUrl, onSelect, onCancel }) => {
           { key: "all", label: "Alles" },
           { key: "masculine", label: "Mannelijk" },
           { key: "feminine", label: "Vrouwelijk" },
-          { key: "subculture", label: "Subculturen" },
+          { key: "overige", label: "Overige" },
           { key: "robots", label: "Robots" },
         ].map((t) => (
           <button

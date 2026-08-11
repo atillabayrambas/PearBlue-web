@@ -1324,13 +1324,14 @@ const UsersAdmin = () => {
                 </div>
               )}
             </div>
-          <table className="w-full text-sm" data-testid="cms-users-table">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[860px]" data-testid="cms-users-table">
             <thead className="text-xs uppercase tracking-widest text-muted-fg">
               <tr>
                 {visibleCols.map((c) => (
                   <th key={c.key} className="text-left px-4 py-3">{c.label}</th>
                 ))}
-                <th className="text-right px-4 py-3"></th>
+                <th className="text-right px-4 py-3 w-[140px]">Acties</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-app">
@@ -1363,7 +1364,7 @@ const UsersAdmin = () => {
                           disabled={u.email === me?.email}
                           onChange={(e) => updateRole(u.email, e.target.value)}
                           data-testid={`user-role-${u.email}`}
-                          className="rounded-lg surface-2 border border-transparent focus:border-pear-500 px-2 py-1 text-xs outline-none text-strong"
+                          className="rounded-lg surface-2 border border-transparent focus:border-pear-500 px-2 py-1 text-xs outline-none text-strong w-full max-w-[180px]"
                         >
                           {Object.entries(ROLE_LABELS).filter(([k]) => k !== "admin").map(([k, v]) => (
                             <option key={k} value={k} disabled={k === "super_admin" && !isSuperAdmin}>{v}</option>
@@ -1390,29 +1391,39 @@ const UsersAdmin = () => {
                     );
                     return null;
                   })}
-                  <td className="px-4 py-3 text-right">
-                    <div className="inline-flex items-center gap-1 flex-wrap justify-end">
+                  <td className="px-4 py-3 text-right w-[140px]">
+                    <div className="inline-flex items-center gap-1 justify-end">
                       <button
                         onClick={() => setQuickViewUser(u.email)}
                         data-testid={`user-view-${u.email}`}
                         aria-label="Snelle weergave"
                         title="Snelle weergave"
-                        className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-pear-500 text-pear-500 hover:bg-pear-50"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-full border border-pear-500 text-pear-500 hover:bg-pear-500/10 transition-colors"
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setEditingUser(u.email)}
                         data-testid={`user-edit-${u.email}`}
-                        className="inline-flex items-center gap-1 text-xs text-strong hover:bg-pear-50 px-2.5 py-1 rounded-full border border-app"
+                        aria-label="Bewerken"
+                        title="Bewerken"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-full border border-app text-strong hover:border-pear-500 hover:text-pear-500 transition-colors"
                       >
-                        Bewerken
+                        <SettingsIcon className="h-3.5 w-3.5" />
                       </button>
-                      {u.email !== me?.email && u.auth_source !== "zoho-only" && (
-                        <button onClick={() => remove(u.email)} data-testid={`user-delete-${u.email}`}
-                          className="inline-flex items-center gap-1 text-xs text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-full border border-red-200">
-                          <Trash2 className="h-3 w-3" />
+                      {u.email !== me?.email && u.auth_source !== "zoho-only" ? (
+                        <button
+                          onClick={() => remove(u.email)}
+                          data-testid={`user-delete-${u.email}`}
+                          aria-label="Verwijderen"
+                          title="Verwijderen"
+                          className="inline-flex items-center justify-center h-8 w-8 rounded-full border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
+                      ) : (
+                        // Placeholder to keep alignment consistent for admins/zoho users
+                        <span className="inline-block h-8 w-8" aria-hidden="true" />
                       )}
                     </div>
                   </td>
@@ -1421,6 +1432,7 @@ const UsersAdmin = () => {
               })}
             </tbody>
           </table>
+          </div>
           {/* Pagination footer */}
           {users.length > pageSize && (
             <div className="px-4 py-2 border-t border-app flex flex-wrap items-center justify-between gap-2 text-xs" data-testid="users-pagination">
