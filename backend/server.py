@@ -94,10 +94,18 @@ security = HTTPBearer(auto_error=False)
 
 
 # ---------- Models ----------
+def _new_ticket_ref() -> str:
+    """Human-readable ticket reference used in outgoing emails.
+    Format: `TKT-XXXXXX` (6 uppercase hex chars). Uniqueness comes from the
+    underlying uuid `id`; collisions on the short ref are extremely unlikely."""
+    return f"TKT-{uuid.uuid4().hex[:6].upper()}"
+
+
 class ContactMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    ticket_ref: Optional[str] = None  # e.g. "TKT-A1B2C3" — human-readable ref shown in emails
     name: str
     email: EmailStr
     phone: Optional[str] = None
@@ -514,6 +522,7 @@ async def create_contact(payload: ContactCreate, request: Request):
         await _record_block(request, "spam", "/api/contact", {"spam_reason": reason})
         doc = {
             "id": str(uuid.uuid4()),
+            "ticket_ref": _new_ticket_ref(),
             "name": payload.name, "email": payload.email, "phone": payload.phone,
             "company": payload.company, "subject": payload.subject, "message": payload.message,
             "language": payload.language, "email_sent": False,
@@ -524,7 +533,7 @@ async def create_contact(payload: ContactCreate, request: Request):
         await db.contact_messages.insert_one(doc)
         raise HTTPException(status_code=400, detail={"message": "Bericht is als spam gedetecteerd.", "reason": reason})
     email_sent = await _send_contact_email(payload)
-    msg = ContactMessage(**payload.model_dump(), email_sent=email_sent)
+    msg = ContactMessage(**payload.model_dump(), email_sent=email_sent, ticket_ref=_new_ticket_ref())
     doc = msg.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     doc['status'] = 'new'  # new | in_progress | on_hold | done | archived
@@ -1665,7 +1674,15 @@ async def reply_contact_message(msg_id: str, payload: ReplyPayload, current=Depe
     if not doc:
         raise HTTPException(404, "Message not found")
     now_iso = datetime.now(timezone.utc).isoformat()
-    subject = (payload.subject or f"Re: {doc.get('subject') or 'PearBlue'}").strip()[:200]
+    # Ensure the message has a ticket_ref (auto-heal legacy records)
+    tkt_ref = doc.get("ticket_ref") or _new_ticket_ref()
+    if not doc.get("ticket_ref"):
+        await db.contact_messages.update_one({"id": msg_id}, {"$set": {"ticket_ref": tkt_ref}})
+        doc["ticket_ref"] = tkt_ref
+    orig_subject = (doc.get("subject") or "PearBlue").strip()
+    # Prefix subject with #TKT-xxx so incoming email replies stay threaded
+    default_subject = f"[#{tkt_ref}] Re: {orig_subject}" if not orig_subject.startswith("[#TKT-") else orig_subject
+    subject = (payload.subject or default_subject).strip()[:200]
     reply = {
         "id": str(uuid.uuid4()),
         "direction": "out",  # admin -> client
@@ -1684,7 +1701,7 @@ async def reply_contact_message(msg_id: str, payload: ReplyPayload, current=Depe
             "<div style='background:#fff;padding:24px;'>"
             f"<div style='white-space:pre-wrap;line-height:1.55;'>{_html.escape(payload.body).replace(chr(10), '<br/>')}</div>"
             "<hr style='margin:24px 0;border:none;border-top:1px solid #eee;'/>"
-            f"<p style='font-size:12px;color:#666;'>Beantwoord dit e-mailbericht om verder te reageren.<br/>Referentie: #{doc.get('id')}</p>"
+            f"<p style='font-size:12px;color:#666;'>Beantwoord dit e-mailbericht om verder te reageren.<br/>Referentie: #{tkt_ref}</p>"
             "</div></div>"
         )
         ok = await _send_email(doc["email"], subject, html_body, reply_to=SENDER_EMAIL)

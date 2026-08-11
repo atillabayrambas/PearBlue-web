@@ -21,7 +21,14 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 26 (this session, v0.6.3-Beta) — Avatar library uitgebreid
+### Feb 2026 — Iteration 27 (this session, v0.6.4-Beta) — Western avatars + Ticket references
+- **4 westerse mannelijke + 4 westerse vrouwelijke avatars** — nieuwe seeds bovenaan de MASC en FEM lijst (`WESTERN_M`/`WESTERN_F`). Elk forceert `skinColor` én `hairColor` als HEX-waarden (`FFDBB4`/`EDB98A` voor lichte huid, verschillende bruine/blonde/rode haartinten) zodat DiceBear nooit random een donkerder tint kiest. Ontdekt onderweg: DiceBear v9 accepteert alleen HEX-codes, geen preset-namen zoals "light".
+- **Totaal 58 avatars** in "Alles": 19 mannelijk (4 westers + 15 gemixt) · 19 vrouwelijk (4 westers + 15 gemixt) · 10 overige · 10 robots.
+- **Ticket referenties `#TKT-XXXXXX`** — elke nieuwe contact-message krijgt automatisch een korte hex-referentie (6 hex chars). Backend `_new_ticket_ref()` helper. In de reply-e-mail komt het subject nu als `[#TKT-XXXXXX] Re: ...` én in de footer: `Referentie: #TKT-XXXXXX`. Zo blijven inkomende e-mail replies threaded aan hetzelfde gesprek. Legacy berichten zonder ref krijgen bij eerste reply automatisch een ref (auto-heal).
+- **Frontend** — CMS berichtenlijst en `AdminMessageThread` header tonen nu `#TKT-XXXXXX` (fallback op id-prefix).
+- **Testing**: End-to-end getest via curl — nieuw bericht kreeg `TKT-6FF75E`, reply-subject werd `[#TKT-6FF75E] Re: Test TKT`. Avatars visueel bevestigd in 2 tabs; alle 4 westerse mannen en 4 westerse vrouwen renderen correct met lichte huid.
+
+### Feb 2026 — Iteration 26 (v0.6.3-Beta) — Avatar library uitgebreid
 - **Rode-mond avatars verwijderd** — de oude `adventurer` / `big-smile` / `micah` subculture-avatars produceerden soms een rode frownmond (die op een streep onder de kin leek). Alles omgezet naar `avataaars` met vaste `mouth=smile,default,twinkle` filter zodat er nooit meer een boze mond verschijnt.
 - **Meer diverse mannelijk & vrouwelijk** — MASC_SEEDS uitgebreid van 10 naar 15 (Kai, Liam, Mika, Noah, Oscar toegevoegd) en FEM_SEEDS van 10 naar 15 (Lisa, Mira, Nora, Olivia, Puck toegevoegd). Meer huidskleur- en stijl-variatie in dezelfde style-family.
 - **Tab hernoemd** — "Subculturen" → **"Overige"**. Same 10 unique seeds voor diverse looks.

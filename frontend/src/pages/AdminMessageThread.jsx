@@ -185,7 +185,9 @@ export default function AdminMessageThread() {
           <div className="min-w-0 flex items-start gap-3">
             <Avatar name={msg.name} email={msg.email} size={44} />
             <div className="min-w-0">
-              <p className="overline mb-1">#{(msg.id || "").slice(0, 8)}</p>
+              <p className="overline mb-1" data-testid="msg-thread-ref">
+                {msg.ticket_ref ? `#${msg.ticket_ref}` : `#${(msg.id || "").slice(0, 8)}`}
+              </p>
               <h1 className="font-heading text-2xl sm:text-3xl font-medium text-strong break-words" data-testid="msg-thread-subject">
                 {msg.subject || "(geen onderwerp)"}
               </h1>

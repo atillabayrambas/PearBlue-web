@@ -714,7 +714,10 @@ const MessagesAdmin = () => {
                       {m.name} <span className="text-muted-fg font-normal text-xs">— {m.email}</span>
                       {m.spam && <span className="ml-2 text-[10px] uppercase text-red-500 bg-red-100 rounded-full px-2 py-0.5">Spam</span>}
                     </p>
-                    <p className="text-xs text-muted-fg truncate">{m.subject || "(geen onderwerp)"} · {new Date(m.created_at).toLocaleString("nl-NL")}</p>
+                    <p className="text-xs text-muted-fg truncate">
+                      {m.ticket_ref && <span className="font-mono text-pear-500 mr-1.5">#{m.ticket_ref}</span>}
+                      {m.subject || "(geen onderwerp)"} · {new Date(m.created_at).toLocaleString("nl-NL")}
+                    </p>
                   </div>
                   <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${pr.color}`}>{pr.label}</span>
                   <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-1 ${st.color}`}>{st.label}</span>

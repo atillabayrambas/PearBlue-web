@@ -44,6 +44,24 @@ const OVERIGE_SEEDS = [
   { seed: "creative-72", label: "Creative" },
 ];
 
+// Explicit western/light-skinned young-adult seeds. DiceBear v9 expects HEX
+// codes for skinColor/hairColor (not preset names). We force light-skin hex
+// palette so the API can never randomly pick a darker tone.
+// Skin: FFDBB4 (pale) / EDB98A (light). Hair: dark brown (2C1B18) / brown (4A312C) /
+// blonde (D6B370) / auburn (A55728) / red (C93305).
+const WESTERN_M = [
+  { seed: "west-m-brown-1", extra: "skinColor=FFDBB4&hairColor=2C1B18" },
+  { seed: "west-m-blonde-2", extra: "skinColor=EDB98A&hairColor=D6B370" },
+  { seed: "west-m-black-3", extra: "skinColor=FFDBB4&hairColor=2C1B18" },
+  { seed: "west-m-auburn-4", extra: "skinColor=EDB98A&hairColor=A55728" },
+];
+const WESTERN_F = [
+  { seed: "west-f-blonde-1", extra: "skinColor=FFDBB4&hairColor=D6B370" },
+  { seed: "west-f-brown-2", extra: "skinColor=EDB98A&hairColor=4A312C" },
+  { seed: "west-f-auburn-3", extra: "skinColor=FFDBB4&hairColor=A55728" },
+  { seed: "west-f-red-4", extra: "skinColor=EDB98A&hairColor=C93305" },
+];
+
 export const AVATAR_PALETTE = [
   { key: "pear", label: "Pear blue", hex: "02C0FF" },
   { key: "mint", label: "Mint", hex: "34D399" },
@@ -66,7 +84,9 @@ const buildUrl = (style, seed, bg, extras = "") => {
  * @param {string} bg — hex color WITHOUT the leading #, e.g. "02C0FF".
  */
 export const buildAvatarLibrary = (bg) => ([
+  ...WESTERN_M.map((w, i) => ({ id: `westm-${i}`, url: buildUrl("avataaars", w.seed, bg, w.extra), category: "masculine", seed: `West ${i + 1}` })),
   ...MASC_SEEDS.map((s, i) => ({ id: `masc-${i}`, url: buildUrl("avataaars", `${s}-m`, bg), category: "masculine", seed: s })),
+  ...WESTERN_F.map((w, i) => ({ id: `westf-${i}`, url: buildUrl("avataaars", w.seed, bg, w.extra), category: "feminine", seed: `West ${i + 1}` })),
   ...FEM_SEEDS.map((s, i) => ({ id: `fem-${i}`, url: buildUrl("avataaars", `${s}-f`, bg), category: "feminine", seed: s })),
   ...OVERIGE_SEEDS.map((sc, i) => ({ id: `over-${i}`, url: buildUrl("avataaars", sc.seed, bg), category: "overige", seed: sc.label })),
   ...ROBOT_SEEDS.map((s, i) => ({ id: `bot-${i}`, url: buildUrl("bottts-neutral", s, bg), category: "robots", seed: s })),
