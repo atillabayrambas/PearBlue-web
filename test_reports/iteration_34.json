@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 34 tested 4 items: (1) FIX1 House no. EN label on /portal (2) FIX2 feminine AvatarPicker avatars have no beards (3) FIX3 regression: Zoho Books card present in CMS Site settings → Engineering (4) NEW: per-admin AI translate rate limit backed by site_settings.ai_translate_limit_per_minute and CMS UI card. Backend pytest: 7/7 pass — direct DiceBear URL with facialHairProbability=0 returns 200 SVG; GET /api/settings echoes ai_translate_limit_per_minute (int); PUT /api/settings accepts value in [1..500], returns 422 for 0 and 9999; setting limit=3 and calling POST /api/admin/ai/translate 4 times returned 200/remaining=2, 200/remaining=1, 200/remaining=0, then 429 with detail 'AI translate rate limit (3/min) exceeded. Try again in ~1 minute.' Limit restored to 30 at end. Frontend Playwright: (a) On /portal with pb_lang=en the label reads 'House no.' and renders as a single line — postal_code label at x=1017, house_no label at x=1137 (w=48px), address label at x=1197 all on the same row y=536; label wraps the input (h=62 is label+input container, not text wrap). (b) Zoho Books card visible on Engineering tab (screenshot). (c) cms-ai-translate-limit-card visible with cms-ai-translate-limit-input=30; changing to 25 auto-saves on blur (persisted); entering 9999 clamps to 500; restored to 30 (verified via input value + backend GET /api/settings). (d) Users → Bewerken → Avatar tab → Vrouwelijk shows 19 DiceBear tiles, ALL 19 image srcs include 'facialHairProbability=0', visually no beard/mustache on any tile. (e) Regression: cms-title-translate + cms-desc-translate visible on Portfolio; fb-note-translate visible in Feedback → Notities modal.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration34.py", "/app/test_reports/pytest/iter34.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Rate-limit persistence: the rolling 60s window appears to be tracked in-memory in the backend process. If backend restarts or scales horizontally, admins may bypass the cap. Consider tracking timestamps in MongoDB or Redis keyed by admin email for durability.",
+    "The 429 response body uses {'detail': '...'} while 200 responses expose top-level 'remaining' and 'limit'. Frontend consumers should also receive 'remaining' and 'reset_at' on 429 so the UI can display a countdown; today the client only knows the limit from the error text.",
+    "Field(ge=1, le=500) rejects 0/9999 with HTTP 422 which is correct, but the CMS input clamps client-side to 500 silently — no toast tells the admin what happened. Add a small helper text or toast when clamped.",
+    "detectLang() in AiTranslateButton is still naive keyword-based (carried from iter33) — same recommendation stands (either force target_lang and let LLM auto-detect, or replace with a library like franc-mini).",
+    "The DiceBear feminine avatar URL is quite long (~350 chars). Consider factoring the top= list into a constant to keep buildUrl readable."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration34.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100%"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Reused an existing feedback item (test · 8-8-2026) with 1 existing note 'hello test note' to verify the fb-note-translate button.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AI translate rate limit is per-admin-email with a rolling 60-second window, tracked in-memory in the backend. If you run backend tests in parallel via pytest-xdist, calls will collide and race — always run this suite with `-o addopts=` (disable xdist) OR wait 60s between runs. To reset the window, either restart backend (sudo supervisorctl restart backend) or wait 60s. The CMS field is at /admin/settings → Engineering tab → cms-ai-translate-limit-card (data-testid=cms-ai-translate-limit-input). The default is 30 and the field auto-saves via PATCH-like PUT /api/settings on blur, clamped to 1..500 client-side and 422-rejected server-side. Avatar picker lives inside Users → Bewerken (Edit) modal → Avatar tab, not the Snelle weergave (Quick view) modal — the Quick view only shows profile info.",
+  "rca of the issue": "No production bugs found in this iteration. Two testing pitfalls surfaced: (1) my initial FIX1 assertion assumed label text height <32px, but the <label> wraps the <input> so its bounding-box height of 62px is expected — visual inspection and label x-positioning on the same row confirmed the fix works. (2) The rate-limit test initially failed under pytest-xdist because two workers made translate calls that consumed slots in the 60s rolling window; running serially with `-o addopts=` fixed it and confirmed the 3/min limit is enforced correctly (200/200/200 with remaining 2/1/0 then 429 with 'AI translate rate limit (3/min) exceeded')."
+}

@@ -19,6 +19,7 @@ export const SettingsAdmin = () => {
     site_status_lang: "auto",
     maintenance_bg_mode: "dynamic",
     maintenance_bg_url: "",
+    ai_translate_limit_per_minute: 30,
   });
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("general");
@@ -229,6 +230,51 @@ export const SettingsAdmin = () => {
 
           {/* Zoho Books integration */}
           <ZohoBooksCard en={en} />
+
+          {/* AI Translate rate limit — per admin, per minute. */}
+          <div className="rounded-2xl surface-2 border border-app p-5" data-testid="cms-ai-translate-limit-card">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg">AI Vertaal · {en ? "Rate limit" : "Snelheidslimiet"}</p>
+                <p className="font-heading font-semibold text-strong text-lg mt-1">
+                  {en ? "Per-admin rate limit (per minute)" : "Limiet per admin (per minuut)"}
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 text-[10px] uppercase tracking-widest px-2.5 py-1 font-semibold">
+                Claude Sonnet 4.6
+              </span>
+            </div>
+            <p className="text-xs text-muted-fg mb-4 leading-relaxed">
+              {en
+                ? "Caps how many AI-translate calls each admin can trigger per rolling 60-second window. Protects the Emergent LLM key budget from runaway loops or bulk-translate scripts. Range 1–500."
+                : "Beperkt hoeveel AI-vertaal-aanvragen elke admin per rollend 60-seconden-venster mag doen. Beschermt het Emergent LLM key-budget tegen doorlopende loops of bulk-vertaal-scripts. Bereik 1–500."}
+            </p>
+            <label className="block max-w-xs">
+              <span className="block text-[10px] font-semibold uppercase tracking-widest text-muted-fg mb-1.5">
+                {en ? "Calls per admin per minute" : "Aanroepen per admin per minuut"}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={form.ai_translate_limit_per_minute ?? 30}
+                onChange={(e) => {
+                  const v = Math.max(1, Math.min(500, parseInt(e.target.value || "30", 10) || 30));
+                  setForm((f) => ({ ...f, ai_translate_limit_per_minute: v }));
+                }}
+                onBlur={(e) => {
+                  const v = Math.max(1, Math.min(500, parseInt(e.target.value || "30", 10) || 30));
+                  patch({ ai_translate_limit_per_minute: v });
+                }}
+                className="w-32 rounded-xl surface border border-app focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong text-center font-mono"
+                data-testid="cms-ai-translate-limit-input"
+              />
+              <span className="ml-2 text-xs text-muted-fg">{en ? "requests / minute" : "verzoeken / minuut"}</span>
+            </label>
+            <p className="text-[10px] text-muted-fg mt-3">
+              💡 {en ? "Default: 30. Lower if the key budget is running out." : "Standaard: 30. Verlaag als het key-budget snel opraakt."}
+            </p>
+          </div>
         </div>
       )}
     </div>

@@ -21,7 +21,15 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 34 (this session, v0.6.6-Beta) — Modular refactor + AI translate + EN-sprint 2
+### Feb 2026 — Iteration 35 (this session, v0.6.7-Beta) — Polish & Rate-Limit
+- **House # label EN-fix** — Portal registration form: label `House #` (EN) that pushed the input naar beneden is nu `House no.` en alle drie labels op de postcode-rij (`Postal code`, `House no.`, `Address`) hebben `whitespace-nowrap` zodat ze nooit wrappen bij smallere breakpoints.
+- **Female avatar tab — no more beards** — `AvatarPicker.jsx.buildUrl()` voegt nu `&facialHairProbability=0` toe voor alle feminiene avatars (`genderTop === "f"`). DiceBear enum `facialHair=blank` bestaat niet — de juiste key is de probability. Alle 19 tegels in de Vrouwelijk-tab renderen nu gegarandeerd zonder baard/snor.
+- **AI Translate rate limit + CMS instelling**
+  - Backend: `SiteSettings.ai_translate_limit_per_minute: Optional[int]=30` (Field ge=1,le=500). `POST /api/admin/ai/translate` handhaaft nu een **rolling 60-seconden venster per admin-email**. Response krijgt extra velden `remaining` en `limit`. Bij overschrijding: 429 met `AI translate rate limit (N/min) exceeded`. Falende calls tellen NIET mee tegen het budget.
+  - Frontend: nieuwe kaart `cms-ai-translate-limit-card` in Site instellingen → Engineering, met number-input `cms-ai-translate-limit-input` (auto-save op blur, client-side clamp 1..500).
+- **Testing**: iteration_34.json → **100% backend (7/7) + 100% frontend**. Curl-verificatie bevestigt limit=3 → 3× 200 → 4× 429. Vrouwelijke avatars renderen zonder baard.
+
+### Feb 2026 — Iteration 34 (v0.6.6-Beta) — Modular refactor + AI translate + EN-sprint 2
 - **`AdminDashboard.jsx` modular refactor** — het monolithische bestand (3160 regels) is opgesplitst in **13 zelfstandige componenten** onder `/app/frontend/src/components/admin/`:
   - `_shared.jsx` — gedeelde helpers, constants (ROLE_LABELS, MSG_STATUS/PRIORITY, USER_COL_DEFS, PEARBLUE_LOGO, API), `AssigneeChip`, `StarsRow`, `generatePearAvatar`.
   - `AdminSidebar.jsx`, `PriorityAlerts.jsx`, `ProjectsAdmin.jsx`, `SettingsAdmin.jsx`, `MessagesAdmin.jsx`, `RegistrationsAdmin.jsx`, `ReviewsAdmin.jsx`, `UsersAdmin.jsx`, `ScriptsAdmin.jsx`, `CybersecurityAdmin.jsx`, `FeedbackAdmin.jsx`, `MailboxesAdmin.jsx`, `BrevoAdmin.jsx`, `VirusScannerAdmin.jsx`, `ChangelogAdmin.jsx`.

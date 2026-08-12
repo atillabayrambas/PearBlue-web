@@ -167,17 +167,17 @@ const RegistrationForm = () => {
       {/* Address block — postcode + house number drives the auto-fill of city/region on NL */}
       <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
         <label className="block sm:col-span-2">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Postal code" : "Postcode"}</span>
+          <span className="block whitespace-nowrap text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Postal code" : "Postcode"}</span>
           <input value={form.postal_code} onChange={change("postal_code")} onBlur={autofill} type="text" placeholder="1234AB" data-testid="portal-reg-postal"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong uppercase" />
         </label>
         <label className="block sm:col-span-1">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "House #" : "Huisnr."}</span>
+          <span className="block whitespace-nowrap text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "House no." : "Huisnr."}</span>
           <input value={form.house_number} onChange={change("house_number")} onBlur={autofill} type="text" data-testid="portal-reg-house"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>
         <label className="block sm:col-span-3">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Address" : "Adres"}</span>
+          <span className="block whitespace-nowrap text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Address" : "Adres"}</span>
           <input value={form.address} onChange={change("address")} onBlur={autofill} type="text" placeholder={lang === "en" ? "Street & number OR full address" : "Straat & huisnummer of volledig adres"} data-testid="portal-reg-address"
             className="mt-1 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
         </label>

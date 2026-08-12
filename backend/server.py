@@ -241,6 +241,8 @@ class SiteSettings(BaseModel):
     maintenance_message_en: Optional[str] = ""
     maintenance_show_newsletter: Optional[bool] = True
     maintenance_show_version: Optional[bool] = True
+    # AI translate rate limit (per admin, per minute). Set via CMS.
+    ai_translate_limit_per_minute: Optional[int] = 30
 
 
 class SiteSettingsUpdate(BaseModel):
@@ -252,6 +254,7 @@ class SiteSettingsUpdate(BaseModel):
     site_status_lang: Optional[str] = Field(None, pattern="^(auto|nl|en)$")
     maintenance_bg_mode: Optional[str] = Field(None, pattern="^(dynamic|custom)$")
     maintenance_bg_url: Optional[str] = Field(None, max_length=500)
+    ai_translate_limit_per_minute: Optional[int] = Field(None, ge=1, le=500)
 
 
 class PortalRegistration(BaseModel):
@@ -3100,6 +3103,8 @@ async def admin_portal_documents_delete(doc_id: str, current=Depends(require_per
 # AI translation utility — used by CMS "AI vertaal" buttons on Portfolio &
 # Feedback forms. Translates a piece of NL/EN content to the other language
 # using Claude Sonnet 4.6 via Emergent LLM Key.
+# Rate limit: configurable via site settings (`ai_translate_limit_per_minute`,
+# default 30). Enforced per admin email in a rolling 60-second window.
 # ---------------------------------------------------------------------------
 class AiTranslatePayload(BaseModel):
     text: str = Field(..., min_length=1, max_length=8000)
@@ -3107,14 +3112,40 @@ class AiTranslatePayload(BaseModel):
     target_lang: str = Field("en", pattern=r"^(nl|en)$")
 
 
+AI_TRANSLATE_DEFAULT_LIMIT = 30
+_ai_translate_hits: dict[str, list[float]] = defaultdict(list)
+
+
+async def _get_ai_translate_limit() -> int:
+    """Fetch the per-minute per-admin rate limit from site_settings.
+    Falls back to 30 when the field is missing or invalid."""
+    try:
+        s = await db.site_settings.find_one({}, {"ai_translate_limit_per_minute": 1}) or {}
+        v = int(s.get("ai_translate_limit_per_minute") or AI_TRANSLATE_DEFAULT_LIMIT)
+        return max(1, min(v, 500))  # clamp 1..500
+    except Exception:
+        return AI_TRANSLATE_DEFAULT_LIMIT
+
+
 @api_router.post("/admin/ai/translate")
 async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(require_admin)):
     """Translate short admin content (project title/description, review quote, etc.)
     between NL and EN. Uses the shared Emergent LLM key + Claude Sonnet 4.6.
-    Returns 503 when the key is not configured."""
+    Returns 503 when the key is not configured, 429 when the admin has exceeded
+    the per-minute rate limit."""
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=503, detail="AI translation not configured (missing EMERGENT_LLM_KEY)")
+    # Per-admin rolling 60s rate limit — protects EMERGENT_LLM_KEY budget from
+    # runaway loops (bulk-translate scripts, misbehaving UI code, etc.).
+    admin_email = (current.get("email") or "").lower() or "anonymous"
+    limit = await _get_ai_translate_limit()
+    now_ts = time.time()
+    window_start = now_ts - 60.0
+    hits = [t for t in _ai_translate_hits[admin_email] if t > window_start]
+    if len(hits) >= limit:
+        raise HTTPException(status_code=429, detail=f"AI translate rate limit ({limit}/min) exceeded. Try again in ~1 minute.")
     if payload.source_lang == payload.target_lang:
+        # Do not count same-lang short-circuits against the budget.
         return {"translated": payload.text, "source_lang": payload.source_lang, "target_lang": payload.target_lang}
     src = "Dutch (Nederlands)" if payload.source_lang == "nl" else "English"
     tgt = "English" if payload.target_lang == "en" else "Dutch (Nederlands)"
@@ -3136,7 +3167,18 @@ async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(requir
         # Strip surrounding quotes the model sometimes adds
         if len(translated) >= 2 and translated[0] in "\"'" and translated[-1] in "\"'":
             translated = translated[1:-1].strip()
-        return {"translated": translated, "source_lang": payload.source_lang, "target_lang": payload.target_lang}
+        # Record the hit only on success so failing calls don't punish the admin.
+        hits.append(now_ts)
+        _ai_translate_hits[admin_email] = hits
+        return {
+            "translated": translated,
+            "source_lang": payload.source_lang,
+            "target_lang": payload.target_lang,
+            "remaining": max(0, limit - len(hits)),
+            "limit": limit,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"AI translate failed: {e}")
         raise HTTPException(status_code=500, detail=f"Translation failed: {e}")

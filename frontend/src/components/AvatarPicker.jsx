@@ -102,7 +102,10 @@ const buildUrl = (style, seed, bg, extras = "", genderTop = null) => {
   const topFilter = style === "avataaars" && genderTop
     ? `&top=${genderTop === "m" ? MASC_TOP_FILTER : FEM_TOP_FILTER}`
     : "";
-  return `${DICEBEAR}/${style}/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${b}${baseExtras}${topFilter}${extras ? "&" + extras : ""}`;
+  // Force feminine avatars to have NO facial hair — DiceBear would otherwise
+  // randomly pick a beard/mustache on some seeds (e.g. westf-0).
+  const facialHair = style === "avataaars" && genderTop === "f" ? "&facialHairProbability=0" : "";
+  return `${DICEBEAR}/${style}/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${b}${baseExtras}${topFilter}${facialHair}${extras ? "&" + extras : ""}`;
 };
 
 /**
