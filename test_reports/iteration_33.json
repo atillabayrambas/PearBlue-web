@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 33 tested (a) modular refactor of AdminDashboard.jsx (85 lines now — router only), (b) new POST /api/admin/ai/translate endpoint (Claude Sonnet 4.6 via Emergent LLM key), (c) AI Vertaal-Assist buttons in Portfolio + Feedback CMS, (d) CMS EN-sprint on Cybersecurity page + AdminMessageThread. Backend: 7/7 pytest cases pass — admin login, /auth/me role check, auth-guard on /admin/ai/translate (401 without token), NL→EN happy path (input 'Wij bouwen moderne websites met liefde voor detail.' → 'We build modern websites with a love for detail.'), same-lang short-circuit passthrough, EN→NL round-trip, regression on /api/contact + /api/projects. Frontend: all 13 admin routes render without errors after refactor (portfolio, registrations, reviews, messages, feedback, cybersecurity, users, mailboxes, mailmarketing, scripts, settings, financials, changelog); cms-title-translate + cms-desc-translate buttons visible in Portfolio form and successfully translated a Dutch title to English in-place via /api/admin/ai/translate (verified 200 network response and DOM update); cms-sidebar-lang toggle switches labels reactively (verified Cybersecurity 'Refresh'⇄'Vernieuwen' and sidebar menu labels); AdminMessageThread with EN active shows 'Back to Messages', 'Conversation', 'Send reply', 'Subject', 'Message', 'Add attachment', 'Send email to <email>', 'Internal note', 'Add note', and status badge 'DONE' — confirmed visually in screenshot; the original customer message body ('Please respond, this is legit.') and reply/note body ('note1') remained untouched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration33.py", "/app/test_reports/pytest/iter33.xml"],
+  "action_items": [
+    "(carried from iter32) Persistent React dev-warning 'In HTML, <span> cannot be a child of <option>' fires on RegistrationsAdmin (option line 109), ReviewsAdmin (line 195), MessagesAdmin (line 216), FeedbackAdmin (line 128). Root cause is Emergent's dev instrumentation wrapping dynamic option text in a <span data-ve-dynamic=\"true\" style=\"display:contents\">. It is a dev-only injection so the production build should not show this warning, but if the wrapping is source-controlled (e.g. inline JSX ${email} inside an <option> with siblings), rewriting each <option>{u.email}</option> to `<option>{String(u.email)}</option>` or a single template literal string can silence the warning."
+  ],
+  "critical_code_review_comments": [
+    "AiTranslateButton.jsx: title tooltip is hard-coded Dutch ('Automatisch vertalen met AI...') and toast messages ('Vul eerst tekst in om te vertalen', 'Vertaling mislukt') are Dutch-only — should honour useLang() for consistency with the new EN sprint.",
+    "AdminDashboard.jsx now imports 15+ admin components + AnalyticsAdmin + FinancialsAdmin. If any of these throws at module-load, the entire /admin path crashes. Consider React.lazy + Suspense per route to isolate failures and reduce initial bundle.",
+    "server.py /admin/ai/translate: no explicit rate-limit on this LLM endpoint. Any admin token can invoke Claude in a tight loop; recommend a per-user 30/min limiter (existing rate-limit helpers) to guard EMERGENT_LLM_KEY spend.",
+    "AiTranslateButton detectLang() is a naive keyword regex — trivial NL sentences without any of the 30 stop-words will be misdetected as EN. The endpoint accepts source_lang from the client, so a wrong detection can send an EN→NL prompt when the text is already NL. Consider forcing target_lang and letting the LLM auto-detect source, or replace detectLang with franc-mini.",
+    "CybersecurityAdmin/AdminMessageThread pattern uses `const en = lang === 'en';` inline ternaries everywhere — becomes hard to keep consistent as more locales are added. A tiny t() helper with a translation map would DRY this up."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration33.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100%"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Reused an existing contact message (id 9b9e7c93-...) already in the DB from previous iterations to verify AdminMessageThread EN localization.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AdminDashboard.jsx has been fully split into /app/frontend/src/components/admin/*.jsx (16 files + AiTranslateButton). Any new CMS section should be added there and wired into AdminDashboard.jsx <Routes>. New backend endpoint: POST /api/admin/ai/translate {text, source_lang, target_lang} → {translated, source_lang, target_lang}. Requires admin bearer token. Uses claude-sonnet-4-6 via emergentintegrations. Same-lang requests short-circuit (no LLM call). Language state key in localStorage is 'pb_lang' (values 'nl'|'en'); admin JWT is at localStorage['pb_admin_token']. The sidebar language toggle button text '🌐 EN' means EN is ACTIVE (not the target); confusingly the target-symbol interpretation is the opposite of what one might expect — worth clarifying for the next testing agent."
+}

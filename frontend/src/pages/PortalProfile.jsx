@@ -6,7 +6,7 @@ import { ArrowLeft, Save, Loader2, Camera, User, MapPin, Phone } from "lucide-re
 import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
-import { usePostalLookup, extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE } from "../hooks/usePostalLookup";
+import { usePostalLookup, extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE, isoToFlag, guessCountryCodeFrom } from "../hooks/usePostalLookup";
 import { PhoneInput } from "../components/PhoneInput";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { Avatar } from "../components/Avatar";
@@ -47,7 +47,6 @@ export default function PortalProfile() {
   const set = (k) => (e) => setMe((m) => ({ ...(m || {}), [k]: e.target.value }));
 
   const autofill = async () => {
-    if (me?.country && !/nederland|netherlands|nl/i.test(me.country)) return;
     let pc = me?.postal_code;
     let hn = me?.house_number;
     if (!pc && me?.address) {
@@ -61,7 +60,7 @@ export default function PortalProfile() {
     }
     if (!pc) return;
     setLookingUp(true);
-    const r = await lookup(pc, hn);
+    const r = await lookup(pc, hn, me?.address, me?.country_code);
     setLookingUp(false);
     if (!r) { toast.error(nl ? "Adres niet gevonden" : "Address not found"); return; }
     setMe((m) => ({ ...(m || {}),
@@ -70,7 +69,8 @@ export default function PortalProfile() {
       address: r.street ? `${r.street}${hn ? " " + hn : ""}` : m.address,
       city: r.city || m.city,
       region: r.region || m.region,
-      country: r.country === "NL" ? "Nederland" : (r.country || m.country || "Nederland"),
+      country: r.country_name || r.country || m.country || "Nederland",
+      country_code: r.country || m.country_code || "NL",
     }));
     toast.success(nl ? `Adres gevonden: ${r.city}` : `Found: ${r.city}`);
   };
@@ -193,8 +193,8 @@ export default function PortalProfile() {
               <div className="min-w-0">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Land" : "Country"}</span>
                 <p className="mt-1 text-sm text-strong flex items-center gap-1.5 truncate" data-testid="portal-profile-country">
-                  <span className="text-lg leading-none" aria-hidden>{/nederland|netherlands/i.test(me.country || "Nederland") ? "🇳🇱" : (/belg/i.test(me.country || "") ? "🇧🇪" : (/deutsch|germany/i.test(me.country || "") ? "🇩🇪" : (/france|frankrijk/i.test(me.country || "") ? "🇫🇷" : (/kingdom|verenigd/i.test(me.country || "") ? "🇬🇧" : "🌍"))))}</span>
-                  {me.country || "Nederland"}
+                  <span className="text-lg leading-none" aria-hidden>{isoToFlag(guessCountryCodeFrom(me.country_code, me.country))}</span>
+                  {me.country || (nl ? "Wordt automatisch ingevuld" : "Auto-filled")}
                 </p>
               </div>
               <div className="min-w-0">

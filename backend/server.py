@@ -3096,6 +3096,52 @@ async def admin_portal_documents_delete(doc_id: str, current=Depends(require_per
     return {"deleted": True}
 
 
+# ---------------------------------------------------------------------------
+# AI translation utility — used by CMS "AI vertaal" buttons on Portfolio &
+# Feedback forms. Translates a piece of NL/EN content to the other language
+# using Claude Sonnet 4.6 via Emergent LLM Key.
+# ---------------------------------------------------------------------------
+class AiTranslatePayload(BaseModel):
+    text: str = Field(..., min_length=1, max_length=8000)
+    source_lang: str = Field("nl", pattern=r"^(nl|en)$")
+    target_lang: str = Field("en", pattern=r"^(nl|en)$")
+
+
+@api_router.post("/admin/ai/translate")
+async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(require_admin)):
+    """Translate short admin content (project title/description, review quote, etc.)
+    between NL and EN. Uses the shared Emergent LLM key + Claude Sonnet 4.6.
+    Returns 503 when the key is not configured."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="AI translation not configured (missing EMERGENT_LLM_KEY)")
+    if payload.source_lang == payload.target_lang:
+        return {"translated": payload.text, "source_lang": payload.source_lang, "target_lang": payload.target_lang}
+    src = "Dutch (Nederlands)" if payload.source_lang == "nl" else "English"
+    tgt = "English" if payload.target_lang == "en" else "Dutch (Nederlands)"
+    system_prompt = (
+        f"You are a professional {src}→{tgt} translator for a Dutch ICT & media agency (PearBlue). "
+        f"Translate the user's text preserving tone, punctuation and simple markdown. "
+        f"Do NOT add any commentary, explanation or quotes — return ONLY the translated text."
+    )
+    try:
+        session_id = f"admin-translate-{uuid.uuid4().hex[:12]}"
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=session_id,
+            system_message=system_prompt,
+        ).with_model("anthropic", "claude-sonnet-4-6")
+        response = await chat.send_message(UserMessage(text=payload.text))
+        translated = response if isinstance(response, str) else str(response)
+        translated = translated.strip()
+        # Strip surrounding quotes the model sometimes adds
+        if len(translated) >= 2 and translated[0] in "\"'" and translated[-1] in "\"'":
+            translated = translated[1:-1].strip()
+        return {"translated": translated, "source_lang": payload.source_lang, "target_lang": payload.target_lang}
+    except Exception as e:
+        logger.error(f"AI translate failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
+
+
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
 app.include_router(make_stripe_router(db))

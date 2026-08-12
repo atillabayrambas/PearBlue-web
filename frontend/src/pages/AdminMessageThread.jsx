@@ -8,16 +8,24 @@ import {
   Download, Trash2, Lock, FileText, Image as ImageIcon, Plus, Edit2, ChevronDown,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { useLang } from "../i18n/LanguageContext";
 import { Avatar } from "../components/Avatar";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const MSG_STATUS = [
+const MSG_STATUS_NL = [
   { key: "new", label: "Nieuw", color: "bg-pear-100 text-pear-700" },
   { key: "in_progress", label: "In behandeling", color: "bg-amber-100 text-amber-700" },
   { key: "on_hold", label: "Hold", color: "bg-slate-100 text-slate-700" },
   { key: "done", label: "Afgerond", color: "bg-emerald-100 text-emerald-700" },
   { key: "archived", label: "Gearchiveerd", color: "bg-slate-100 text-slate-500" },
+];
+const MSG_STATUS_EN = [
+  { key: "new", label: "New", color: "bg-pear-100 text-pear-700" },
+  { key: "in_progress", label: "In progress", color: "bg-amber-100 text-amber-700" },
+  { key: "on_hold", label: "On hold", color: "bg-slate-100 text-slate-700" },
+  { key: "done", label: "Done", color: "bg-emerald-100 text-emerald-700" },
+  { key: "archived", label: "Archived", color: "bg-slate-100 text-slate-500" },
 ];
 const MSG_PRIORITY = [
   { key: "Major", label: "Major", color: "bg-red-200 text-red-900" },
@@ -27,13 +35,16 @@ const MSG_PRIORITY = [
   { key: "P4", label: "P4", color: "bg-slate-50 text-slate-500" },
 ];
 
-const fmt = (iso) => {
-  try { return new Date(iso).toLocaleString("nl-NL"); } catch { return iso || ""; }
+const fmt = (iso, en = false) => {
+  try { return new Date(iso).toLocaleString(en ? "en-US" : "nl-NL"); } catch { return iso || ""; }
 };
 
 export default function AdminMessageThread() {
   const { msgId } = useParams();
   const { authHeader, user } = useAuth();
+  const { lang } = useLang();
+  const en = lang === "en";
+  const MSG_STATUS = en ? MSG_STATUS_EN : MSG_STATUS_NL;
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -75,11 +86,11 @@ export default function AdminMessageThread() {
     try {
       await axios.patch(`${API}/admin/contact/${msgId}`, upd, { headers: authHeader() });
       load();
-    } catch { toast.error("Update mislukt"); }
+    } catch { toast.error(en ? "Update failed" : "Update mislukt"); }
   };
 
   const sendReply = async () => {
-    if (!reply.trim()) { toast.error("Typ eerst je antwoord."); return; }
+    if (!reply.trim()) { toast.error(en ? "Type your reply first." : "Typ eerst je antwoord."); return; }
     setSending(true);
     try {
       await axios.post(
@@ -97,17 +108,17 @@ export default function AdminMessageThread() {
               headers: { ...authHeader(), "Content-Type": "multipart/form-data" },
             });
           } catch {
-            toast.error(`Upload mislukt: ${f.name}`);
+            toast.error(`${en ? "Upload failed" : "Upload mislukt"}: ${f.name}`);
           }
         }
         setUploading(false);
       }
-      toast.success(sendEmail ? "Antwoord verstuurd naar klant" : "Antwoord opgeslagen");
+      toast.success(sendEmail ? (en ? "Reply sent to client" : "Antwoord verstuurd naar klant") : (en ? "Reply saved" : "Antwoord opgeslagen"));
       setReply("");
       setFiles([]);
       load();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Versturen mislukt");
+      toast.error(e?.response?.data?.detail || (en ? "Send failed" : "Versturen mislukt"));
     } finally { setSending(false); }
   };
 
@@ -115,18 +126,18 @@ export default function AdminMessageThread() {
     if (!note.trim()) return;
     try {
       await axios.post(`${API}/admin/contact/${msgId}/notes`, { text: note.trim() }, { headers: authHeader() });
-      toast.success("Notitie toegevoegd");
+      toast.success(en ? "Note added" : "Notitie toegevoegd");
       setNote("");
       load();
-    } catch { toast.error("Notitie mislukt"); }
+    } catch { toast.error(en ? "Note failed" : "Notitie mislukt"); }
   };
 
   const removeAttachment = async (aid) => {
-    if (!window.confirm("Bijlage verwijderen?")) return;
+    if (!window.confirm(en ? "Delete attachment?" : "Bijlage verwijderen?")) return;
     try {
       await axios.delete(`${API}/admin/contact/${msgId}/attachments/${aid}`, { headers: authHeader() });
       load();
-    } catch { toast.error("Verwijderen mislukt"); }
+    } catch { toast.error(en ? "Delete failed" : "Verwijderen mislukt"); }
   };
 
   const downloadAttachment = async (aid, name) => {
@@ -139,7 +150,7 @@ export default function AdminMessageThread() {
       const a = document.createElement("a");
       a.href = url; a.download = name || "file"; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch { toast.error("Download mislukt"); }
+    } catch { toast.error(en ? "Download failed" : "Download mislukt"); }
   };
 
   const isDone = msg?.status === "done";
@@ -149,7 +160,7 @@ export default function AdminMessageThread() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-muted-fg text-sm" data-testid="msg-thread-loading">
-        <Loader2 className="h-4 w-4 animate-spin" /> Bericht laden…
+        <Loader2 className="h-4 w-4 animate-spin" /> {en ? "Loading message…" : "Bericht laden…"}
       </div>
     );
   }
@@ -157,9 +168,9 @@ export default function AdminMessageThread() {
     return (
       <div className="surface border border-app rounded-3xl p-8 text-center" data-testid="msg-thread-error">
         <AlertCircle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
-        <p className="font-heading text-lg text-strong">Kon bericht niet openen</p>
+        <p className="font-heading text-lg text-strong">{en ? "Couldn't open message" : "Kon bericht niet openen"}</p>
         <p className="text-sm text-muted-fg mt-1">{typeof error === "string" ? error : "—"}</p>
-        <Link to="/admin/messages" className="inline-block mt-4 text-sm text-pear-500 hover:underline">← Terug naar Berichten</Link>
+        <Link to="/admin/messages" className="inline-block mt-4 text-sm text-pear-500 hover:underline">← {en ? "Back to Messages" : "Terug naar Berichten"}</Link>
       </div>
     );
   }
@@ -177,7 +188,7 @@ export default function AdminMessageThread() {
   return (
     <div data-testid="cms-message-thread">
       <Link to="/admin/messages" className="inline-flex items-center gap-1 text-sm text-muted-fg hover:text-pear-500 mb-6" data-testid="msg-thread-back">
-        <ArrowLeft className="h-4 w-4" /> Terug naar Berichten
+        <ArrowLeft className="h-4 w-4" /> {en ? "Back to Messages" : "Terug naar Berichten"}
       </Link>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
@@ -189,20 +200,20 @@ export default function AdminMessageThread() {
                 {msg.ticket_ref ? `#${msg.ticket_ref}` : `#${(msg.id || "").slice(0, 8)}`}
               </p>
               <h1 className="font-heading text-2xl sm:text-3xl font-medium text-strong break-words" data-testid="msg-thread-subject">
-                {msg.subject || "(geen onderwerp)"}
+                {msg.subject || (en ? "(no subject)" : "(geen onderwerp)")}
               </h1>
               <p className="text-xs text-muted-fg mt-1">
                 <strong>{msg.name}</strong> · {msg.email}
                 {msg.phone && <> · {msg.phone}</>}
                 {msg.company && <> · {msg.company}</>}
-                <br />{fmt(msg.created_at)}
+                <br />{fmt(msg.created_at, en)}
               </p>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
             <span className={`text-[10px] uppercase tracking-widest rounded-full px-3 py-1 font-bold ${pr.color}`} data-testid="msg-thread-priority">{pr.label}</span>
             <span className={`text-[10px] uppercase tracking-widest rounded-full px-3 py-1 font-bold ${st.color}`} data-testid="msg-thread-status">{st.label}</span>
-            {locked && <span className="text-[10px] uppercase tracking-widest bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 inline-flex items-center gap-1" data-testid="msg-thread-locked"><Lock className="h-3 w-3" /> Vergrendeld</span>}
+            {locked && <span className="text-[10px] uppercase tracking-widest bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 inline-flex items-center gap-1" data-testid="msg-thread-locked"><Lock className="h-3 w-3" /> {en ? "Locked" : "Vergrendeld"}</span>}
           </div>
         </header>
 
@@ -218,7 +229,7 @@ export default function AdminMessageThread() {
           >
             {MSG_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
-          <label className="text-muted-fg ml-2">Prioriteit:</label>
+          <label className="text-muted-fg ml-2">{en ? "Priority:" : "Prioriteit:"}</label>
           <select
             value={msg.priority || "P3"}
             onChange={(e) => patch({ priority: e.target.value })}
@@ -229,18 +240,18 @@ export default function AdminMessageThread() {
             {MSG_PRIORITY.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
           {!msg.spam ? (
-            <button onClick={() => patch({ spam: true })} disabled={locked} className="rounded-full px-3 py-1 border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-40" data-testid="msg-thread-mark-spam">Markeer als spam</button>
+            <button onClick={() => patch({ spam: true })} disabled={locked} className="rounded-full px-3 py-1 border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-40" data-testid="msg-thread-mark-spam">{en ? "Mark as spam" : "Markeer als spam"}</button>
           ) : (
-            <button onClick={() => patch({ spam: false })} className="rounded-full px-3 py-1 border border-emerald-200 text-emerald-600 hover:bg-emerald-50" data-testid="msg-thread-unmark-spam">Geen spam</button>
+            <button onClick={() => patch({ spam: false })} className="rounded-full px-3 py-1 border border-emerald-200 text-emerald-600 hover:bg-emerald-50" data-testid="msg-thread-unmark-spam">{en ? "Not spam" : "Geen spam"}</button>
           )}
-          <a href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject || 'PearBlue')}`} className="rounded-full px-3 py-1 border border-pear-500 text-pear-500 hover:bg-pear-50" data-testid="msg-thread-mailto">Open in mail-client</a>
+          <a href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject || 'PearBlue')}`} className="rounded-full px-3 py-1 border border-pear-500 text-pear-500 hover:bg-pear-50" data-testid="msg-thread-mailto">{en ? "Open in mail client" : "Open in mail-client"}</a>
         </div>
 
         {/* Conversation timeline */}
         <div className="mb-6" data-testid="msg-thread-timeline">
           <div className="flex items-center gap-2 mb-3">
             <MessageCircle className="h-4 w-4 text-pear-500" />
-            <h3 className="font-heading font-semibold text-strong">Gesprek</h3>
+            <h3 className="font-heading font-semibold text-strong">{en ? "Conversation" : "Gesprek"}</h3>
             <span className="text-xs text-muted-fg">({timeline.length})</span>
           </div>
           <ol className="space-y-3">
@@ -249,7 +260,7 @@ export default function AdminMessageThread() {
                 return (
                   <li key={t.id || i} className="rounded-2xl p-4 border border-amber-200 bg-amber-50/60 dark:bg-amber-500/5" data-testid={`msg-thread-item-note-${i}`}>
                     <div className="flex items-center gap-2 mb-2 text-[11px] uppercase tracking-widest text-amber-700">
-                      📌 Interne notitie · {t.by} · {fmt(t.at)}
+                      📌 {en ? "Internal note" : "Interne notitie"} · {t.by} · {fmt(t.at, en)}
                     </div>
                     <div className="text-sm whitespace-pre-wrap text-strong/90">{t.text}</div>
                   </li>
@@ -264,11 +275,11 @@ export default function AdminMessageThread() {
                 >
                   <div className="flex items-center gap-2 mb-2 text-xs">
                     <span className="font-semibold text-strong">{isOut ? `PearBlue (${t.author})` : t.author || msg.name}</span>
-                    <span className="text-muted-fg">· {fmt(t.at)}</span>
+                    <span className="text-muted-fg">· {fmt(t.at, en)}</span>
                     {isOut && (t.email_sent ? (
-                      <span className="text-[10px] uppercase rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">✉ verstuurd</span>
+                      <span className="text-[10px] uppercase rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">✉ {en ? "sent" : "verstuurd"}</span>
                     ) : (
-                      <span className="text-[10px] uppercase rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">enkel opgeslagen</span>
+                      <span className="text-[10px] uppercase rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">{en ? "saved only" : "enkel opgeslagen"}</span>
                     ))}
                     {t.subject && isOut && <span className="text-muted-fg">· {t.subject}</span>}
                   </div>
@@ -305,7 +316,7 @@ export default function AdminMessageThread() {
         {/* Reply panel */}
         <div className="surface border border-app rounded-2xl p-5 mb-6" data-testid="msg-thread-reply-panel">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-heading font-semibold text-strong">Antwoord versturen</h3>
+            <h3 className="font-heading font-semibold text-strong">{en ? "Send reply" : "Antwoord versturen"}</h3>
             <ReplyTemplatesDropdown
               templates={templates}
               onInsert={(tpl) => setReply((r) => r ? `${r}\n\n${tpl.body}` : tpl.body)}
@@ -313,7 +324,7 @@ export default function AdminMessageThread() {
               disabled={locked}
             />
           </div>
-          <label className="text-xs uppercase tracking-widest text-muted-fg block mb-1">Onderwerp</label>
+          <label className="text-xs uppercase tracking-widest text-muted-fg block mb-1">{en ? "Subject" : "Onderwerp"}</label>
           <input
             type="text"
             value={subject}
@@ -322,13 +333,13 @@ export default function AdminMessageThread() {
             className="w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 px-4 py-2 text-sm outline-none text-strong mb-3 disabled:opacity-50"
             data-testid="msg-thread-subject-input"
           />
-          <label className="text-xs uppercase tracking-widest text-muted-fg block mb-1">Bericht</label>
+          <label className="text-xs uppercase tracking-widest text-muted-fg block mb-1">{en ? "Message" : "Bericht"}</label>
           <textarea
             rows={6}
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             disabled={locked}
-            placeholder="Typ hier je antwoord aan de klant…"
+            placeholder={en ? "Type your reply to the client here…" : "Typ hier je antwoord aan de klant…"}
             className="w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 px-4 py-3 text-sm outline-none resize-y text-strong disabled:opacity-50"
             data-testid="msg-thread-reply-input"
           />
@@ -336,7 +347,7 @@ export default function AdminMessageThread() {
           <div className="flex flex-wrap items-center gap-2 mt-3" data-testid="msg-thread-file-picker">
             <label className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full surface-2 border border-app px-3 py-1.5 cursor-pointer hover:border-pear-500">
               <Paperclip className="h-3.5 w-3.5" />
-              Bijlage toevoegen
+              {en ? "Add attachment" : "Bijlage toevoegen"}
               <input
                 ref={fileInput}
                 type="file"
@@ -347,7 +358,7 @@ export default function AdminMessageThread() {
                 onChange={(e) => {
                   const list = Array.from(e.target.files || []);
                   const valid = list.filter((f) => f.size < 20 * 1024 * 1024);
-                  if (valid.length < list.length) toast.error("Sommige bestanden zijn groter dan 20 MB en overgeslagen");
+                  if (valid.length < list.length) toast.error(en ? "Some files exceed 20 MB and were skipped" : "Sommige bestanden zijn groter dan 20 MB en overgeslagen");
                   setFiles((p) => [...p, ...valid]);
                   e.target.value = "";
                 }}
@@ -366,7 +377,7 @@ export default function AdminMessageThread() {
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
             <label className="inline-flex items-center gap-2 text-xs text-muted-fg cursor-pointer" data-testid="msg-thread-send-email-toggle">
               <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="accent-pear-500 h-4 w-4" />
-              E-mail naar {msg.email} sturen
+              {en ? `Send email to ${msg.email}` : `E-mail naar ${msg.email} sturen`}
             </label>
             <button
               onClick={sendReply}
@@ -374,19 +385,19 @@ export default function AdminMessageThread() {
               className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
               data-testid="msg-thread-send"
             >
-              <Send className="h-4 w-4" /> {uploading ? "Uploaden…" : sending ? "Versturen…" : sendEmail ? "Verstuur antwoord" : "Sla op"}
+              <Send className="h-4 w-4" /> {uploading ? (en ? "Uploading…" : "Uploaden…") : sending ? (en ? "Sending…" : "Versturen…") : sendEmail ? (en ? "Send reply" : "Verstuur antwoord") : (en ? "Save" : "Sla op")}
             </button>
           </div>
         </div>
 
         {/* Internal note */}
         <div className="surface border border-app rounded-2xl p-5" data-testid="msg-thread-note-panel">
-          <h3 className="font-heading font-semibold text-strong mb-3">Interne notitie</h3>
+          <h3 className="font-heading font-semibold text-strong mb-3">{en ? "Internal note" : "Interne notitie"}</h3>
           <textarea
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Alleen zichtbaar voor het CMS-team…"
+            placeholder={en ? "Only visible to the CMS team…" : "Alleen zichtbaar voor het CMS-team…"}
             className="w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 px-4 py-3 text-sm outline-none resize-y text-strong"
             data-testid="msg-thread-note-input"
           />
@@ -397,7 +408,7 @@ export default function AdminMessageThread() {
               className="text-xs rounded-full px-4 py-1.5 border border-app hover:border-pear-500 disabled:opacity-40"
               data-testid="msg-thread-note-submit"
             >
-              Notitie toevoegen
+              {en ? "Add note" : "Notitie toevoegen"}
             </button>
           </div>
         </div>

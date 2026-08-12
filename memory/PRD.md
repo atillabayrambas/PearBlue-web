@@ -21,7 +21,29 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 32 (this session, v0.6.5-Beta continued) — Zoho Books live, manual review invite & IMAP parser
+### Feb 2026 — Iteration 34 (this session, v0.6.6-Beta) — Modular refactor + AI translate + EN-sprint 2
+- **`AdminDashboard.jsx` modular refactor** — het monolithische bestand (3160 regels) is opgesplitst in **13 zelfstandige componenten** onder `/app/frontend/src/components/admin/`:
+  - `_shared.jsx` — gedeelde helpers, constants (ROLE_LABELS, MSG_STATUS/PRIORITY, USER_COL_DEFS, PEARBLUE_LOGO, API), `AssigneeChip`, `StarsRow`, `generatePearAvatar`.
+  - `AdminSidebar.jsx`, `PriorityAlerts.jsx`, `ProjectsAdmin.jsx`, `SettingsAdmin.jsx`, `MessagesAdmin.jsx`, `RegistrationsAdmin.jsx`, `ReviewsAdmin.jsx`, `UsersAdmin.jsx`, `ScriptsAdmin.jsx`, `CybersecurityAdmin.jsx`, `FeedbackAdmin.jsx`, `MailboxesAdmin.jsx`, `BrevoAdmin.jsx`, `VirusScannerAdmin.jsx`, `ChangelogAdmin.jsx`.
+  - `AdminDashboard.jsx` blijft nu **~85 regels** — enkel router + layout.
+- **AI Vertaal-Assist knop** — nieuwe `AiTranslateButton.jsx` (violet chip met Sparkles-icoon) toegevoegd naast:
+  - Portfolio-formulier: Titel + Omschrijving (`cms-title-translate` / `cms-desc-translate`).
+  - Feedback notities-modal: nieuwe geïntegreerde `FeedbackNoteForm` met AI-vertaal knop (`fb-note-translate`).
+  - Backend endpoint `POST /api/admin/ai/translate` gebruikt Claude Sonnet 4.6 via Emergent LLM Key. Auto-detecteert NL/EN via `detectLang()` heuristiek en vertaalt naar de tegenovergestelde taal.
+- **CMS EN-Sprint deel 2**:
+  - **Cybersecurity** — alle UI-labels (kolommen "Wie/Wat/Waar/Hoe/Wanneer", filter buttons "Alle/Actief geblokkeerd/Gedeblokkeerd", knoppen "Deblokkeren/Opnieuw blokkeren", "Blokkades per dag", "Top-oorzaken", toast messages) reageren op `useLang()`.
+  - **AdminMessageThread** (Ticket Threads) — subject/message labels, "Verstuur antwoord/Save", "Interne notitie", status/priority selects, "Vergrendeld" badge, timeline labels ("Gesprek", "verstuurd/enkel opgeslagen"), attachment picker en alle toast-messages zijn nu tweetalig. **CRITICAL:** Origineel klant-bericht (`msg.message`), reply-bodies (`t.body`) en notitie-teksten (`t.text`) worden NOOIT vertaald — alleen UI-omhullende labels.
+- **Testing**: Handmatige verificatie via testing-subagent (backend + frontend) volgt onmiddellijk hierna.
+
+### Feb 2026 — Iteration 33 (v0.6.5-Beta continued) — International postal lookup + EN-Sprint 1
+- **International postal auto-fill** — `usePostalLookup` is nu een 4-traps cascade: (1) postcode.tech voor NL, (2) Nominatim OSM *structured query* met `postalcode=X&street=Y[&countrycodes=X]` voor beste disambiguatie, (3) Zippopotam.us wereldwijde probe cascade (EU-first bias, US last voor 5-cijferige ambiguïteit), (4) Nominatim vrije zoekopdracht als laatste redmiddel. Ondersteunt NL/BE/DE/FR/GB/US/CA/AU/CH/DK/SE/NO/FI/PL/AT/IT/ES/PT/IE/NZ/MX/BR/ZA/JP/IN.
+- **"Wijzig land" override** — postcode-blok in Portal-aanmelding heeft nu een kleine "Wijzig" knop naast Land die een dropdown opent. Wanneer geselecteerd wordt het als `preferredCountry` naar de lookup gestuurd — zo lost 10001 in NYC vs 10001 in Cáceres/Spanje correct op naar de gekozen keuze.
+- **Auto-country detection** — Land wordt nu automatisch gevuld op basis van postcode+adres (bv. US ZIP 10001 + "350 5th Avenue" → 🇺🇸 New York, New York). Legacy user records worden via `guessCountryCodeFrom(code, name)` naar ISO-code omgezet voor de vlag-emoji.
+- **Shared `isoToFlag()` helper** — Regional-indicator symbol berekening geëxtraheerd uit de hook zodat Portal / PortalProfile / AdminDashboard dezelfde vlag-render logica delen.
+- **EN-Sprint (deel 1)** — Portfolio, Feedback en Users tabellen: kop, filter-knoppen, "Kolommen" dropdown, kolom-headers, "Acties", refresh-knop en formulier-placeholders zijn nu tweetalig. Reageert direct op de EN/NL taalknop in de CMS sidebar.
+- **Testing**: Handmatig geverifieerd voor NL 9711AA (Groningen), US 10001 + 5th Avenue (New York), DE 10115 (Berlin). Preferred-country override werkt zoals bedoeld.
+
+### Feb 2026 — Iteration 32 (v0.6.5-Beta) — Zoho Books live, manual review invite & IMAP parser
 - **Zoho Books credentials in CMS** — nieuwe kaart in Site instellingen → Engineering met 4 velden (client id, client secret, refresh token, org id) + data-centre dropdown (EU/US/IN/AU). Geheimen worden Fernet-versleuteld opgeslagen. Nieuwe endpoints: `GET/PUT /api/admin/integrations/zoho-books` en `POST /admin/integrations/zoho-books/test`. Status-badge toont "Live" of "Nog niet ingesteld".
 - **Live financials fallback** — `/api/admin/financials` haalt nu live invoice-data uit Zoho Books zodra credentials zijn gevuld. Op elke fout (ongeldige token, netwerkfout, verkeerde org) valt het automatisch terug naar mocked, dus het CMS blijft altijd renderen.
 - **Handmatige review-uitnodiging** — nieuwe `ManualReviewInviteRow` in `/admin/reviews`: vul e-mail + projectnaam + factuur-id, klik "Verstuur uitnodiging" en de tweetalige review-e-mail (via bestaande `review_invites._bilingual_invite_html`) gaat direct de deur uit. Verschijnt met "Handmatig" badge in de invite-log.

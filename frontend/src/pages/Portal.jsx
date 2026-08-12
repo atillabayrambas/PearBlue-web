@@ -12,7 +12,7 @@ import { COUNTRIES } from "../data/countries";
 import { Avatar } from "../components/Avatar";
 import { PhoneInput } from "../components/PhoneInput";
 import { usePostalLookup } from "../hooks/usePostalLookup";
-import { extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE } from "../hooks/usePostalLookup";
+import { extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE, isoToFlag } from "../hooks/usePostalLookup";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
 
@@ -71,17 +71,19 @@ const RegistrationForm = () => {
   const { lang } = useLang();
   const t = (k) => PT[k]?.[lang] || PT[k]?.nl || k;
   const { lookup } = usePostalLookup();
-  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "", address: "", postal_code: "", house_number: "", city: "", region: "", country: "NL" });
+  const [form, setForm] = useState({ name: "", email: "", company: "", phone: "", message: "", address: "", postal_code: "", house_number: "", city: "", region: "", country: "NL", country_name: "" });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [captchaOk, setCaptchaOk] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [countryOpen, setCountryOpen] = useState(false);
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value, ...(k === "country" ? { region: "" } : {}) });
-  const country = COUNTRIES.find((c) => c.code === form.country) || COUNTRIES[0];
+  // Flag emoji from ISO-2 country code — delegates to the shared helper.
+  const flagFor = isoToFlag;
+  const displayCountry = form.country_name || (COUNTRIES.find((c) => c.code === form.country)?.[lang === "en" ? "en" : "nl"] || "");
 
   const autofill = async () => {
-    if (form.country !== "NL") return;
-    // Bidirectional: allow the user to type in either postcode/huisnummer or full address
+    // Try to lookup regardless of country — the API stack now supports NL/BE/DE/FR/GB/US/CA/etc.
     let pc = form.postal_code;
     let hn = form.house_number;
     if (!pc) {
@@ -95,7 +97,7 @@ const RegistrationForm = () => {
     }
     if (!pc) return;
     setLookingUp(true);
-    const res = await lookup(pc, hn);
+    const res = await lookup(pc, hn, form.address, form.country);
     setLookingUp(false);
     if (!res) return;
     setForm((f) => ({
@@ -105,6 +107,8 @@ const RegistrationForm = () => {
       address: res.street ? `${res.street}${hn ? " " + hn : ""}` : f.address,
       city: res.city || f.city,
       region: res.region || f.region,
+      country: res.country || f.country,
+      country_name: res.country_name || f.country_name || "",
     }));
   };
   const submit = async (e) => {
@@ -114,7 +118,9 @@ const RegistrationForm = () => {
     try {
       await axios.post(`${API}/portal/register`, {
         ...form,
-        country: country ? (lang === "en" ? country.en : country.nl) : form.country,
+        // Send the human-readable country name — auto-filled name wins over the
+        // legacy dropdown code so backend records "United States" instead of "US".
+        country: form.country_name || (COUNTRIES.find((c) => c.code === form.country)?.[lang === "en" ? "en" : "nl"]) || form.country,
         language: lang,
       });
       setDone(true);
@@ -181,11 +187,34 @@ const RegistrationForm = () => {
           postcode-autofill lookup. Country label carries the flag emoji. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl surface-2 border border-app p-3" data-testid="portal-reg-location-display">
         <div className="min-w-0">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Country" : "Land"}</span>
-          <p className="mt-1 text-sm text-strong flex items-center gap-1.5 truncate" data-testid="portal-reg-country">
-            <span className="text-lg leading-none" aria-hidden>{country?.flag || "🌍"}</span>
-            {country ? (lang === "en" ? country.en : country.nl) : (lang === "en" ? "Not detected yet" : "Nog niet bekend")}
-          </p>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Country" : "Land"}</span>
+            <button type="button" onClick={() => setCountryOpen((v) => !v)} className="text-[10px] uppercase tracking-widest text-pear-500 hover:underline" data-testid="portal-reg-country-change">
+              {lang === "en" ? "Change" : "Wijzig"}
+            </button>
+          </div>
+          {countryOpen ? (
+            <select
+              value={form.country}
+              onChange={(e) => {
+                const code = e.target.value;
+                const c = COUNTRIES.find((cc) => cc.code === code);
+                setForm({ ...form, country: code, country_name: c ? (lang === "en" ? c.en : c.nl) : code });
+                setCountryOpen(false);
+              }}
+              className="mt-1 w-full rounded-lg surface border border-app px-2 py-1.5 text-sm text-strong"
+              data-testid="portal-reg-country-select"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.flag} {lang === "en" ? c.en : c.nl}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="mt-1 text-sm text-strong flex items-center gap-1.5 truncate" data-testid="portal-reg-country">
+              <span className="text-lg leading-none" aria-hidden>{flagFor(form.country)}</span>
+              {displayCountry || (lang === "en" ? "Auto-filled" : "Wordt automatisch ingevuld")}
+            </p>
+          )}
         </div>
         <div className="min-w-0">
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{lang === "en" ? "Region" : "Regio"}</span>

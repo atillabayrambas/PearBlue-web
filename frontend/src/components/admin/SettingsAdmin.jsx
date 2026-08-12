@@ -1,0 +1,351 @@
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import { toast } from "sonner";
+import { Save } from "lucide-react";
+import { useAuth } from "../../auth/AuthContext";
+import { useLang } from "../../i18n/LanguageContext";
+import { API } from "./_shared";
+
+export const SettingsAdmin = () => {
+  const { authHeader } = useAuth();
+  const { lang } = useLang();
+  const en = lang === "en";
+  const [form, setForm] = useState({
+    ga4_measurement_id: "",
+    search_console_verification: "",
+    hero_headline_nl: "",
+    hero_headline_en: "",
+    site_status: "live",
+    site_status_lang: "auto",
+    maintenance_bg_mode: "dynamic",
+    maintenance_bg_url: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState("general");
+  const [instantMsg, setInstantMsg] = useState("");
+  const loadedRef = useRef(false);
+
+  useEffect(() => {
+    axios.get(`${API}/settings`).then((r) => {
+      setForm((prev) => ({ ...prev, ...(r.data || {}) }));
+      loadedRef.current = true;
+    }).catch(() => { loadedRef.current = true; });
+  }, []);
+
+  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  // Instant-save helper for the Engineering controls — no need to click Save.
+  const patch = async (partial) => {
+    setForm((f) => ({ ...f, ...partial }));
+    if (!loadedRef.current) return;
+    try {
+      await axios.put(`${API}/settings`, partial, { headers: authHeader() });
+      setInstantMsg(en ? "Saved" : "Opgeslagen");
+      setTimeout(() => setInstantMsg(""), 1400);
+    } catch {
+      toast.error(en ? "Save failed" : "Opslaan mislukt");
+    }
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await axios.put(`${API}/settings`, form, { headers: authHeader() });
+      toast.success(en ? "Settings saved" : "Instellingen opgeslagen");
+    } catch { toast.error(en ? "Save failed" : "Opslaan mislukt"); } finally { setSaving(false); }
+  };
+
+  const previewUrl = (mode) => `/?preview=${mode}`;
+
+  return (
+    <div data-testid="cms-settings">
+      <header className="mb-6">
+        <h1 className="font-heading text-3xl font-medium text-strong">{en ? "Site settings" : "Site instellingen"}</h1>
+        <p className="text-sm text-muted-fg mt-1">{en ? "Analytics, Search Console, hero copy and Engineering tools." : "Analytics, Search Console, hero-tekst en Engineering-tools."}</p>
+      </header>
+
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-app mb-6" data-testid="cms-settings-tabs">
+        {[
+          { key: "general", label: en ? "General" : "Algemeen" },
+          { key: "engineering", label: en ? "Engineering" : "Engineering" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${tab === t.key ? "border-pear-500 text-pear-600" : "border-transparent text-muted-fg hover:text-strong"}`}
+            data-testid={`cms-settings-tab-${t.key}`}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {tab === "general" && (
+        <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-5 max-w-2xl" data-testid="cms-settings-form">
+          <div>
+            <h3 className="font-heading font-semibold text-strong mb-3">Google Analytics 4</h3>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Measurement ID (G-XXXXXXX)</span>
+              <input value={form.ga4_measurement_id || ""} onChange={change("ga4_measurement_id")} placeholder="G-XXXXXXXXXX" data-testid="cms-input-ga4"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
+            </label>
+            <p className="text-xs text-muted-fg mt-2">{en ? "Find your Measurement ID in Google Analytics → Admin → Data streams → Web." : "Vind je Measurement ID in Google Analytics → Beheerder → Datastreams → Web."}</p>
+          </div>
+
+          <div className="pt-4 border-t border-app">
+            <h3 className="font-heading font-semibold text-strong mb-3">Google Search Console</h3>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Verification code (content value)" : "Verificatie code (content-waarde)"}</span>
+              <input value={form.search_console_verification || ""} onChange={change("search_console_verification")} placeholder="abcdef123456..." data-testid="cms-input-search-console"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
+            </label>
+          </div>
+
+          <div className="pt-4 border-t border-app">
+            <h3 className="font-heading font-semibold text-strong mb-3">{en ? "Hero text (optional)" : "Hero-tekst (optioneel)"}</h3>
+            <label className="block mb-3">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "NL headline (empty = default)" : "NL headline (leeg = standaard)"}</span>
+              <input value={form.hero_headline_nl || ""} onChange={change("hero_headline_nl")} data-testid="cms-input-hero-nl"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "EN headline (empty = default)" : "EN headline (leeg = standaard)"}</span>
+              <input value={form.hero_headline_en || ""} onChange={change("hero_headline_en")} data-testid="cms-input-hero-en"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+            </label>
+          </div>
+
+          <button type="submit" disabled={saving} className="btn-primary" data-testid="cms-settings-submit">
+            {saving ? "…" : <><Save className="h-4 w-4" /> {en ? "Save" : "Opslaan"}</>}
+          </button>
+        </form>
+      )}
+
+      {tab === "engineering" && (
+        <div className="surface border border-app rounded-2xl p-6 space-y-6 max-w-3xl" data-testid="cms-settings-engineering">
+          <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">🚧 {en ? "Site status" : "Site-status"}</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">
+              {en
+                ? "Choose what public visitors see. Any signed-in admin (with an admin token in this browser) always keeps normal access."
+                : "Kies wat publieke bezoekers zien. Iedere ingelogde beheerder (met admin-token in deze browser) blijft altijd normaal toegang houden."}
+            </p>
+          </div>
+
+          {/* Mode segmented control — auto-saves */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Mode" : "Modus"}</p>
+            <div className="inline-flex rounded-full border border-app p-1 surface-2" data-testid="cms-site-status-group">
+              {[
+                { key: "live", label: en ? "Live" : "Live", tid: "cms-site-status-live" },
+                { key: "maintenance", label: en ? "Maintenance" : "Onderhoud", tid: "cms-site-status-maintenance" },
+                { key: "coming_soon", label: en ? "Coming soon" : "Binnenkort", tid: "cms-site-status-coming_soon" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => patch({ site_status: s.key })}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition ${form.site_status === s.key ? (s.key === "live" ? "bg-emerald-500 text-white shadow" : s.key === "maintenance" ? "bg-amber-500 text-white shadow" : "bg-violet-500 text-white shadow") : "text-muted-fg hover:text-strong"}`}
+                  data-testid={s.tid}
+                >{s.label}</button>
+              ))}
+            </div>
+            {instantMsg && <span className="ml-3 text-xs text-emerald-500" data-testid="cms-instant-saved">✓ {instantMsg}</span>}
+          </div>
+
+          {/* Language segmented control */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Language on splash" : "Taal op splashpagina"}</p>
+            <div className="inline-flex rounded-full border border-app p-1 surface-2" data-testid="cms-site-lang-group">
+              {[
+                { key: "auto", label: en ? "Auto (browser)" : "Auto (browser)" },
+                { key: "nl", label: "🇳🇱 NL" },
+                { key: "en", label: "🇬🇧 EN" },
+              ].map((l) => (
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => patch({ site_status_lang: l.key })}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition ${form.site_status_lang === l.key ? "bg-pear-500 text-white shadow" : "text-muted-fg hover:text-strong"}`}
+                  data-testid={`cms-site-lang-${l.key}`}
+                >{l.label}</button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-fg mt-2">
+              {en ? "Auto follows the visitor's browser language. Copy is baked-in — no need to type anything." : "Auto volgt de browsertaal van de bezoeker. Teksten zijn ingebakken — hoef je niets in te vullen."}
+            </p>
+          </div>
+
+          {/* Background */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Background" : "Achtergrond"}</p>
+            <div className="inline-flex rounded-full border border-app p-1 surface-2 mb-3" data-testid="cms-site-bg-group">
+              {[
+                { key: "dynamic", label: en ? "Dynamic bokeh (auto rotates)" : "Dynamische bokeh (auto-wissel)" },
+                { key: "custom", label: en ? "Custom image URL" : "Eigen afbeelding (URL)" },
+              ].map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => patch({ maintenance_bg_mode: b.key })}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition ${form.maintenance_bg_mode === b.key ? "bg-slate-800 dark:bg-white dark:text-slate-900 text-white shadow" : "text-muted-fg hover:text-strong"}`}
+                  data-testid={`cms-site-bg-${b.key}`}
+                >{b.label}</button>
+              ))}
+            </div>
+            {form.maintenance_bg_mode === "custom" && (
+              <div className="flex gap-2">
+                <input
+                  value={form.maintenance_bg_url || ""}
+                  onChange={change("maintenance_bg_url")}
+                  onBlur={() => patch({ maintenance_bg_url: form.maintenance_bg_url })}
+                  placeholder="https://..."
+                  className="flex-1 rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono"
+                  data-testid="cms-site-bg-url"
+                />
+              </div>
+            )}
+            <p className="text-[11px] text-muted-fg mt-2">
+              {en ? "Bokeh photos are randomly picked every page load and blurred at 10% for a soft, atmospheric look." : "Bokeh-foto's worden per herlaad willekeurig gekozen en 10% gebluurd voor een sfeervolle look."}
+            </p>
+          </div>
+
+          {/* Preview buttons */}
+          <div className="pt-4 border-t border-app">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Preview" : "Voorvertoning"}</p>
+            <div className="flex flex-wrap gap-2">
+              <a href={previewUrl("maintenance")} target="_blank" rel="noreferrer" className="text-xs px-4 py-2 rounded-full border border-amber-400 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10 inline-flex items-center gap-1.5" data-testid="cms-preview-maintenance">
+                🔧 {en ? "Preview Maintenance" : "Preview Onderhoud"}
+              </a>
+              <a href={previewUrl("coming_soon")} target="_blank" rel="noreferrer" className="text-xs px-4 py-2 rounded-full border border-violet-400 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 inline-flex items-center gap-1.5" data-testid="cms-preview-coming-soon">
+                🚀 {en ? "Preview Coming Soon" : "Preview Binnenkort"}
+              </a>
+            </div>
+            <p className="text-[11px] text-muted-fg mt-2">
+              {en ? "Preview opens in a new tab without affecting live visitors." : "Voorvertoning opent in een nieuw tabblad zonder de live-bezoekers te beïnvloeden."}
+            </p>
+          </div>
+
+          {/* Zoho Books integration */}
+          <ZohoBooksCard en={en} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// ZohoBooksCard — fills the 4 Zoho Books credentials (client id/secret, refresh
+// token, org id + data-centre) and offers a "Test connectie" round-trip button
+// that exchanges the refresh_token and hits /organizations.
+// Values are stored server-side encrypted (Fernet). The secret inputs stay
+// masked; empty submit means "keep existing".
+// -----------------------------------------------------------------------------
+const ZohoBooksCard = ({ en }) => {
+  const { authHeader } = useAuth();
+  const [status, setStatus] = useState({ configured: false });
+  const [form, setForm] = useState({ client_id: "", client_secret: "", refresh_token: "", org_id: "", dc: "eu" });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const loadStatus = () => axios.get(`${API}/admin/integrations/zoho-books`, { headers: authHeader() })
+    .then((r) => { setStatus(r.data || {}); setForm((f) => ({ ...f, org_id: r.data?.org_id || "", dc: r.data?.dc || "eu" })); })
+    .catch(() => {});
+  useEffect(() => { loadStatus(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const save = async () => {
+    setSaving(true);
+    setTestResult(null);
+    try {
+      const body = { org_id: form.org_id, dc: form.dc };
+      // Only send secrets if the user typed something — empty keeps stored value
+      if (form.client_id) body.client_id = form.client_id;
+      if (form.client_secret) body.client_secret = form.client_secret;
+      if (form.refresh_token) body.refresh_token = form.refresh_token;
+      await axios.put(`${API}/admin/integrations/zoho-books`, body, { headers: authHeader() });
+      setForm({ ...form, client_id: "", client_secret: "", refresh_token: "" });
+      await loadStatus();
+      toast.success(en ? "Zoho Books credentials saved" : "Zoho Books credentials opgeslagen");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (en ? "Save failed" : "Opslaan mislukt"));
+    } finally { setSaving(false); }
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await axios.post(`${API}/admin/integrations/zoho-books/test`, {}, { headers: authHeader() });
+      setTestResult({ ok: true, ...r.data });
+      toast.success(en ? "Zoho connection OK" : "Zoho verbinding OK");
+    } catch (e) {
+      setTestResult({ ok: false, error: e?.response?.data?.detail || String(e) });
+      toast.error(e?.response?.data?.detail || (en ? "Connection failed" : "Verbinding mislukt"));
+    } finally { setTesting(false); }
+  };
+
+  return (
+    <div className="pt-4 border-t border-app" data-testid="cms-zoho-books-card">
+      <div className="flex items-center gap-3 mb-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Zoho Books</p>
+        <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold ${status.configured ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`} data-testid="cms-zoho-books-status">
+          {status.configured ? (en ? "Live" : "Live") : (en ? "Not configured" : "Nog niet ingesteld")}
+        </span>
+      </div>
+      <p className="text-[11px] text-muted-fg mb-3">
+        {en
+          ? "Fill in your Zoho Books OAuth credentials. Secrets are Fernet-encrypted at rest. Leave a field empty to keep the currently stored value."
+          : "Vul je Zoho Books OAuth-credentials in. Geheimen worden Fernet-versleuteld opgeslagen. Laat een veld leeg om de huidige waarde te behouden."}
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Client ID {status.client_id_last4 && <span className="text-emerald-500">✓ …{status.client_id_last4}</span>}</span>
+          <input type="password" value={form.client_id} onChange={change("client_id")} placeholder={status.client_id_last4 ? "•••••••" : "1000.XXXXXX"} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-client-id" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Client secret</span>
+          <input type="password" value={form.client_secret} onChange={change("client_secret")} placeholder={status.configured ? "•••••••" : ""} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-client-secret" />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Refresh token</span>
+          <input type="password" value={form.refresh_token} onChange={change("refresh_token")} placeholder={status.configured ? "•••••••" : "1000.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxx"} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-refresh-token" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Organization ID</span>
+          <input type="text" value={form.org_id} onChange={change("org_id")} placeholder="6xxxxxxxx" className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-org-id" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Data centre</span>
+          <select value={form.dc} onChange={change("dc")} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong" data-testid="zoho-input-dc">
+            <option value="eu">🇪🇺 EU (zoho.eu)</option>
+            <option value="com">🇺🇸 US (zoho.com)</option>
+            <option value="in">🇮🇳 IN (zoho.in)</option>
+            <option value="com.au">🇦🇺 AU (zoho.com.au)</option>
+          </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mt-4">
+        <button type="button" onClick={save} disabled={saving} className="btn-primary text-xs" data-testid="zoho-save">
+          {saving ? "…" : (en ? "Save" : "Opslaan")}
+        </button>
+        <button type="button" onClick={test} disabled={testing || !status.configured} className="text-xs px-4 py-2 rounded-full border border-app hover:border-pear-500 disabled:opacity-40" data-testid="zoho-test">
+          {testing ? "…" : (en ? "Test connection" : "Test verbinding")}
+        </button>
+        {testResult && (
+          <span className={`text-xs ${testResult.ok ? "text-emerald-600" : "text-red-500"}`} data-testid="zoho-test-result">
+            {testResult.ok ? `✓ ${testResult.org_name || "OK"} · DC ${testResult.dc}` : `✗ ${testResult.error}`}
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-fg mt-2">
+        {en
+          ? "Once saved, /admin/financials switches from mocked to live invoice data automatically."
+          : "Zodra opgeslagen schakelt /admin/financials automatisch van mocked naar live factuur-data."}
+      </p>
+    </div>
+  );
+};
