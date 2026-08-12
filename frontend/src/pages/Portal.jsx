@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
-import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, Star, ShieldCheck, Download, Eye, Printer, CreditCard } from "lucide-react";
+import { LogIn, FileText, FolderKanban, LifeBuoy, LogOut, AlertCircle, Loader2, Star, ShieldCheck, Download, Eye, Printer, CreditCard, FileArchive } from "lucide-react";
 import { toast } from "sonner";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { Logo } from "../components/Logo";
@@ -41,6 +41,13 @@ const PT = {
   noInvoices: { nl: "Geen facturen gevonden.", en: "No invoices found." },
   noProjects: { nl: "Geen projecten gevonden.", en: "No projects found." },
   noTickets: { nl: "Geen tickets gevonden.", en: "No tickets found." },
+  documents: { nl: "Documenten", en: "Documents" },
+  docsIntro: { nl: "Contracten en documenten van jouw dossier.", en: "Contracts and documents from your file." },
+  noDocs: { nl: "Nog geen documenten beschikbaar.", en: "No documents available yet." },
+  download: { nl: "Download", en: "Download" },
+  docTypeContract: { nl: "Contract", en: "Contract" },
+  docTypeInvoice: { nl: "Factuur", en: "Invoice" },
+  docTypeOther: { nl: "Overig", en: "Other" },
   leaveReview: { nl: "Laat een review achter", en: "Leave a review" },
   reviewIntro: { nl: "Tevreden over ons werk? We waarderen je feedback enorm — na goedkeuring plaatsen we hem op de site.", en: "Happy with our work? We'd love your feedback — once approved we'll feature it on the site." },
   regName: { nl: "Naam", en: "Name" },
@@ -276,6 +283,33 @@ export default function Portal() {
   const invoices = useSection("invoices", me.authenticated);
   const projects = useSection("projects", me.authenticated);
   const tickets = useSection("tickets", me.authenticated);
+  const documents = useSection("documents", me.authenticated);
+
+  // Human-readable file size (kB / MB) — used in the Documents card.
+  const fmtSize = (bytes) => {
+    if (!bytes && bytes !== 0) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Kick off a download by fetching the doc as a blob so we go through the
+  // portal-session cookie (Authorization headers wouldn't survive the redirect).
+  const downloadDoc = async (docId, filename) => {
+    try {
+      const r = await axios.get(`${API}/portal/documents/${docId}/download`, { withCredentials: true, responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "document";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (lang === "en" ? "Download failed" : "Downloaden mislukt"));
+    }
+  };
 
   if (me.loading) {
     return <div className="min-h-[60vh] flex items-center justify-center text-muted-fg"><Loader2 className="h-5 w-5 animate-spin mr-2" /> {t("loading")}</div>;
@@ -337,7 +371,7 @@ export default function Portal() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-testid="portal-sections-grid">
         <SectionCard icon={FileText} title={t("invoices")} subtitle="Zoho Books" state={invoices} empty={<p className="text-sm text-muted-fg">{t("noInvoices")}</p>}>
           {(() => {
             const list = invoices.data?.invoices || invoices.data?.data || [];
@@ -503,6 +537,37 @@ export default function Portal() {
                       <p className="text-xs text-muted-fg truncate">{tk.priority || "—"}</p>
                     </div>
                     <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold shrink-0 ${badge(tk.status)}`}>{tk.status}</span>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+        </SectionCard>
+
+        <SectionCard icon={FileArchive} title={t("documents")} subtitle={t("docsIntro")} state={documents} empty={<p className="text-sm text-muted-fg">{t("noDocs")}</p>}>
+          {(() => {
+            const list = documents.data?.documents || [];
+            if (!list.length) return <p className="text-sm text-muted-fg">{t("noDocs")}</p>;
+            const typeLabel = (dt) => dt === "invoice" ? t("docTypeInvoice") : dt === "contract" ? t("docTypeContract") : t("docTypeOther");
+            const typeClass = (dt) => dt === "invoice" ? "bg-pear-100 text-pear-700" : dt === "contract" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700";
+            return (
+              <ul className="space-y-2 max-h-80 overflow-y-auto" data-testid="portal-documents-list">
+                {list.map((d) => (
+                  <li key={d.id} className="flex items-center gap-3 rounded-xl surface-2 p-3 border border-transparent hover:border-pear-500 transition-colors" data-testid={`portal-doc-row-${d.id}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold ${typeClass(d.doc_type)}`}>{typeLabel(d.doc_type)}</span>
+                        <p className="text-sm font-semibold text-strong truncate">{d.label || d.filename}</p>
+                      </div>
+                      <p className="text-xs text-muted-fg truncate">{d.filename} · {fmtSize(d.size)}</p>
+                    </div>
+                    <button
+                      onClick={() => downloadDoc(d.id, d.filename)}
+                      className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 surface text-strong border border-app hover:border-pear-500 shrink-0"
+                      data-testid={`portal-doc-download-${d.id}`}
+                    >
+                      <Download className="h-3 w-3" /> {t("download")}
+                    </button>
                   </li>
                 ))}
               </ul>

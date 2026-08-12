@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 30 tested: (1) new /api/site/maintenance snapshot shape (site_status/site_status_lang/maintenance_bg_mode/maintenance_bg_url/version), (2) PUT /api/settings persistence of new maintenance fields as admin, (3) portal documents CRUD (admin upload/list/delete + 401 for unauth portal read), (4) MaintenancePage improvements (lang toggle, admin lock, 3-services line, bokeh screensaver rotation every 8s, mode chip for maintenance & coming_soon), (5) UserDocumentsPanel inside UserQuickView modal (upload + list + delete), (6) Portal anonymous render, (7) regression: preview=1 renders normal site. All 5 pytest cases pass and all frontend flows pass. Site restored to live at end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration30.py", "/app/test_reports/pytest/iter30.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "maintenance_bg_mode pattern is '^(dynamic|custom)$' in the SiteSettings schema but the review request description said 'static' — either the schema or the request description is out of sync. Not a bug (custom works), but worth aligning the docstring/naming so admin UI matches.",
+    "AdminDashboard.jsx is still >2700 lines and now hosts UserDocumentsPanel too — good candidate for extracting into /components/admin/UserDocumentsPanel.jsx.",
+    "Portal admin delete button relies on window.confirm — consider using a shadcn AlertDialog for consistent UX (also easier to test without page.on('dialog') hooks).",
+    "Bokeh screensaver uses setInterval(8s) without pause on visibilitychange — background tabs will still churn Unsplash requests (minor performance nit)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration30.py"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100%"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None persisted — test document was uploaded then deleted; portal document collection returned to prior state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Public snapshot /api/site/maintenance now returns 5 keys (site_status/site_status_lang/maintenance_bg_mode/maintenance_bg_url/version). MaintenancePage exposes data-testids: maintenance-page (with data-mode), maintenance-services, maintenance-lang-toggle, maintenance-admin-lock (href=/admin/login), maintenance-logo, maintenance-mode-chip, maintenance-bokeh. Language pref stored in localStorage.pb_splash_lang. Portal documents endpoints under /api/portal/documents (session-gated) and /api/admin/portal/documents (admin, multipart upload with query params user_email/doc_type/label). UserQuickView modal in AdminDashboard now contains user-documents-panel with user-doc-type, user-doc-label, user-doc-file-input, user-doc-upload; each doc row is user-doc-row-{id} with user-doc-delete-{id}. Site left in status=live.",
+  "rca of the issue": "N/A — all scoped features passed on first-pass; only test-side fix needed was using 'custom' instead of 'static' for maintenance_bg_mode to match the SiteSettings Pydantic pattern."
+}

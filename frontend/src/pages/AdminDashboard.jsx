@@ -690,8 +690,126 @@ const SettingsAdmin = () => {
               {en ? "Preview opens in a new tab without affecting live visitors." : "Voorvertoning opent in een nieuw tabblad zonder de live-bezoekers te beïnvloeden."}
             </p>
           </div>
+
+          {/* Zoho Books integration */}
+          <ZohoBooksCard en={en} />
         </div>
       )}
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// ZohoBooksCard — fills the 4 Zoho Books credentials (client id/secret, refresh
+// token, org id + data-centre) and offers a "Test connectie" round-trip button
+// that exchanges the refresh_token and hits /organizations.
+// Values are stored server-side encrypted (Fernet). The secret inputs stay
+// masked; empty submit means "keep existing".
+// -----------------------------------------------------------------------------
+const ZohoBooksCard = ({ en }) => {
+  const { authHeader } = useAuth();
+  const [status, setStatus] = useState({ configured: false });
+  const [form, setForm] = useState({ client_id: "", client_secret: "", refresh_token: "", org_id: "", dc: "eu" });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const loadStatus = () => axios.get(`${API}/admin/integrations/zoho-books`, { headers: authHeader() })
+    .then((r) => { setStatus(r.data || {}); setForm((f) => ({ ...f, org_id: r.data?.org_id || "", dc: r.data?.dc || "eu" })); })
+    .catch(() => {});
+  useEffect(() => { loadStatus(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const save = async () => {
+    setSaving(true);
+    setTestResult(null);
+    try {
+      const body = { org_id: form.org_id, dc: form.dc };
+      // Only send secrets if the user typed something — empty keeps stored value
+      if (form.client_id) body.client_id = form.client_id;
+      if (form.client_secret) body.client_secret = form.client_secret;
+      if (form.refresh_token) body.refresh_token = form.refresh_token;
+      await axios.put(`${API}/admin/integrations/zoho-books`, body, { headers: authHeader() });
+      setForm({ ...form, client_id: "", client_secret: "", refresh_token: "" });
+      await loadStatus();
+      toast.success(en ? "Zoho Books credentials saved" : "Zoho Books credentials opgeslagen");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (en ? "Save failed" : "Opslaan mislukt"));
+    } finally { setSaving(false); }
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await axios.post(`${API}/admin/integrations/zoho-books/test`, {}, { headers: authHeader() });
+      setTestResult({ ok: true, ...r.data });
+      toast.success(en ? "Zoho connection OK" : "Zoho verbinding OK");
+    } catch (e) {
+      setTestResult({ ok: false, error: e?.response?.data?.detail || String(e) });
+      toast.error(e?.response?.data?.detail || (en ? "Connection failed" : "Verbinding mislukt"));
+    } finally { setTesting(false); }
+  };
+
+  return (
+    <div className="pt-4 border-t border-app" data-testid="cms-zoho-books-card">
+      <div className="flex items-center gap-3 mb-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Zoho Books</p>
+        <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold ${status.configured ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`} data-testid="cms-zoho-books-status">
+          {status.configured ? (en ? "Live" : "Live") : (en ? "Not configured" : "Nog niet ingesteld")}
+        </span>
+      </div>
+      <p className="text-[11px] text-muted-fg mb-3">
+        {en
+          ? "Fill in your Zoho Books OAuth credentials. Secrets are Fernet-encrypted at rest. Leave a field empty to keep the currently stored value."
+          : "Vul je Zoho Books OAuth-credentials in. Geheimen worden Fernet-versleuteld opgeslagen. Laat een veld leeg om de huidige waarde te behouden."}
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Client ID {status.client_id_last4 && <span className="text-emerald-500">✓ …{status.client_id_last4}</span>}</span>
+          <input type="password" value={form.client_id} onChange={change("client_id")} placeholder={status.client_id_last4 ? "•••••••" : "1000.XXXXXX"} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-client-id" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Client secret</span>
+          <input type="password" value={form.client_secret} onChange={change("client_secret")} placeholder={status.configured ? "•••••••" : ""} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-client-secret" />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Refresh token</span>
+          <input type="password" value={form.refresh_token} onChange={change("refresh_token")} placeholder={status.configured ? "•••••••" : "1000.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxx"} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-refresh-token" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Organization ID</span>
+          <input type="text" value={form.org_id} onChange={change("org_id")} placeholder="6xxxxxxxx" className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-org-id" />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg">Data centre</span>
+          <select value={form.dc} onChange={change("dc")} className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong" data-testid="zoho-input-dc">
+            <option value="eu">🇪🇺 EU (zoho.eu)</option>
+            <option value="com">🇺🇸 US (zoho.com)</option>
+            <option value="in">🇮🇳 IN (zoho.in)</option>
+            <option value="com.au">🇦🇺 AU (zoho.com.au)</option>
+          </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mt-4">
+        <button type="button" onClick={save} disabled={saving} className="btn-primary text-xs" data-testid="zoho-save">
+          {saving ? "…" : (en ? "Save" : "Opslaan")}
+        </button>
+        <button type="button" onClick={test} disabled={testing || !status.configured} className="text-xs px-4 py-2 rounded-full border border-app hover:border-pear-500 disabled:opacity-40" data-testid="zoho-test">
+          {testing ? "…" : (en ? "Test connection" : "Test verbinding")}
+        </button>
+        {testResult && (
+          <span className={`text-xs ${testResult.ok ? "text-emerald-600" : "text-red-500"}`} data-testid="zoho-test-result">
+            {testResult.ok ? `✓ ${testResult.org_name || "OK"} · DC ${testResult.dc}` : `✗ ${testResult.error}`}
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-fg mt-2">
+        {en
+          ? "Once saved, /admin/financials switches from mocked to live invoice data automatically."
+          : "Zodra opgeslagen schakelt /admin/financials automatisch van mocked naar live factuur-data."}
+      </p>
     </div>
   );
 };
@@ -1125,6 +1243,50 @@ const StarsRow = ({ n }) => (
   </div>
 );
 
+// -----------------------------------------------------------------------------
+// ManualReviewInviteRow — small inline card inside ReviewsAdmin that lets
+// admins send a one-shot review invite to any email address (used for paid
+// invoices while Zoho Books auto-trigger is not wired yet).
+// -----------------------------------------------------------------------------
+const ManualReviewInviteRow = ({ onSent }) => {
+  const { authHeader } = useAuth();
+  const [email, setEmail] = useState("");
+  const [project, setProject] = useState("");
+  const [invoice, setInvoice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async (e) => {
+    e.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Geldig e-mailadres invullen"); return; }
+    setBusy(true);
+    try {
+      const r = await axios.post(`${API}/admin/reviews/send-invite`, { email: email.trim(), project_name: project.trim() || null, invoice_id: invoice.trim() || null }, { headers: authHeader() });
+      if (r.data?.delivered) {
+        toast.success("Review-uitnodiging verstuurd");
+      } else {
+        toast.error("Kon niet versturen (mailer niet geconfigureerd?)");
+      }
+      setEmail(""); setProject(""); setInvoice("");
+      onSent?.();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Versturen mislukt");
+    } finally { setBusy(false); }
+  };
+  return (
+    <form onSubmit={send} className="mt-4 rounded-xl surface-2 border border-app p-3" data-testid="cms-manual-invite-row">
+      <p className="text-xs font-semibold text-strong mb-2 flex items-center gap-1.5"><Send className="h-3 w-3 text-violet-500" /> Handmatige review-uitnodiging <span className="text-[10px] font-normal text-muted-fg">(gebruik voor betaalde facturen — auto-trigger volgt zodra Zoho Books live is)</span></p>
+      <div className="grid sm:grid-cols-4 gap-2">
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="klant@voorbeeld.nl" className="rounded-lg border border-app px-3 py-2 text-sm sm:col-span-2" data-testid="cms-manual-invite-email" />
+        <input type="text" value={project} onChange={(e) => setProject(e.target.value)} placeholder="Projectnaam (optioneel)" className="rounded-lg border border-app px-3 py-2 text-sm" data-testid="cms-manual-invite-project" />
+        <input type="text" value={invoice} onChange={(e) => setInvoice(e.target.value)} placeholder="Factuur ID (optioneel)" className="rounded-lg border border-app px-3 py-2 text-sm" data-testid="cms-manual-invite-invoice" />
+      </div>
+      <button type="submit" disabled={busy} className="btn-primary text-xs mt-3" data-testid="cms-manual-invite-send">
+        {busy ? "Bezig…" : <><Send className="h-3 w-3" /> Verstuur uitnodiging</>}
+      </button>
+    </form>
+  );
+};
+
+
 const ReviewsAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
@@ -1222,14 +1384,15 @@ const ReviewsAdmin = () => {
             {scanBusy ? "Bezig…" : <><Send className="h-4 w-4" /> Scan nu</>}
           </button>
         </div>
+        <ManualReviewInviteRow onSent={() => axios.get(`${API}/admin/reviews/invite-log`, { headers: authHeader() }).then((r) => setInvLog(r.data || [])).catch(() => {})} />
         {invLog.length > 0 && (
           <div className="mt-5 border-t border-app pt-4">
             <h3 className="text-xs uppercase tracking-widest text-muted-fg mb-2 flex items-center gap-1"><Clock className="h-3 w-3" /> Laatste uitnodigingen ({invLog.length})</h3>
             <ul className="divide-y divide-app max-h-56 overflow-y-auto text-sm" data-testid="cms-invite-log">
               {invLog.slice(0, 15).map((l, i) => (
-                <li key={l.project_id || i} className="py-2 flex items-center justify-between gap-3">
+                <li key={`${l.project_id || "inv"}-${l.recorded_at || i}`} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-strong truncate">{l.project_name || l.project_id}</p>
+                    <p className="text-strong truncate">{l.project_name || l.project_id} {l.manual && <span className="text-[10px] uppercase tracking-widest rounded-full px-1.5 py-0.5 bg-violet-100 text-violet-700 ml-1">Handmatig</span>}</p>
                     <p className="text-xs text-muted-fg truncate">{l.email || "geen klant-e-mail gevonden"}</p>
                   </div>
                   <span className={`text-[10px] uppercase tracking-widest rounded-full px-2 py-0.5 font-bold shrink-0 ${l.delivered ? "bg-pear-100 text-pear-700" : "bg-amber-100 text-amber-700"}`}>
@@ -1707,12 +1870,107 @@ const UserQuickViewModal = ({ email, onClose, onEdit }) => {
               {row("BTW / Tax ID", d.tax_id)}
             </div>
           )}
+          <UserDocumentsPanel email={email} />
         </div>
         <footer className="px-6 py-3 border-t border-app flex items-center justify-end gap-2 surface">
           <button onClick={onClose} className="text-xs px-4 py-2 rounded-full border border-app hover:border-slate-400">Sluiten</button>
           <button onClick={onEdit} className="btn-primary" data-testid="user-quickview-edit">Bewerken</button>
         </footer>
       </div>
+    </div>
+  );
+};
+
+// --- Documents panel used inside the Users quick-view modal.
+// Admins upload contracts/invoices/other files here; the client sees them in
+// the "Documenten" tab of the portal (backed by /api/portal/documents).
+const UserDocumentsPanel = ({ email }) => {
+  const { authHeader } = useAuth();
+  const fileRef = useRef(null);
+  const [docs, setDocs] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [docType, setDocType] = useState("contract");
+  const [label, setLabel] = useState("");
+
+  const load = async () => {
+    try {
+      const r = await axios.get(`${API}/admin/portal/documents`, { params: { user_email: email }, headers: authHeader() });
+      setDocs(r.data?.documents || []);
+    } catch { /* keep silent — panel is best-effort */ }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [email]);
+
+  const upload = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024) { toast.error("Max 20 MB"); return; }
+    setBusy(true);
+    const fd = new FormData();
+    fd.append("file", f);
+    try {
+      await axios.post(`${API}/admin/portal/documents`, fd, {
+        params: { user_email: email, doc_type: docType, label: label || f.name },
+        headers: { ...authHeader() },
+      });
+      toast.success("Document geüpload");
+      setLabel("");
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Upload mislukt");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const remove = async (docId) => {
+    if (!window.confirm("Document verwijderen?")) return;
+    try {
+      await axios.delete(`${API}/admin/portal/documents/${docId}`, { headers: authHeader() });
+      toast.success("Verwijderd");
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Kon niet verwijderen");
+    }
+  };
+
+  const fmtSize = (b) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} kB` : `${(b / 1048576).toFixed(1)} MB`;
+  const badgeClass = (dt) => dt === "invoice" ? "bg-pear-100 text-pear-700" : dt === "contract" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700";
+
+  return (
+    <div className="mt-6 pt-4 border-t border-app" data-testid="user-documents-panel">
+      <h4 className="font-heading text-sm font-semibold text-strong mb-2">Documenten <span className="text-muted-fg font-normal">({docs.length})</span></h4>
+      <p className="text-[11px] text-muted-fg mb-3">Contracten en andere PDF&apos;s zijn direct downloadbaar voor de klant in de &quot;Documenten&quot; tab van het portaal.</p>
+      <div className="flex flex-wrap gap-2 items-center rounded-xl surface-2 border border-app p-3 mb-3">
+        <select value={docType} onChange={(e) => setDocType(e.target.value)} className="text-xs rounded-lg border border-app px-2 py-1.5" data-testid="user-doc-type">
+          <option value="contract">Contract</option>
+          <option value="invoice">Factuur</option>
+          <option value="other">Overig</option>
+        </select>
+        <input type="text" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optioneel)" className="text-xs flex-1 min-w-[10rem] rounded-lg border border-app px-2 py-1.5" data-testid="user-doc-label" />
+        <input ref={fileRef} type="file" onChange={upload} className="hidden" data-testid="user-doc-file-input" />
+        <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="btn-primary text-xs" data-testid="user-doc-upload">
+          {busy ? "…" : "Uploaden"}
+        </button>
+      </div>
+      {docs.length === 0 ? (
+        <p className="text-xs text-muted-fg">Nog geen documenten geüpload.</p>
+      ) : (
+        <ul className="space-y-1.5" data-testid="user-docs-list">
+          {docs.map((d) => (
+            <li key={d.id} className="flex items-center gap-2 rounded-lg surface-2 border border-app px-3 py-2 text-xs" data-testid={`user-doc-row-${d.id}`}>
+              <span className={`text-[9px] uppercase tracking-widest rounded-full px-1.5 py-0.5 font-bold ${badgeClass(d.doc_type)}`}>{d.doc_type}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-strong truncate">{d.label || d.filename}</p>
+                <p className="text-muted-fg text-[10px]">{d.filename} · {fmtSize(d.size)}</p>
+              </div>
+              <button onClick={() => remove(d.id)} className="text-red-500 hover:text-red-600 shrink-0" title="Verwijder" data-testid={`user-doc-delete-${d.id}`}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
@@ -2452,13 +2710,22 @@ const MailboxesAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true });
+  const [form, setForm] = useState({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX" });
   const [selectedId, setSelectedId] = useState(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [ingested, setIngested] = useState([]);
   const canManage = ["super_admin", "admin", "beheerder"].includes(user?.role);
 
   const load = async () => {
-    try { const r = await axios.get(`${API}/admin/mailboxes`, { headers: authHeader() }); setItems(r.data || []); }
-    catch { toast.error("Kon mailboxen niet laden"); }
+    try {
+      const [r, l] = await Promise.all([
+        axios.get(`${API}/admin/mailboxes`, { headers: authHeader() }),
+        axios.get(`${API}/admin/mailboxes/ingested`, { headers: authHeader() }).catch(() => ({ data: [] })),
+      ]);
+      setItems(r.data || []);
+      setIngested(l.data || []);
+    } catch { toast.error("Kon mailboxen niet laden"); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
@@ -2468,7 +2735,7 @@ const MailboxesAdmin = () => {
       const r = await axios.post(`${API}/admin/mailboxes`, form, { headers: authHeader() });
       toast.success("Mailbox toegevoegd");
       setItems([...items, r.data]);
-      setForm({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true });
+      setForm({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX" });
       setShowForm(false);
     } catch (e) { toast.error(e?.response?.data?.detail || "Toevoegen mislukt"); }
   };
@@ -2479,14 +2746,39 @@ const MailboxesAdmin = () => {
     catch { toast.error("Verwijderen mislukt"); }
   };
 
+  const syncNow = async () => {
+    setSyncBusy(true);
+    setSyncResult(null);
+    try {
+      const r = await axios.post(`${API}/admin/mailboxes/sync-now`, {}, { headers: authHeader() });
+      setSyncResult(r.data);
+      toast.success(`Sync klaar — ${r.data?.ingested || 0} nieuw, ${r.data?.matched || 0} gekoppeld aan ticket`);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Sync mislukt");
+    } finally { setSyncBusy(false); }
+  };
+
   return (
     <div data-testid="cms-mailboxes">
-      <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
-        <Inbox className="h-6 w-6 text-pear-500" /> Mailboxen (IMAP)
-      </h2>
-      <p className="text-sm text-muted-fg mt-1 mb-4">
-        Verbind je IMAP-mailboxen zodat ze samen met de Berichten-CMS lopen. Actuele bericht-synchronisatie is <strong>MOCKED</strong> — instellingen worden wel opgeslagen. Alleen beheerders en super admins kunnen mailboxen toevoegen of verwijderen.
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h2 className="font-heading text-2xl font-semibold text-strong flex items-center gap-2">
+          <Inbox className="h-6 w-6 text-pear-500" /> Mailboxen (IMAP)
+        </h2>
+        {items.length > 0 && (
+          <button onClick={syncNow} disabled={syncBusy} className="btn-primary text-xs shrink-0" data-testid="mailbox-sync-now">
+            {syncBusy ? "Bezig…" : <><Send className="h-3.5 w-3.5" /> Sync nu</>}
+          </button>
+        )}
+      </div>
+      <p className="text-sm text-muted-fg mt-1 mb-2">
+        Verbind je IMAP-mailboxen. De achtergrond-poller draait elke 60 seconden en scant elke inbox op nieuwe e-mails. Onderwerpen met <code className="font-mono text-pear-600">[#TKT-XXXXXX]</code> worden automatisch als antwoord aan de bijbehorende ticket-thread gehangen.
       </p>
+      {syncResult && (
+        <div className="mb-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-2.5 text-xs text-emerald-700 dark:text-emerald-300" data-testid="mailbox-sync-result">
+          {syncResult.mailboxes} mailbox(en) gescand · {syncResult.ingested} nieuw · {syncResult.matched} gekoppeld aan ticket
+        </div>
+      )}
 
       {items.length > 1 && (
         <div className="mb-4 flex items-center gap-2 flex-wrap" data-testid="mailbox-switcher">
@@ -2511,8 +2803,8 @@ const MailboxesAdmin = () => {
               <li key={m.id} className="p-4 flex items-center justify-between gap-4" data-testid={`mailbox-row-${m.id}`}>
                 <div className="min-w-0">
                   <p className="font-semibold text-strong">{m.label}</p>
-                  <p className="text-xs text-muted-fg font-mono">{m.email} · {m.host}:{m.port} {m.use_ssl && "(SSL)"}</p>
-                  <p className="text-[10px] text-muted-fg mt-0.5">Laatste sync: {m.last_sync ? new Date(m.last_sync).toLocaleString("nl-NL") : "nooit"}</p>
+                  <p className="text-xs text-muted-fg font-mono">{m.email} · {m.host}:{m.port} {m.use_ssl && "(SSL)"} · {m.folder || "INBOX"}</p>
+                  <p className="text-[10px] text-muted-fg mt-0.5">Laatste sync: {m.last_sync ? new Date(m.last_sync).toLocaleString("nl-NL") : "nooit"} {m.last_sync_counts && <span>· {m.last_sync_counts.ingested || 0} nieuw · {m.last_sync_counts.matched || 0} gekoppeld</span>}</p>
                 </div>
                 {canManage && (
                   <button onClick={() => del(m.id)} className="text-red-500 hover:text-red-600 text-xs px-3 py-1 border border-red-200 rounded-full" data-testid={`mailbox-delete-${m.id}`}>
@@ -2539,7 +2831,8 @@ const MailboxesAdmin = () => {
               <input type="number" placeholder="Port" value={form.port} onChange={(e) => setForm({ ...form, port: parseInt(e.target.value, 10) || 993 })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-port" />
               <input required placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-username" />
               <input required type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-password" />
-              <label className="flex items-center gap-2 text-xs md:col-span-2">
+              <input placeholder="Folder (default INBOX)" value={form.folder} onChange={(e) => setForm({ ...form, folder: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-folder" />
+              <label className="flex items-center gap-2 text-xs md:col-span-1">
                 <input type="checkbox" checked={form.use_ssl} onChange={(e) => setForm({ ...form, use_ssl: e.target.checked })} className="accent-pear-500" data-testid="mailbox-input-ssl" />
                 SSL/TLS (aanbevolen)
               </label>
@@ -2551,8 +2844,28 @@ const MailboxesAdmin = () => {
           )}
         </>
       )}
+      {ingested.length > 0 && (
+        <div className="mt-6" data-testid="mailbox-ingest-log">
+          <h3 className="text-xs uppercase tracking-widest text-muted-fg mb-2 flex items-center gap-1"><Clock className="h-3 w-3" /> Laatste 100 IMAP-ingests</h3>
+          <ul className="divide-y divide-app rounded-2xl border border-app surface max-h-72 overflow-y-auto">
+            {ingested.slice(0, 100).map((r, i) => (
+              <li key={r.uid + "-" + i} className="p-3 flex items-center justify-between gap-3 text-xs">
+                <div className="min-w-0 flex-1">
+                  <p className="text-strong truncate">{r.subject || "(geen onderwerp)"}</p>
+                  <p className="text-muted-fg truncate">{r.from_email} · {new Date(r.ingested_at).toLocaleString("nl-NL")}</p>
+                </div>
+                {r.ticket_ref ? (
+                  <span className="rounded-full bg-pear-100 text-pear-700 px-2 py-0.5 font-mono shrink-0" data-testid={`mailbox-ingest-tkt-${r.ticket_ref}`}>#TKT-{r.ticket_ref}</span>
+                ) : (
+                  <span className="rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 shrink-0">Zonder ticket</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="text-[11px] text-muted-fg mt-4">
-        <strong>Note:</strong> IMAP-fetching is momenteel MOCKED. Instellingen worden opgeslagen, maar mails worden nog niet automatisch opgehaald. Voor productie moet <code>python-imaplib</code>/<code>aioimaplib</code> gekoppeld worden + Zoho Desk sync via subject-parsing (regex <code>#TKT-\d+</code>).
+        Wachtwoorden worden Fernet-versleuteld opgeslagen. De poller draait om de 60 seconden en verwerkt onderwerpen met <code className="font-mono">[#TKT-XXXXXX]</code> automatisch naar de juiste ticket-thread. Gebruik &quot;Sync nu&quot; om handmatig te forceren.
       </p>
     </div>
   );

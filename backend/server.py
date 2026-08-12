@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
 import base64
+import httpx
 import html as _html
 import re as _re
 from datetime import datetime, timezone, timedelta
@@ -29,6 +30,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from zoho_portal import make_router as make_zoho_router
 from review_invites import scan_now as review_scan_now, start_background_poller as review_poller
+from imap_parser import sync_all as imap_sync_all, start_background_poller as imap_poller
 from stripe_payments import make_router as make_stripe_router
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -1268,6 +1270,27 @@ async def admin_scan_review_invites(current=Depends(require_admin)):
     return await review_scan_now(db, _send_email)
 
 
+class ManualReviewInvite(BaseModel):
+    email: EmailStr
+    project_name: Optional[str] = Field(None, max_length=200)
+    invoice_id: Optional[str] = Field(None, max_length=100)
+
+
+@api_router.post("/admin/reviews/send-invite")
+async def admin_manual_review_invite(payload: ManualReviewInvite, current=Depends(require_admin)):
+    """Manually send a single review invite — used from the CMS "Verstuur review-verzoek"
+    button on paid invoices. Once Zoho Books is fully live the auto-scanner takes over."""
+    from review_invites import send_manual_invite
+    res = await send_manual_invite(
+        db, _send_email,
+        email=payload.email,
+        name=payload.project_name or "PearBlue opdracht",
+        subject_ref=payload.invoice_id,
+    )
+    await _log_activity(current.get("email"), "review_invite_manual", target=payload.email, meta={"delivered": res.get("delivered")})
+    return res
+
+
 @api_router.get("/admin/reviews/invite-log")
 async def admin_invite_log(current=Depends(require_admin)):
     items = await db.review_invites.find({}, {"_id": 0}).sort("recorded_at", -1).to_list(200)
@@ -2315,6 +2338,7 @@ class MailboxCreate(BaseModel):
     username: str = Field(..., min_length=1, max_length=200)
     password: str = Field(..., min_length=1, max_length=200)
     use_ssl: bool = True
+    folder: str = Field("INBOX", min_length=1, max_length=80)
 
 
 @api_router.get("/admin/mailboxes")
@@ -2342,6 +2366,7 @@ async def add_mailbox(payload: MailboxCreate, current=Depends(require_admin)):
         "username": payload.username.strip(),
         "password": enc_secret(payload.password),  # Fernet-encrypted at rest
         "use_ssl": payload.use_ssl,
+        "folder": (payload.folder or "INBOX").strip() or "INBOX",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current.get("email"),
         "last_sync": None,
@@ -2360,6 +2385,22 @@ async def del_mailbox(mid: str, current=Depends(require_admin)):
     if res.deleted_count == 0:
         raise HTTPException(404, "Mailbox niet gevonden")
     return {"status": "deleted"}
+
+
+@api_router.post("/admin/mailboxes/sync-now")
+async def mailboxes_sync_now(current=Depends(require_admin)):
+    """Force an immediate IMAP scan across every configured mailbox.
+    Used from the CMS 'Sync nu' button next to the mailboxes list."""
+    totals = await imap_sync_all(db, dec_secret)
+    await _log_activity(current.get("email"), "imap_sync_manual", meta=totals)
+    return totals
+
+
+@api_router.get("/admin/mailboxes/ingested")
+async def mailboxes_ingested(current=Depends(require_admin)):
+    """Recent IMAP ingest log so admins can see what was picked up."""
+    items = await db.imap_ingested.find({}, {"_id": 0}).sort("ingested_at", -1).to_list(100)
+    return items
 
 
 # ---- Virus scanner (stub — records only, no real scanning) ----
@@ -2638,6 +2679,205 @@ def _range_from_period(period: str, custom_from: Optional[str], custom_to: Optio
     return start, end
 
 
+# ============================================================================
+# Zoho Books integration — admin-configurable via CMS (Site instellingen →
+# Engineering → Zoho Books) instead of env vars. Credentials are encrypted at
+# rest with Fernet (same cipher as Brevo/IMAP passwords). If any field is
+# empty the /admin/financials endpoint falls back to mocked data so the CMS
+# still renders.
+# ============================================================================
+
+class ZohoBooksCreds(BaseModel):
+    client_id: Optional[str] = ""
+    client_secret: Optional[str] = ""
+    refresh_token: Optional[str] = ""
+    org_id: Optional[str] = ""
+    dc: Optional[str] = "eu"  # "eu" | "com" | "in" | "com.au"
+
+
+class ZohoBooksCredsUpdate(BaseModel):
+    client_id: Optional[str] = Field(None, max_length=200)
+    client_secret: Optional[str] = Field(None, max_length=200)
+    refresh_token: Optional[str] = Field(None, max_length=500)
+    org_id: Optional[str] = Field(None, max_length=100)
+    dc: Optional[str] = Field(None, pattern="^(eu|com|in|com\\.au)$")
+
+
+def _books_endpoints(dc: str) -> tuple:
+    """Return (accounts_url, api_base) for the given Zoho data-centre."""
+    dc = (dc or "eu").lower()
+    if dc == "eu":
+        return "https://accounts.zoho.eu", "https://www.zohoapis.eu/books/v3"
+    if dc == "in":
+        return "https://accounts.zoho.in", "https://www.zohoapis.in/books/v3"
+    if dc == "com.au":
+        return "https://accounts.zoho.com.au", "https://www.zohoapis.com.au/books/v3"
+    return "https://accounts.zoho.com", "https://www.zohoapis.com/books/v3"
+
+
+async def _get_books_creds() -> Optional[dict]:
+    """Fetch stored Zoho Books creds; decrypt secrets. Returns None if incomplete."""
+    doc = await db.integrations.find_one({"_id": "zoho_books"}, {"_id": 0})
+    if not doc:
+        return None
+    cid = dec_secret(doc.get("client_id", "")) or ""
+    cs = dec_secret(doc.get("client_secret", "")) or ""
+    rt = dec_secret(doc.get("refresh_token", "")) or ""
+    org = (doc.get("org_id") or "").strip()
+    dc = doc.get("dc") or "eu"
+    if not (cid and cs and rt and org):
+        return None
+    return {"client_id": cid, "client_secret": cs, "refresh_token": rt, "org_id": org, "dc": dc}
+
+
+@api_router.get("/admin/integrations/zoho-books")
+async def get_zoho_books_status(current=Depends(require_admin)):
+    doc = await db.integrations.find_one({"_id": "zoho_books"}, {"_id": 0}) or {}
+    return {
+        "configured": bool(doc.get("refresh_token") and doc.get("org_id")),
+        "client_id_last4": (dec_secret(doc.get("client_id", ""))[-4:] if doc.get("client_id") else ""),
+        "org_id": doc.get("org_id", ""),
+        "dc": doc.get("dc", "eu"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+@api_router.put("/admin/integrations/zoho-books")
+async def put_zoho_books_creds(payload: ZohoBooksCredsUpdate, current=Depends(require_admin)):
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen beheerders mogen integraties instellen")
+    updates = {}
+    if payload.client_id is not None:
+        updates["client_id"] = enc_secret(payload.client_id.strip())
+    if payload.client_secret is not None:
+        updates["client_secret"] = enc_secret(payload.client_secret.strip())
+    if payload.refresh_token is not None:
+        updates["refresh_token"] = enc_secret(payload.refresh_token.strip())
+    if payload.org_id is not None:
+        updates["org_id"] = payload.org_id.strip()
+    if payload.dc is not None:
+        updates["dc"] = payload.dc.strip()
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updates["updated_by"] = current.get("email")
+    await db.integrations.update_one({"_id": "zoho_books"}, {"$set": updates}, upsert=True)
+    await _log_activity(current.get("email"), "zoho_books_creds_updated")
+    return {"status": "saved"}
+
+
+@api_router.post("/admin/integrations/zoho-books/test")
+async def test_zoho_books_conn(current=Depends(require_admin)):
+    """Try to exchange refresh_token → access_token and hit /organizations."""
+    creds = await _get_books_creds()
+    if not creds:
+        raise HTTPException(400, "Vul eerst alle 4 velden in en sla op.")
+    try:
+        token = await _books_access_token(creds)
+    except Exception as e:
+        raise HTTPException(400, f"Refresh token exchange faalde: {e}")
+    accounts, base = _books_endpoints(creds["dc"])
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(
+                f"{base}/organizations",
+                headers={"Authorization": f"Zoho-oauthtoken {token}"},
+            )
+        r.raise_for_status()
+        orgs = r.json().get("organizations", [])
+        match = next((o for o in orgs if str(o.get("organization_id")) == creds["org_id"]), None)
+        return {
+            "status": "ok",
+            "org_id": creds["org_id"],
+            "org_matched": bool(match),
+            "org_name": match.get("name") if match else "",
+            "dc": creds["dc"],
+        }
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(400, f"Zoho API antwoordde met {e.response.status_code}: {e.response.text[:180]}")
+    except Exception as e:
+        raise HTTPException(500, f"Onbekende fout: {e}")
+
+
+async def _books_access_token(creds: dict) -> str:
+    """Exchange refresh_token → short-lived access_token (cached ~50min in memory)."""
+    accounts, _ = _books_endpoints(creds["dc"])
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post(
+            f"{accounts}/oauth/v2/token",
+            data={
+                "refresh_token": creds["refresh_token"],
+                "client_id": creds["client_id"],
+                "client_secret": creds["client_secret"],
+                "grant_type": "refresh_token",
+            },
+        )
+    r.raise_for_status()
+    tok = r.json().get("access_token")
+    if not tok:
+        raise RuntimeError("Zoho responded without access_token")
+    return tok
+
+
+async def _zoho_books_fetch(start, end) -> Optional[dict]:
+    """Pull live invoice stats from Zoho Books for the given date window.
+    Returns None if credentials are missing so the caller can fall back to mocks."""
+    creds = await _get_books_creds()
+    if not creds:
+        return None
+    try:
+        token = await _books_access_token(creds)
+        _, base = _books_endpoints(creds["dc"])
+        params = {
+            "organization_id": creds["org_id"],
+            "date_start": start.strftime("%Y-%m-%d"),
+            "date_end": end.strftime("%Y-%m-%d"),
+            "per_page": 200,
+        }
+        headers = {"Authorization": f"Zoho-oauthtoken {token}"}
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get(f"{base}/invoices", params=params, headers=headers)
+        r.raise_for_status()
+        invoices = r.json().get("invoices", [])
+    except Exception as e:
+        logger.warning(f"Zoho Books fetch failed, falling back to mock: {e}")
+        return None
+
+    invoiced_total = 0.0
+    paid_total = 0.0
+    outstanding = 0.0
+    overdue = 0.0
+    paid_count = 0
+    sent_count = len(invoices)
+    per_client: dict = {}
+
+    for inv in invoices:
+        total = float(inv.get("total") or 0)
+        balance = float(inv.get("balance") or 0)
+        inv_status = (inv.get("status") or "").lower()
+        client = inv.get("customer_name") or "Onbekend"
+        invoiced_total += total
+        per_client[client] = per_client.get(client, 0.0) + total
+        if inv_status == "paid":
+            paid_total += total
+            paid_count += 1
+        elif inv_status == "overdue":
+            overdue += balance
+            outstanding += balance
+        elif inv_status not in {"draft", "void"}:
+            outstanding += balance
+
+    top = sorted(per_client.items(), key=lambda x: x[1], reverse=True)[:5]
+    return {
+        "mocked": False,
+        "invoiced_total_eur": round(invoiced_total, 2),
+        "paid_total_eur": round(paid_total, 2),
+        "outstanding_eur": round(outstanding, 2),
+        "overdue_eur": round(overdue, 2),
+        "invoices_sent": sent_count,
+        "invoices_paid": paid_count,
+        "top_clients": [{"name": n, "total_eur": round(t, 2)} for n, t in top],
+    }
+
+
 @api_router.get("/admin/financials")
 async def financials_dashboard(
     period: str = "30d",
@@ -2651,37 +2891,37 @@ async def financials_dashboard(
     chat_q = {
         "created_at": {"$gte": start.isoformat(), "$lte": end.isoformat()},
     }
-    # count messages in range; the DB stores created_at as ISO string
     total_msgs = await db.chat_messages.count_documents(chat_q)
-    # Approx: 1 message ≈ ~800 tokens combined I/O (rough estimate)
     avg_tokens_per_msg = 800
-    input_cost_per_mtok = 3.0  # USD per 1M input tokens (Claude Sonnet 4.6)
+    input_cost_per_mtok = 3.0
     output_cost_per_mtok = 15.0
-    # 30% input 70% output split (typical chat)
     total_tokens = total_msgs * avg_tokens_per_msg
     input_tokens = total_tokens * 0.3
     output_tokens = total_tokens * 0.7
     est_usd = (input_tokens * input_cost_per_mtok + output_tokens * output_cost_per_mtok) / 1_000_000
-    est_eur = est_usd * 0.92  # rough FX
-    est_credits = est_usd * 100  # 1 credit ≈ $0.01
+    est_eur = est_usd * 0.92
+    est_credits = est_usd * 100
 
-    # ---- Zoho Books stats — MOCKED until credentials + endpoint wiring ----
     days_span = max(1, (end - start).days or 1)
-    mocked_zoho = {
-        "mocked": True,
-        "reason": "zoho_books_not_wired",
-        "invoiced_total_eur": round(days_span * 145.0, 2),
-        "paid_total_eur": round(days_span * 118.0, 2),
-        "outstanding_eur": round(days_span * 27.0, 2),
-        "overdue_eur": round(days_span * 8.5, 2),
-        "invoices_sent": days_span * 3,
-        "invoices_paid": days_span * 2,
-        "top_clients": [
-            {"name": "Voorbeeld Klant BV", "total_eur": round(days_span * 45.0, 2)},
-            {"name": "Demo Stichting", "total_eur": round(days_span * 32.0, 2)},
-            {"name": "Testbedrijf", "total_eur": round(days_span * 24.0, 2)},
-        ],
-    }
+
+    # ---- Zoho Books stats — live if credentials configured in CMS, else mocked ----
+    zoho_books = await _zoho_books_fetch(start, end)
+    if not zoho_books:
+        zoho_books = {
+            "mocked": True,
+            "reason": "zoho_books_not_wired",
+            "invoiced_total_eur": round(days_span * 145.0, 2),
+            "paid_total_eur": round(days_span * 118.0, 2),
+            "outstanding_eur": round(days_span * 27.0, 2),
+            "overdue_eur": round(days_span * 8.5, 2),
+            "invoices_sent": days_span * 3,
+            "invoices_paid": days_span * 2,
+            "top_clients": [
+                {"name": "Voorbeeld Klant BV", "total_eur": round(days_span * 45.0, 2)},
+                {"name": "Demo Stichting", "total_eur": round(days_span * 32.0, 2)},
+                {"name": "Testbedrijf", "total_eur": round(days_span * 24.0, 2)},
+            ],
+        }
 
     return {
         "period": period,
@@ -2695,11 +2935,11 @@ async def financials_dashboard(
             "estimated_credits": round(est_credits, 2),
             "note": "Schatting op basis van $3/1M input + $15/1M output tokens (Claude Sonnet 4.6). Werkelijke Emergent-verbruik zichtbaar in Emergent Profile → Universal Key.",
         },
-        "zoho_books": mocked_zoho,
+        "zoho_books": zoho_books,
         "totals": {
             "combined_costs_eur": round(est_eur, 2),
-            "combined_income_eur": mocked_zoho["paid_total_eur"],
-            "estimated_margin_eur": round(mocked_zoho["paid_total_eur"] - est_eur, 2),
+            "combined_income_eur": zoho_books["paid_total_eur"],
+            "estimated_margin_eur": round(zoho_books["paid_total_eur"] - est_eur, 2),
         },
     }
 
@@ -2765,6 +3005,97 @@ async def chat_ratings_stats(days: int = 30, current=Depends(require_admin)):
     }
 
 
+# ============================================================================
+# Portal Documents — admin uploads client documents (contracts / files) that
+# the client can then download from the "Documenten" tab in the portal.
+# Docs are stored in MongoDB as base64 blobs (same pattern used by contact
+# message attachments) so we don't need object storage yet.
+# ============================================================================
+
+def _current_portal_email(request: Request) -> str:
+    """Resolve the currently signed-in portal client's email. Zoho session lives
+    in `request.session['portal_user_id']` and matches `zoho_users.zoho_user_id`."""
+    uid = request.session.get("portal_user_id") if hasattr(request, "session") else None
+    if not uid:
+        raise HTTPException(401, "Not signed in to the client portal")
+    return uid  # our uid is the email address already
+
+
+@api_router.get("/portal/documents")
+async def portal_documents_list(request: Request):
+    """List documents visible to the currently signed-in portal client."""
+    email = _current_portal_email(request)
+    docs = await db.portal_documents.find(
+        {"user_email": email.lower()},
+        {"_id": 0, "content_base64": 0},
+    ).sort("uploaded_at", -1).to_list(200)
+    return {"documents": docs}
+
+
+@api_router.get("/portal/documents/{doc_id}/download")
+async def portal_documents_download(doc_id: str, request: Request):
+    email = _current_portal_email(request)
+    doc = await db.portal_documents.find_one({"id": doc_id, "user_email": email.lower()})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    try:
+        raw = base64.b64decode(doc.get("content_base64", ""))
+    except Exception:
+        raise HTTPException(500, "Document is corrupt")
+    filename = doc.get("filename") or "document"
+    return Response(
+        content=raw,
+        media_type=doc.get("mime_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api_router.get("/admin/portal/documents")
+async def admin_portal_documents_list(user_email: Optional[str] = None, current=Depends(require_permission("users"))):
+    q = {}
+    if user_email:
+        q["user_email"] = user_email.lower()
+    docs = await db.portal_documents.find(q, {"_id": 0, "content_base64": 0}).sort("uploaded_at", -1).to_list(500)
+    return {"documents": docs}
+
+
+@api_router.post("/admin/portal/documents")
+async def admin_portal_documents_upload(
+    user_email: str = Query(..., description="Email of the portal client this document belongs to"),
+    doc_type: str = Query("contract", pattern="^(contract|invoice|other)$"),
+    label: Optional[str] = Query(None, max_length=200),
+    file: UploadFile = File(...),
+    current=Depends(require_permission("users")),
+):
+    raw = await file.read()
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(413, "File too large (max 20 MB)")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_email": user_email.lower(),
+        "filename": file.filename or "document",
+        "mime_type": file.content_type or "application/octet-stream",
+        "size": len(raw),
+        "doc_type": doc_type,
+        "label": (label or "").strip() or (file.filename or "Document"),
+        "content_base64": base64.b64encode(raw).decode("ascii"),
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "uploaded_by": current.get("email"),
+    }
+    await db.portal_documents.insert_one(doc)
+    await _log_activity(current.get("email"), "portal_document_upload", target=user_email.lower(), meta={"filename": doc["filename"], "size": len(raw)})
+    return {"id": doc["id"], "filename": doc["filename"], "size": doc["size"]}
+
+
+@api_router.delete("/admin/portal/documents/{doc_id}")
+async def admin_portal_documents_delete(doc_id: str, current=Depends(require_permission("users"))):
+    res = await db.portal_documents.delete_one({"id": doc_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Document not found")
+    await _log_activity(current.get("email"), "portal_document_delete", target=doc_id)
+    return {"deleted": True}
+
+
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
 app.include_router(make_stripe_router(db))
@@ -2802,6 +3133,8 @@ async def on_startup():
     await seed_virus_scans()
     # Background poller for review invites (runs every ~15 min)
     asyncio.create_task(review_poller(db, _send_email))
+    # Background poller for IMAP inbound tickets (runs every ~60s)
+    asyncio.create_task(imap_poller(db, dec_secret))
 
 
 async def seed_virus_scans():

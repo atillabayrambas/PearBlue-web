@@ -268,3 +268,33 @@ async def start_background_poller(db, send_email_fn):
 async def scan_now(db, send_email_fn) -> dict:
     """Admin-triggered scan (exposed via /api/admin/reviews/scan-invites)."""
     return await _scan_once(db, send_email_fn)
+
+
+async def send_manual_invite(db, send_email_fn, *, email: str, name: str, subject_ref: Optional[str] = None) -> dict:
+    """One-shot review invite triggered manually from the CMS.
+
+    Used for invoices where auto-triggering isn't wired yet: the admin clicks
+    "Verstuur review-verzoek" on a paid invoice and this fires the same
+    bilingual email template used by the auto-scanner.
+    """
+    email = (email or "").strip().lower()
+    name = (name or "PearBlue project").strip()
+    if not email:
+        return {"delivered": False, "error": "email is empty"}
+    review_url = f"{FRONTEND_URL}/review?project={quote_plus(name)}"
+    sent = await send_email_fn(
+        email,
+        "Bedankt voor je project bij PearBlue — laat je review achter",
+        _bilingual_invite_html(name, review_url),
+    )
+    doc = {
+        "project_id": subject_ref or f"manual:{datetime.now(timezone.utc).timestamp()}",
+        "project_name": name,
+        "email": email,
+        "sent_at": datetime.now(timezone.utc).isoformat() if sent else None,
+        "delivered": bool(sent),
+        "manual": True,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.review_invites.insert_one(doc)
+    return {"delivered": bool(sent), "email": email, "project": name}

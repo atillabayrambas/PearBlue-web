@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { motion } from "framer-motion";
-import { Mail, ArrowRight, Wrench, Rocket, Loader2, CheckCircle2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Mail, ArrowRight, Wrench, Rocket, Loader2, CheckCircle2, Globe2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -66,10 +66,29 @@ const COPY = {
   },
 };
 
+// Three PearBlue services — rendered as a horizontal bulleted line under the
+// mode chip. Kept intentionally short so it doesn't compete with the H1.
+const SERVICES = [
+  { nl: "Media Websites", en: "Media Websites" },
+  { nl: "IT-diensten", en: "IT Services" },
+  { nl: "Cybersecurity", en: "Cybersecurity" },
+];
+
 export default function MaintenancePage({ config, forceMode }) {
   const status = forceMode || config?.site_status || "maintenance";
   const mode = status === "coming_soon" ? "coming_soon" : "maintenance";
-  const lang = resolveLang(config?.site_status_lang);
+  // Language: CMS override first, else stored preference, else browser default.
+  const [lang, setLang] = useState(() => {
+    if (typeof window === "undefined") return "nl";
+    const stored = localStorage.getItem("pb_splash_lang");
+    if (stored === "nl" || stored === "en") return stored;
+    return resolveLang(config?.site_status_lang);
+  });
+  useEffect(() => {
+    // Re-resolve when the CMS-side lang changes (only if user hasn't picked a manual override).
+    const stored = localStorage.getItem("pb_splash_lang");
+    if (!stored) setLang(resolveLang(config?.site_status_lang));
+  }, [config?.site_status_lang]);
   const nl = lang === "nl";
   const copy = COPY[mode];
   const Mascot = copy.Mascot;
@@ -77,19 +96,37 @@ export default function MaintenancePage({ config, forceMode }) {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Pick a random bokeh URL once per mount (i.e. every full page load).
-  const bokehUrl = useMemo(() => {
-    if (config?.maintenance_bg_mode === "custom" && config?.maintenance_bg_url) {
-      return config.maintenance_bg_url;
-    }
-    return BOKEH_BACKGROUNDS[Math.floor(Math.random() * BOKEH_BACKGROUNDS.length)];
-  }, [config?.maintenance_bg_mode, config?.maintenance_bg_url]);
+  // Bokeh screensaver: pick an initial index randomly, then rotate every 8s.
+  // Custom URL wins — no rotation in that case. Pauses when tab is hidden so
+  // background tabs don't waste bandwidth on unused Unsplash images.
+  const useCustom = config?.maintenance_bg_mode === "custom" && !!config?.maintenance_bg_url;
+  const [bokehIdx, setBokehIdx] = useState(() => Math.floor(Math.random() * BOKEH_BACKGROUNDS.length));
+  useEffect(() => {
+    if (useCustom) return;
+    let iv = null;
+    const start = () => {
+      if (iv) return;
+      iv = setInterval(() => setBokehIdx((i) => (i + 1) % BOKEH_BACKGROUNDS.length), 8000);
+    };
+    const stop = () => { if (iv) { clearInterval(iv); iv = null; } };
+    const onVisibility = () => (document.hidden ? stop() : start());
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [useCustom]);
+  const bokehUrl = useCustom ? config.maintenance_bg_url : BOKEH_BACKGROUNDS[bokehIdx];
 
   useEffect(() => {
     document.title = nl
       ? (mode === "coming_soon" ? "Binnenkort online · PearBlue" : "In onderhoud · PearBlue")
       : (mode === "coming_soon" ? "Coming soon · PearBlue" : "Under maintenance · PearBlue");
   }, [nl, mode]);
+
+  const toggleLang = () => {
+    const next = lang === "nl" ? "en" : "nl";
+    setLang(next);
+    try { localStorage.setItem("pb_splash_lang", next); } catch { /* ignore */ }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -119,19 +156,27 @@ export default function MaintenancePage({ config, forceMode }) {
       data-testid="maintenance-page"
       data-mode={mode}
     >
-      {/* Bokeh photo layer, blurred at 10% for soft-focus feel */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: `url(${bokehUrl})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          filter: "blur(10px) saturate(1.15)",
-          transform: "scale(1.08)", // hide blur edges
-        }}
-        aria-hidden
-        data-testid="maintenance-bokeh"
-      />
+      {/* Bokeh photo layer with cross-fade — 10% blur for soft depth-of-field.
+          Every 8s the index rotates so waiting visitors always see something new. */}
+      <AnimatePresence mode="sync">
+        <motion.div
+          key={bokehUrl}
+          className="absolute inset-0"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 1.6, ease: "easeInOut" }}
+          style={{
+            backgroundImage: `url(${bokehUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            filter: "blur(10px) saturate(1.15)",
+            transform: "scale(1.08)",
+          }}
+          aria-hidden
+          data-testid="maintenance-bokeh"
+        />
+      </AnimatePresence>
       {/* Dark gradient wash so text always pops */}
       <div
         className="absolute inset-0"
@@ -178,6 +223,29 @@ export default function MaintenancePage({ config, forceMode }) {
         ))}
       </div>
 
+      {/* Top-right controls: language toggle + admin lock (both float over content) */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={toggleLang}
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 backdrop-blur px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition"
+          aria-label={nl ? "Wissel taal" : "Switch language"}
+          data-testid="maintenance-lang-toggle"
+        >
+          <Globe2 className="h-3.5 w-3.5" />
+          <span>{nl ? "🇳🇱 NL" : "🇬🇧 EN"}</span>
+        </button>
+        <a
+          href="/admin/login"
+          className="inline-flex items-center justify-center h-8 w-8 rounded-full border border-white/25 bg-white/10 backdrop-blur text-white hover:bg-white/20 transition"
+          aria-label={nl ? "Beheerder inlog" : "Admin sign-in"}
+          title={nl ? "Beheerder inlog" : "Admin sign-in"}
+          data-testid="maintenance-admin-lock"
+        >
+          <Lock className="h-3.5 w-3.5" />
+        </a>
+      </div>
+
       {/* Main content */}
       <div className="relative z-10 flex min-h-screen flex-col">
         <main className="flex-1 flex items-center justify-center px-6 sm:px-10 lg:px-16 py-12">
@@ -198,7 +266,7 @@ export default function MaintenancePage({ config, forceMode }) {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className={`inline-flex items-center gap-2 rounded-full border ${accentClass.chipBg} backdrop-blur px-4 py-1.5 text-xs uppercase tracking-[0.3em] mb-5 ${accentClass.chip}`}
+              className={`inline-flex items-center gap-2 rounded-full border ${accentClass.chipBg} backdrop-blur px-4 py-1.5 text-xs uppercase tracking-[0.3em] mb-4 ${accentClass.chip}`}
               data-testid="maintenance-mode-chip"
             >
               <motion.span
@@ -211,10 +279,26 @@ export default function MaintenancePage({ config, forceMode }) {
               {copy.overline[lang]}
             </motion.div>
 
+            {/* Three services — bullets separated by fresh pear-blue dots */}
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.28 }}
+              className="mb-5 text-[11px] sm:text-xs uppercase tracking-[0.25em] text-white/70 flex items-center justify-center flex-wrap gap-x-2 gap-y-1"
+              data-testid="maintenance-services"
+            >
+              {SERVICES.map((s, i) => (
+                <React.Fragment key={s.en}>
+                  {i > 0 && <span className="inline-block h-1.5 w-1.5 rounded-full bg-pear-400/80" aria-hidden />}
+                  <span>{s[lang]}</span>
+                </React.Fragment>
+              ))}
+            </motion.div>
+
             <motion.h1
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.28 }}
+              transition={{ delay: 0.35 }}
               className="font-heading text-4xl sm:text-5xl lg:text-6xl font-medium text-white leading-tight"
               data-testid="maintenance-title"
             >
@@ -224,7 +308,7 @@ export default function MaintenancePage({ config, forceMode }) {
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
+              transition={{ delay: 0.42 }}
               className="mt-5 text-base sm:text-lg text-white/85 max-w-2xl mx-auto whitespace-pre-line"
               data-testid="maintenance-message"
             >
@@ -235,7 +319,7 @@ export default function MaintenancePage({ config, forceMode }) {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.45 }}
+              transition={{ delay: 0.5 }}
               className="mt-10 mx-auto max-w-lg text-left"
             >
               {done ? (

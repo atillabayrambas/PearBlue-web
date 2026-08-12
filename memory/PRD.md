@@ -21,7 +21,25 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 29 (this session, v0.6.5-Beta continued) — Coming-soon splash + admin bypass
+### Feb 2026 — Iteration 32 (this session, v0.6.5-Beta continued) — Zoho Books live, manual review invite & IMAP parser
+- **Zoho Books credentials in CMS** — nieuwe kaart in Site instellingen → Engineering met 4 velden (client id, client secret, refresh token, org id) + data-centre dropdown (EU/US/IN/AU). Geheimen worden Fernet-versleuteld opgeslagen. Nieuwe endpoints: `GET/PUT /api/admin/integrations/zoho-books` en `POST /admin/integrations/zoho-books/test`. Status-badge toont "Live" of "Nog niet ingesteld".
+- **Live financials fallback** — `/api/admin/financials` haalt nu live invoice-data uit Zoho Books zodra credentials zijn gevuld. Op elke fout (ongeldige token, netwerkfout, verkeerde org) valt het automatisch terug naar mocked, dus het CMS blijft altijd renderen.
+- **Handmatige review-uitnodiging** — nieuwe `ManualReviewInviteRow` in `/admin/reviews`: vul e-mail + projectnaam + factuur-id, klik "Verstuur uitnodiging" en de tweetalige review-e-mail (via bestaande `review_invites._bilingual_invite_html`) gaat direct de deur uit. Verschijnt met "Handmatig" badge in de invite-log.
+- **IMAP inbound parser** — nieuwe module `backend/imap_parser.py` die achter de schermen elke 60s alle actieve mailboxen scant, `[#TKT-XXXXXX]` uit subjects extraheert en het bericht als reply aan de bijbehorende ticket-thread hangt (via `contact_message_replies`). Idempotent via `imap_ingested` collectie.
+- **Mailboxen CMS uitbreid** — "Sync nu" knop, nieuwe folder-veld (default INBOX), en een "Laatste 100 IMAP-ingests" log onderaan die per e-mail toont welk ticket-nummer werd gematcht.
+- **Socket timeout** — `IMAP_SOCKET_TIMEOUT` (default 10s) om te voorkomen dat een defecte host de poller-thread blokkeert.
+- **Testing**: iteration_32.json → 100% backend (6/6) + 100% frontend. Alle nieuwe flows geverifieerd.
+
+### Feb 2026 — Iteration 30 (v0.6.5-Beta) — Splash improvements + Documents portal
+- **Splash top-right controls** — floating `Language toggle` (globe + flag + code) en `Admin lock` (slot-icoon → `/admin/login`) rechtsboven op elke splash. Taalkeuze wordt onthouden in `localStorage.pb_splash_lang`.
+- **3 diensten onder mode-chip** — nieuwe centrale bulleted lijn ("MEDIA WEBSITES • IT-DIENSTEN • CYBERSECURITY") vertaald naar EN. Zit netjes tussen de MAINTENANCE/COMING SOON chip en de H1.
+- **Bokeh screensaver** — de willekeurige bokeh-foto wisselt nu elke 8s zacht (1.6s cross-fade via `AnimatePresence`). Pauzeert automatisch wanneer de tab verborgen is, dus geen onnodig Unsplash-verkeer in background tabs.
+- **Documents Portal** — nieuwe `"Documenten"` `SectionCard` in `/portal` (naast Facturen/Projecten/Tickets). Toont contracten/facturen/overige documenten met type-badge + download-knop. Endpoint `/api/portal/documents` (session-gated) + `/portal/documents/{id}/download` streamt blob.
+- **Admin document upload** — nieuwe `UserDocumentsPanel` binnen de User QuickView-modal. Selecteer doc_type (contract/factuur/overig) + label, klik Uploaden. Bestanden tot 20 MB worden als base64 in `db.portal_documents` opgeslagen. Delete-knop verwijdert direct.
+- **Endpoints toegevoegd**: `GET/POST/DELETE /api/admin/portal/documents`, `GET /api/portal/documents`, `GET /api/portal/documents/{id}/download`.
+- **Testing**: iteration_30.json → 100% backend (5/5) + 100% frontend, incl. bokeh-rotatie na 9s en admin upload/delete flow.
+
+### Feb 2026 — Iteration 29 (v0.6.5-Beta) — Coming-soon splash + admin bypass
 - **Tri-state site status** — `site_status` in SiteSettings kan nu `live`, `maintenance` of `coming_soon` zijn. Vervangt de simpele boolean uit iter 28. Segmented control in CMS → Engineering met **direct auto-save** (geen Save-knop meer nodig).
 - **Twee themed splash-varianten**:
   - `maintenance` → amber accent, wrench-mascotte, "We're polishing things up" / "We poetsen even iets bij"
