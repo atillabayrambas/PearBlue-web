@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { Mail, Phone, MapPin, Send, Check } from "lucide-react";
@@ -7,6 +7,17 @@ import { useLang } from "../i18n/LanguageContext";
 import { Logo } from "./Logo";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// Fetches the running version from the backend so footer & CMS always agree.
+const useAppVersion = () => {
+  const [v, setV] = useState("");
+  useEffect(() => {
+    let alive = true;
+    axios.get(`${API}/site/version`).then((r) => { if (alive) setV(r.data?.version || ""); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return v;
+};
 
 const NewsletterForm = () => {
   const { lang } = useLang();
@@ -64,6 +75,7 @@ const NewsletterForm = () => {
 
 export const Footer = () => {
   const { t, lang } = useLang();
+  const version = useAppVersion();
   return (
     <footer className="mt-24 border-t border-app surface" data-testid="site-footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-16 grid grid-cols-1 md:grid-cols-4 gap-10">
@@ -104,7 +116,7 @@ export const Footer = () => {
       </div>
       <div className="border-t border-app">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-muted-fg">
-          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")} · <span className="text-muted-fg/70">v0.5.5-Beta</span></p>
+          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")}{version ? <> · <span className="text-muted-fg/70" data-testid="footer-version">v{version}</span></> : null}</p>
           <p className="inline-flex items-center gap-1.5" data-testid="footer-made-with-care">
             Made with care in the Netherlands. <span aria-label="Netherlands flag" role="img">🇳🇱</span> <span aria-label="heart" role="img">❤️</span>
           </p>

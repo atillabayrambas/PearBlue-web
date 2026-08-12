@@ -167,6 +167,9 @@ export default function PortalProfile() {
           {/* Address */}
           <section className="surface border border-app rounded-3xl p-6 sm:p-8" data-testid="portal-profile-address-section">
             <h2 className="font-heading text-lg font-semibold text-strong mb-4 flex items-center gap-2"><MapPin className="h-4 w-4 text-pear-500" /> {nl ? "Adresgegevens" : "Address"}</h2>
+            <p className="text-[11px] text-muted-fg mb-3">
+              {nl ? "Vul postcode + huisnummer in en we vullen de rest automatisch aan." : "Enter postcode + house number and we auto-fill the rest."}
+            </p>
             <div className="grid sm:grid-cols-6 gap-3">
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Postcode" : "Postal code"}</span>
@@ -183,18 +186,25 @@ export default function PortalProfile() {
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Adres" : "Address"}</span>
                 <input value={me.address || ""} onChange={set("address")} onBlur={autofill} className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm" data-testid="portal-profile-address" />
               </label>
-              <label className="block sm:col-span-2">
-                <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Plaats" : "City"}</span>
-                <input value={me.city || ""} readOnly className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm opacity-70 cursor-not-allowed" data-testid="portal-profile-city" />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Regio" : "Region"}</span>
-                <input value={me.region || ""} readOnly className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm opacity-70 cursor-not-allowed" data-testid="portal-profile-region" />
-              </label>
-              <label className="block sm:col-span-2">
+            </div>
+
+            {/* Plain-text display for country / region / city — filled by the postal lookup. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 rounded-2xl surface-2 border border-app p-4" data-testid="portal-profile-location-display">
+              <div className="min-w-0">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Land" : "Country"}</span>
-                <input value={me.country || "Nederland"} readOnly className="mt-1 w-full rounded-lg border border-app px-3 py-2 text-sm opacity-70 cursor-not-allowed" data-testid="portal-profile-country" />
-              </label>
+                <p className="mt-1 text-sm text-strong flex items-center gap-1.5 truncate" data-testid="portal-profile-country">
+                  <span className="text-lg leading-none" aria-hidden>{/nederland|netherlands/i.test(me.country || "Nederland") ? "🇳🇱" : (/belg/i.test(me.country || "") ? "🇧🇪" : (/deutsch|germany/i.test(me.country || "") ? "🇩🇪" : (/france|frankrijk/i.test(me.country || "") ? "🇫🇷" : (/kingdom|verenigd/i.test(me.country || "") ? "🇬🇧" : "🌍"))))}</span>
+                  {me.country || "Nederland"}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Regio" : "Region"}</span>
+                <p className="mt-1 text-sm text-strong truncate" data-testid="portal-profile-region">{me.region || <span className="text-muted-fg">{nl ? "Wordt automatisch ingevuld" : "Auto-filled"}</span>}</p>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">{nl ? "Plaats" : "City"}</span>
+                <p className="mt-1 text-sm text-strong truncate" data-testid="portal-profile-city">{me.city || <span className="text-muted-fg">{nl ? "Wordt automatisch ingevuld" : "Auto-filled"}</span>}</p>
+              </div>
             </div>
           </section>
 

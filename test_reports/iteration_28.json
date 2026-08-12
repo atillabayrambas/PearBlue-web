@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 28 tested: v0.6.5-Beta version endpoint, maintenance mode CMS controls + public splash + newsletter capture, PortalRegistrationCreate accepting submissions without address/postal, plain-text country/region/city location display block on Portal & admin User editor, and AvatarPicker without 'Overige' tab. All backend pytest cases pass (4/4). Frontend flows for footer/sidebar version, Engineering tab, maintenance ON->public splash->newsletter->done state, maintenance OFF, and portal register without address all succeeded.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/settings (Engineering tab & other admin pages)", "issues": ["Persistent blue banner 'Nieuwe versie v0.5.5-Beta is uitgerold' is hard-coded and stale — sidebar/footer show v0.6.5-Beta but this banner still says v0.5.5-Beta. Update the changelog announcement text (or drive it from APP_VERSION) so it doesn't contradict the dynamic version."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration28.py", "/app/test_reports/pytest/iter28.xml"],
+  "action_items": [
+    "OPTIONAL: Update the CMS/admin 'Nieuwe versie vX.Y.Z-Beta is uitgerold' announcement banner to reference the current APP_VERSION (currently hard-coded to 0.5.5-Beta while the app is on 0.6.5-Beta)."
+  ],
+  "critical_code_review_comments": [
+    "AdminDashboard.jsx is >2700 lines — consider splitting SettingsAdmin, UserEditor and other panels into separate files for maintainability.",
+    "MaintenanceGate polls /api/site/maintenance every 60s per open tab — this is fine but consider gating on visibilitychange to avoid background polling.",
+    "LocalCaptcha wraps a sr-only checkbox; Playwright can't click it without force=True or clicking the label — consider making the visible span the actual clickable target with proper role='checkbox' for a11y."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration28.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@pearblue.nl / PearBlue2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — test data prefixed TEST_ (newsletter subscribers + one portal registration).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend endpoints /api/site/version and /api/site/maintenance are stable. Settings PUT accepts all maintenance_* fields. Portal /api/portal/register accepts submissions without address/postal_code. AvatarPicker exposes tabs: all/masculine/feminine/robots (no overige). Location displays use data-testid='portal-reg-location-display' and 'user-details-location-display'. Maintenance was toggled off at end — public site is live.",
+  "rca of the issue": "N/A — no bugs found in the scoped features; only a minor stale hard-coded changelog banner noted."
+}

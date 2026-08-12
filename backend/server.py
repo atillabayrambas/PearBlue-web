@@ -32,6 +32,10 @@ from review_invites import scan_now as review_scan_now, start_background_poller 
 from stripe_payments import make_router as make_stripe_router
 from cryptography.fernet import Fernet, InvalidToken
 
+# Single source of truth for the running app version. Displayed in footer, CMS
+# sidebar, changelog and the maintenance/coming-soon page. Bump on release.
+APP_VERSION = os.environ.get("APP_VERSION", "0.6.5-Beta")
+
 # Fernet cipher for encrypting integration secrets (Brevo API key, IMAP passwords)
 # Uses TOKEN_ENCRYPTION_KEY from env (already used by zoho_portal/stripe_payments)
 _ENC_KEY_RAW = os.environ.get("TOKEN_ENCRYPTION_KEY", "").encode()
@@ -220,6 +224,15 @@ class SiteSettings(BaseModel):
     search_console_verification: Optional[str] = ""
     hero_headline_nl: Optional[str] = ""
     hero_headline_en: Optional[str] = ""
+    # Maintenance / Coming-soon mode (public UI switches when enabled)
+    maintenance_mode: Optional[bool] = False
+    maintenance_title_nl: Optional[str] = "We werken aan iets moois"
+    maintenance_title_en: Optional[str] = "We are polishing something great"
+    maintenance_message_nl: Optional[str] = "Onze site staat even in onderhoud. Laat je e-mail achter en we sturen je een berichtje zodra we live gaan."
+    maintenance_message_en: Optional[str] = "Our site is briefly under maintenance. Drop your email and we'll let you know the moment we go live."
+    maintenance_bg_url: Optional[str] = ""
+    maintenance_show_newsletter: Optional[bool] = True
+    maintenance_show_version: Optional[bool] = True
 
 
 class SiteSettingsUpdate(BaseModel):
@@ -227,6 +240,14 @@ class SiteSettingsUpdate(BaseModel):
     search_console_verification: Optional[str] = Field(None, max_length=200)
     hero_headline_nl: Optional[str] = Field(None, max_length=200)
     hero_headline_en: Optional[str] = Field(None, max_length=200)
+    maintenance_mode: Optional[bool] = None
+    maintenance_title_nl: Optional[str] = Field(None, max_length=200)
+    maintenance_title_en: Optional[str] = Field(None, max_length=200)
+    maintenance_message_nl: Optional[str] = Field(None, max_length=1200)
+    maintenance_message_en: Optional[str] = Field(None, max_length=1200)
+    maintenance_bg_url: Optional[str] = Field(None, max_length=500)
+    maintenance_show_newsletter: Optional[bool] = None
+    maintenance_show_version: Optional[bool] = None
 
 
 class PortalRegistration(BaseModel):
@@ -993,6 +1014,30 @@ async def update_settings(payload: SiteSettingsUpdate, current=Depends(require_a
     )
     doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0})
     return SiteSettings(**(doc or {}))
+
+
+# Public read-only maintenance snapshot — used by the public shell to gate UI.
+@api_router.get("/site/maintenance")
+async def get_public_maintenance():
+    doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0}) or {}
+    return {
+        "maintenance_mode": bool(doc.get("maintenance_mode", False)),
+        "maintenance_title_nl": doc.get("maintenance_title_nl") or "We werken aan iets moois",
+        "maintenance_title_en": doc.get("maintenance_title_en") or "We are polishing something great",
+        "maintenance_message_nl": doc.get("maintenance_message_nl") or "",
+        "maintenance_message_en": doc.get("maintenance_message_en") or "",
+        "maintenance_bg_url": doc.get("maintenance_bg_url") or "",
+        "maintenance_show_newsletter": bool(doc.get("maintenance_show_newsletter", True)),
+        "maintenance_show_version": bool(doc.get("maintenance_show_version", True)),
+        "version": APP_VERSION,
+    }
+
+
+# Public app version — read from backend .env APP_VERSION or fallback constant.
+@api_router.get("/site/version")
+async def get_public_version():
+    return {"version": APP_VERSION}
+
 
 
 # ---- Portal registrations ----
@@ -1926,6 +1971,20 @@ async def public_changelog():
     v1.0 will be the official launch, dropping the -Beta suffix.
     """
     entries = [
+        {
+            "version": "0.6.5-Beta",
+            "date": "2026-02-12",
+            "type": "feature",
+            "highlights": [
+                "🚧 Nieuwe **Onderhoudsmodus** (Maintenance / Coming-soon) — te schakelen via CMS → Site instellingen → Engineering tab. Speelse coming-soon-pagina met wobbly wrench-mascotte, NL/EN titel + bericht, optionele achtergrondafbeelding, nieuwsbrief-aanmelding (Brevo-ready) en versienummer",
+                "MaintenanceGate polt elke 60s /api/site/maintenance — zodra je 'AAN' zet is de publieke site direct geblokkeerd. Admins (/admin/*) blijven altijd bereikbaar, plus ?preview=1 als bypass voor stafleden",
+                "Publiek /api/site/version endpoint — footer + CMS sidebar tonen nu **automatisch** de actuele versie (was hard-coded)",
+                "Formulier-refactor: adres en postcode zijn **niet meer verplicht** op portal-aanmelding, portal profiel én in de CMS gebruikersedit",
+                "Land / Regio / Plaats worden nu **als platte tekst** getoond (mét landvlag-emoji) in plaats van als invoervelden — vullen ze automatisch via postcode-lookup",
+                "AvatarPicker opgeschoond — **Overige** tab verwijderd. DiceBear v9 `top` filter forceert nu strikt korte kapsels voor mannelijke avatars (geen hijab of hoofddoek meer) en lange kapsels voor vrouwelijke avatars",
+                "Versienummer bumped naar **v0.6.5-Beta** en APP_VERSION centraal beheerd in backend",
+            ],
+        },
         {
             "version": "0.5.5-Beta",
             "date": "2026-02-10",

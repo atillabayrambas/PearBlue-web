@@ -32,12 +32,14 @@ const AdminSidebar = () => {
   const { mode, setMode } = useTheme();
   const [counters, setCounters] = useState({});
   const [profile, setProfile] = useState(null);
+  const [version, setVersion] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   useBodyScrollLock(mobileOpen);
   useEffect(() => {
     const load = () => axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => setCounters(r.data || {})).catch(() => {});
     load();
     const t = setInterval(load, 30000);
+    axios.get(`${API}/site/version`).then((r) => setVersion(r.data?.version || "")).catch(() => {});
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -169,8 +171,8 @@ const AdminSidebar = () => {
         >
           <LogOut className="h-4 w-4" /> {lang === "en" ? "Log out" : "Uitloggen"}
         </button>
-        <div className="mt-4 pt-3 border-t border-app text-[10px] text-muted-fg text-center">
-          PearBlue CMS · v0.5.5-Beta · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
+        <div className="mt-4 pt-3 border-t border-app text-[10px] text-muted-fg text-center" data-testid="cms-sidebar-version">
+          PearBlue CMS{version ? ` · v${version}` : ""} · 2026 · <Link to="/admin/changelog" className="hover:text-pear-500 underline" data-testid="cms-sidebar-changelog-link">Changelogs</Link>
         </div>
       </aside>
     </>
@@ -470,69 +472,179 @@ const ProjectsAdmin = () => {
 // --- Site settings tab ---
 const SettingsAdmin = () => {
   const { authHeader } = useAuth();
-  const [form, setForm] = useState({ ga4_measurement_id: "", search_console_verification: "", hero_headline_nl: "", hero_headline_en: "" });
+  const { lang } = useLang();
+  const en = lang === "en";
+  const [form, setForm] = useState({
+    ga4_measurement_id: "",
+    search_console_verification: "",
+    hero_headline_nl: "",
+    hero_headline_en: "",
+    maintenance_mode: false,
+    maintenance_title_nl: "",
+    maintenance_title_en: "",
+    maintenance_message_nl: "",
+    maintenance_message_en: "",
+    maintenance_bg_url: "",
+    maintenance_show_newsletter: true,
+    maintenance_show_version: true,
+  });
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState("general");
 
   useEffect(() => {
-    axios.get(`${API}/settings`).then((r) => setForm({ ...form, ...(r.data || {}) })).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    axios.get(`${API}/settings`).then((r) => setForm((prev) => ({ ...prev, ...(r.data || {}) }))).catch(() => {});
   }, []);
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const toggle = (k) => () => setForm((f) => ({ ...f, [k]: !f[k] }));
 
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       await axios.put(`${API}/settings`, form, { headers: authHeader() });
-      toast.success("Instellingen opgeslagen");
-    } catch { toast.error("Opslaan mislukt"); } finally { setSaving(false); }
+      toast.success(en ? "Settings saved" : "Instellingen opgeslagen");
+    } catch { toast.error(en ? "Save failed" : "Opslaan mislukt"); } finally { setSaving(false); }
   };
 
   return (
     <div data-testid="cms-settings">
       <header className="mb-6">
-        <h1 className="font-heading text-3xl font-medium text-strong">Site instellingen</h1>
-        <p className="text-sm text-muted-fg mt-1">Koppel Google Analytics 4 en Search Console, en pas de hoofdkop van de homepagina aan.</p>
+        <h1 className="font-heading text-3xl font-medium text-strong">{en ? "Site settings" : "Site instellingen"}</h1>
+        <p className="text-sm text-muted-fg mt-1">{en ? "Analytics, Search Console, hero copy and Engineering tools." : "Analytics, Search Console, hero-tekst en Engineering-tools."}</p>
       </header>
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-app mb-6" data-testid="cms-settings-tabs">
+        {[
+          { key: "general", label: en ? "General" : "Algemeen" },
+          { key: "engineering", label: en ? "Engineering" : "Engineering" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${tab === t.key ? "border-pear-500 text-pear-600" : "border-transparent text-muted-fg hover:text-strong"}`}
+            data-testid={`cms-settings-tab-${t.key}`}
+          >{t.label}</button>
+        ))}
+      </div>
+
       <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-5 max-w-2xl" data-testid="cms-settings-form">
-        <div>
-          <h3 className="font-heading font-semibold text-strong mb-3">Google Analytics 4</h3>
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Measurement ID (G-XXXXXXX)</span>
-            <input value={form.ga4_measurement_id || ""} onChange={change("ga4_measurement_id")} placeholder="G-XXXXXXXXXX" data-testid="cms-input-ga4"
-              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
-          </label>
-          <p className="text-xs text-muted-fg mt-2">Vind je Measurement ID in Google Analytics → Beheerder → Datastreams → Web.</p>
-        </div>
+        {tab === "general" && (
+          <>
+            <div>
+              <h3 className="font-heading font-semibold text-strong mb-3">Google Analytics 4</h3>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Measurement ID (G-XXXXXXX)</span>
+                <input value={form.ga4_measurement_id || ""} onChange={change("ga4_measurement_id")} placeholder="G-XXXXXXXXXX" data-testid="cms-input-ga4"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
+              </label>
+              <p className="text-xs text-muted-fg mt-2">{en ? "Find your Measurement ID in Google Analytics → Admin → Data streams → Web." : "Vind je Measurement ID in Google Analytics → Beheerder → Datastreams → Web."}</p>
+            </div>
 
-        <div className="pt-4 border-t border-app">
-          <h3 className="font-heading font-semibold text-strong mb-3">Google Search Console</h3>
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Verificatie code (content-waarde)</span>
-            <input value={form.search_console_verification || ""} onChange={change("search_console_verification")} placeholder="abcdef123456..." data-testid="cms-input-search-console"
-              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
-          </label>
-          <p className="text-xs text-muted-fg mt-2">Plak alleen de <code>content=&quot;...&quot;</code> waarde uit de meta-tag die Search Console je geeft.</p>
-        </div>
+            <div className="pt-4 border-t border-app">
+              <h3 className="font-heading font-semibold text-strong mb-3">Google Search Console</h3>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Verification code (content value)" : "Verificatie code (content-waarde)"}</span>
+                <input value={form.search_console_verification || ""} onChange={change("search_console_verification")} placeholder="abcdef123456..." data-testid="cms-input-search-console"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
+              </label>
+              <p className="text-xs text-muted-fg mt-2">{en ? "Paste only the content=\"...\" value from the meta-tag Search Console gives you." : "Plak alleen de content=\"...\" waarde uit de meta-tag die Search Console je geeft."}</p>
+            </div>
 
-        <div className="pt-4 border-t border-app">
-          <h3 className="font-heading font-semibold text-strong mb-3">Hero-tekst (optioneel)</h3>
-          <label className="block mb-3">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">NL headline (leeg = standaard)</span>
-            <input value={form.hero_headline_nl || ""} onChange={change("hero_headline_nl")} data-testid="cms-input-hero-nl"
-              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-          </label>
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">EN headline (leeg = standaard)</span>
-            <input value={form.hero_headline_en || ""} onChange={change("hero_headline_en")} data-testid="cms-input-hero-en"
-              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-          </label>
-        </div>
+            <div className="pt-4 border-t border-app">
+              <h3 className="font-heading font-semibold text-strong mb-3">{en ? "Hero text (optional)" : "Hero-tekst (optioneel)"}</h3>
+              <label className="block mb-3">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "NL headline (empty = default)" : "NL headline (leeg = standaard)"}</span>
+                <input value={form.hero_headline_nl || ""} onChange={change("hero_headline_nl")} data-testid="cms-input-hero-nl"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "EN headline (empty = default)" : "EN headline (leeg = standaard)"}</span>
+                <input value={form.hero_headline_en || ""} onChange={change("hero_headline_en")} data-testid="cms-input-hero-en"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+              </label>
+            </div>
+          </>
+        )}
+
+        {tab === "engineering" && (
+          <div>
+            <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4 mb-5">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">🚧 {en ? "Maintenance / Coming-soon mode" : "Onderhoudsmodus / Coming-soon"}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">
+                {en ? "When ON, every public page shows a playful maintenance splash. Admins can still access /admin. Bypass with ?preview=1." : "Wanneer AAN krijgt elke publieke pagina de speelse onderhoudspagina te zien. Admins kunnen nog steeds naar /admin. Bypass met ?preview=1."}
+              </p>
+            </div>
+            <label className="flex items-center gap-3 cursor-pointer select-none" data-testid="cms-maintenance-toggle">
+              <button
+                type="button"
+                onClick={toggle("maintenance_mode")}
+                className={`relative h-6 w-11 rounded-full transition ${form.maintenance_mode ? "bg-red-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                aria-pressed={form.maintenance_mode}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${form.maintenance_mode ? "left-5" : "left-0.5"}`} />
+              </button>
+              <span className="text-sm font-semibold text-strong">
+                {form.maintenance_mode
+                  ? (en ? "Maintenance mode ON — public site is blocked" : "Onderhoudsmodus AAN — publieke site is geblokkeerd")
+                  : (en ? "Maintenance mode OFF" : "Onderhoudsmodus UIT")}
+              </span>
+            </label>
+
+            <div className="grid sm:grid-cols-2 gap-3 mt-5">
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Title (NL)" : "Titel (NL)"}</span>
+                <input value={form.maintenance_title_nl || ""} onChange={change("maintenance_title_nl")} data-testid="cms-maintenance-title-nl"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Title (EN)" : "Titel (EN)"}</span>
+                <input value={form.maintenance_title_en || ""} onChange={change("maintenance_title_en")} data-testid="cms-maintenance-title-en"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Message (NL)" : "Bericht (NL)"}</span>
+                <textarea rows={3} value={form.maintenance_message_nl || ""} onChange={change("maintenance_message_nl")} data-testid="cms-maintenance-message-nl"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong resize-none" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Message (EN)" : "Bericht (EN)"}</span>
+                <textarea rows={3} value={form.maintenance_message_en || ""} onChange={change("maintenance_message_en")} data-testid="cms-maintenance-message-en"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong resize-none" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Background image URL (optional)" : "Achtergrondafbeelding URL (optioneel)"}</span>
+                <input value={form.maintenance_bg_url || ""} onChange={change("maintenance_bg_url")} placeholder="https://..." data-testid="cms-maintenance-bg"
+                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
+                <span className="text-[11px] text-muted-fg">{en ? "Left empty falls back to the PearBlue gradient." : "Leeg = automatische PearBlue gradient."}</span>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-4 mt-5">
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer" data-testid="cms-maintenance-newsletter-toggle">
+                <input type="checkbox" checked={!!form.maintenance_show_newsletter} onChange={toggle("maintenance_show_newsletter")} className="rounded border-slate-400" />
+                <span>{en ? "Show newsletter signup" : "Toon nieuwsbrief-aanmelding"}</span>
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer" data-testid="cms-maintenance-version-toggle">
+                <input type="checkbox" checked={!!form.maintenance_show_version} onChange={toggle("maintenance_show_version")} className="rounded border-slate-400" />
+                <span>{en ? "Show version number" : "Toon versienummer"}</span>
+              </label>
+            </div>
+
+            <p className="text-xs text-muted-fg mt-5">
+              {en ? "Preview the maintenance page without turning it on for everyone:" : "Bekijk de onderhoudspagina zonder deze voor iedereen aan te zetten:"}
+              {" "}
+              <a href="/?preview=maintenance" target="_blank" rel="noreferrer" className="text-pear-500 underline" data-testid="cms-maintenance-preview-link">
+                {en ? "Open preview" : "Open preview"}
+              </a>
+            </p>
+          </div>
+        )}
 
         <button type="submit" disabled={saving} className="btn-primary" data-testid="cms-settings-submit">
-          {saving ? "…" : <><Save className="h-4 w-4" /> Opslaan</>}
+          {saving ? "…" : <><Save className="h-4 w-4" /> {en ? "Save" : "Opslaan"}</>}
         </button>
       </form>
     </div>
@@ -1697,13 +1809,13 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
                 <input required value={details.last_name || ""} onChange={set("last_name")} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-last-name" />
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Adres *</span>
-                <input required value={details.address || ""} onChange={set("address")} onBlur={autofillFromPostcode} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-address" placeholder="Straat + huisnr of volledig adres" />
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Adres</span>
+                <input value={details.address || ""} onChange={set("address")} onBlur={autofillFromPostcode} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-address" placeholder="Straat + huisnr of volledig adres" />
               </label>
               <label className="block">
-                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Postcode *</span>
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Postcode</span>
                 <div className="flex gap-1 mt-1">
-                  <input required value={details.postal_code || ""} onChange={set("postal_code")} onBlur={autofillFromPostcode} placeholder="1234AB" className="flex-1 rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong uppercase" data-testid="user-details-postal" />
+                  <input value={details.postal_code || ""} onChange={set("postal_code")} onBlur={autofillFromPostcode} placeholder="1234AB" className="flex-1 rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong uppercase" data-testid="user-details-postal" />
                   <button type="button" onClick={autofillFromPostcode} disabled={lookingUp} className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-lg border border-app hover:border-pear-500 disabled:opacity-40" data-testid="user-details-postal-lookup">{lookingUp ? "…" : "Zoek"}</button>
                 </div>
               </label>
@@ -1711,18 +1823,28 @@ const UserDetailsModal = ({ email, onClose, canEditPassword }) => {
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Huisnummer</span>
                 <input value={details.house_number || ""} onChange={set("house_number")} onBlur={autofillFromPostcode} className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong" data-testid="user-details-house-number" />
               </label>
-              <label className="block">
-                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Plaats</span>
-                <input value={details.city || ""} readOnly className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong opacity-70 cursor-not-allowed" data-testid="user-details-city" />
-              </label>
-              <label className="block">
-                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Provincie / regio</span>
-                <input value={details.region || ""} readOnly className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong opacity-70 cursor-not-allowed" data-testid="user-details-region" />
-              </label>
-              <label className="block">
+            </div>
+
+            {/* Plain-text display of country / region / city — no more input boxes here. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border border-app surface-2 p-3" data-testid="user-details-location-display">
+              <div className="min-w-0">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Land</span>
-                <input value={details.country || "Nederland"} readOnly className="mt-1 w-full rounded-lg border border-app bg-white dark:bg-slate-800 px-3 py-2 text-sm text-strong opacity-70 cursor-not-allowed" data-testid="user-details-country" />
-              </label>
+                <p className="mt-1 text-sm text-strong flex items-center gap-1.5 truncate" data-testid="user-details-country">
+                  <span className="text-lg leading-none" aria-hidden>{/nederland|netherlands/i.test(details.country || "Nederland") ? "🇳🇱" : (/belg/i.test(details.country || "") ? "🇧🇪" : (/deutsch|germany/i.test(details.country || "") ? "🇩🇪" : (/france|frankrijk/i.test(details.country || "") ? "🇫🇷" : (/kingdom|verenigd/i.test(details.country || "") ? "🇬🇧" : "🌍"))))}</span>
+                  {details.country || "Nederland"}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Provincie / regio</span>
+                <p className="mt-1 text-sm text-strong truncate" data-testid="user-details-region">{details.region || <span className="text-muted-fg">Wordt automatisch ingevuld</span>}</p>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase tracking-widest text-muted-fg">Plaats</span>
+                <p className="mt-1 text-sm text-strong truncate" data-testid="user-details-city">{details.city || <span className="text-muted-fg">Wordt automatisch ingevuld</span>}</p>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
               <label className="block sm:col-span-2">
                 <span className="text-[10px] uppercase tracking-widest text-muted-fg">Telefoon</span>
                 <div className="mt-1">

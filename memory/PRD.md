@@ -21,7 +21,21 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 27 (this session, v0.6.4-Beta) — Western avatars + Ticket references
+### Feb 2026 — Iteration 28 (this session, v0.6.5-Beta) — Maintenance mode + form/avatar polish
+- **Onderhoudsmodus (Maintenance / Coming-soon)** — nieuwe schakelaar in CMS → Site instellingen → **Engineering** tab. Playful splash-pagina met wobbly wrench-mascotte, floating pear/violet blobs, dot-grid overlay, PearBlue-gradient achtergrond (of custom URL), NL/EN titel + bericht, optionele nieuwsbrief-aanmelding en versienummer.
+- **MaintenanceGate** — `useMaintenance` hook in `App.js` polt elke 60s `/api/site/maintenance`; publieke routes tonen `<MaintenancePage/>` zodra `maintenance_mode:true`. Admin (`/admin/*`) en Zoho-callback altijd toegankelijk. Bypass: `?preview=1`.
+- **Newsletter Brevo-ready** — inschrijving op maintenance-pagina schrijft naar `db.newsletter_subscribers` met `source:"maintenance"` zodat lijst klaar staat voor Brevo import zodra keys binnen zijn.
+- **APP_VERSION centraal** — nieuwe constante in `server.py`, gepubliceerd via `/api/site/version` en `/api/site/maintenance`. Footer + CMS sidebar fetchen deze bij mount → geen hard-coded versienummers meer.
+- **Adres/postcode niet meer verplicht** — Portal-aanmelding, portal-profiel en CMS gebruikersedit accepteren nu inzending zonder deze velden.
+- **Land / Regio / Plaats als platte tekst** — overal (incl. bewerken) worden deze velden nu getoond als read-only tekstweergave met landvlag-emoji ipv input-boxes. Postcode + huisnummer blijven bewerkbaar en vullen de rest automatisch via de bestaande `usePostalLookup` hook.
+- **AvatarPicker cleanup**:
+  - **Overige** tab verwijderd. Tabs zijn nu: Alles / Mannelijk / Vrouwelijk / Robots.
+  - DiceBear v9 `top` filter forceert korte kapsels op mannelijke avatars (`shortWaved`, `shortRound`, `shortFlat`, `shortCurly`, `sides`, `frizzle`, `dreads01/02`, `theCaesar`, `theCaesarAndSidePart`, `shaggy`, `shaggyMullet`, `shavedSides`) — geen hijab/turban/hoofddoek meer mogelijk.
+  - Vrouwelijke avatars forceren lange kapsels (`straight01/02`, `straightAndStrand`, `bun`, `curly`, `curvy`, `miaWallace`, `bigHair`, `dreads`, `frida`, `bob`, `fro`, `froBand`, `longButNotTooLong`).
+- **Changelog** — nieuwe v0.6.5-Beta entry bovenaan; CMS "nieuwe versie" banner toont nu correct 0.6.5-Beta.
+- **Testing**: iteration_28.json → 100% backend + 100% frontend (Playwright verified maintenance splash render + newsletter capture + form flows + Engineering tab controls).
+
+### Feb 2026 — Iteration 27 (v0.6.4-Beta) — Western avatars + Ticket references
 - **4 westerse mannelijke + 4 westerse vrouwelijke avatars** — nieuwe seeds bovenaan de MASC en FEM lijst (`WESTERN_M`/`WESTERN_F`). Elk forceert `skinColor` én `hairColor` als HEX-waarden (`FFDBB4`/`EDB98A` voor lichte huid, verschillende bruine/blonde/rode haartinten) zodat DiceBear nooit random een donkerder tint kiest. Ontdekt onderweg: DiceBear v9 accepteert alleen HEX-codes, geen preset-namen zoals "light".
 - **Totaal 58 avatars** in "Alles": 19 mannelijk (4 westers + 15 gemixt) · 19 vrouwelijk (4 westers + 15 gemixt) · 10 overige · 10 robots.
 - **Ticket referenties `#TKT-XXXXXX`** — elke nieuwe contact-message krijgt automatisch een korte hex-referentie (6 hex chars). Backend `_new_ticket_ref()` helper. In de reply-e-mail komt het subject nu als `[#TKT-XXXXXX] Re: ...` én in de footer: `Referentie: #TKT-XXXXXX`. Zo blijven inkomende e-mail replies threaded aan hetzelfde gesprek. Legacy berichten zonder ref krijgen bij eerste reply automatisch een ref (auto-heal).

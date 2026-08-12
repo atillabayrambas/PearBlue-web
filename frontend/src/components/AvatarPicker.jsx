@@ -3,16 +3,54 @@ import { Check, Trash2, Upload, Camera, Palette as PaletteIcon, X } from "lucide
 import { toast } from "sonner";
 
 // -----------------------------------------------------------------------------
-// PearBlue avatar library — 40 unique presets:
-//   • 10 masculine     (avataaars — short-hair variants)
-//   • 10 feminine      (avataaars — long-hair variants)
-//   • 10 robots        (bottts-neutral — sci-fi robot look)
-//   • 10 subcultures   (avataaars — Gothic / Emo / Artist / Rock / Punk / Skater / Preppy / Vintage / Sporty / Anime)
+// PearBlue avatar library — unique presets:
+//   • Western masculine   (4 curated, light skin, dark hair variants)
+//   • Masculine           (15 diverse seeds forced to short-hair, no hijab)
+//   • Western feminine    (4 curated, light skin, long hair variants)
+//   • Feminine            (15 diverse seeds forced to long-hair styles)
+//   • Robots              (10 sci-fi robot look)
 // Plus an 8-swatch background palette + a Custom colour picker.
 // The final avatar URL is a DiceBear SVG we store as-is in `profile_picture`.
 // -----------------------------------------------------------------------------
 
 const DICEBEAR = "https://api.dicebear.com/9.x";
+
+// DiceBear avataaars: force gender-appropriate hairstyles so the API never picks
+// a hijab/turban on masculine or short-hair on feminine avatars.
+// Values must match the DiceBear v9 `top` enum exactly.
+const MASC_TOPS = [
+  "shortWaved",
+  "shortRound",
+  "shortFlat",
+  "shortCurly",
+  "sides",
+  "frizzle",
+  "dreads01",
+  "dreads02",
+  "theCaesar",
+  "theCaesarAndSidePart",
+  "shaggy",
+  "shaggyMullet",
+  "shavedSides",
+];
+const FEM_TOPS = [
+  "straight01",
+  "straight02",
+  "straightAndStrand",
+  "bun",
+  "curly",
+  "curvy",
+  "miaWallace",
+  "bigHair",
+  "dreads",
+  "frida",
+  "bob",
+  "fro",
+  "froBand",
+  "longButNotTooLong",
+];
+const MASC_TOP_FILTER = MASC_TOPS.join(",");
+const FEM_TOP_FILTER = FEM_TOPS.join(",");
 
 // 15 masculine seeds — more variety across ethnicities & styles.
 const MASC_SEEDS = [
@@ -28,21 +66,6 @@ const FEM_SEEDS = [
 ];
 // 10 robots — playful sci-fi look.
 const ROBOT_SEEDS = ["pear", "leaf", "sun", "cloud", "wave", "rock", "star", "moon", "spark", "core"];
-// 10 "Overige" — distinctive avataaars variants using the same happy-mouth
-// filter as MASC/FEM so we NEVER get the red-frown line the older subculture
-// styles produced. Diversity comes from unique seeds.
-const OVERIGE_SEEDS = [
-  { seed: "artist-11", label: "Artist" },
-  { seed: "curly-14", label: "Curly" },
-  { seed: "casual-22", label: "Casual" },
-  { seed: "preppy-32", label: "Preppy" },
-  { seed: "vintage-40", label: "Vintage" },
-  { seed: "sporty-45", label: "Sporty" },
-  { seed: "cool-51", label: "Cool" },
-  { seed: "trendy-58", label: "Trendy" },
-  { seed: "chill-63", label: "Chill" },
-  { seed: "creative-72", label: "Creative" },
-];
 
 // Explicit western/light-skinned young-adult seeds. DiceBear v9 expects HEX
 // codes for skinColor/hairColor (not preset names). We force light-skin hex
@@ -73,22 +96,24 @@ export const AVATAR_PALETTE = [
   { key: "midnight", label: "Midnight", hex: "0A192F" },
 ];
 
-const buildUrl = (style, seed, bg, extras = "") => {
+const buildUrl = (style, seed, bg, extras = "", genderTop = null) => {
   const b = bg || "02C0FF";
   const baseExtras = style === "avataaars" ? "&mouth=smile,default,twinkle&eyes=default,happy,side,wink" : "";
-  return `${DICEBEAR}/${style}/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${b}${baseExtras}${extras ? "&" + extras : ""}`;
+  const topFilter = style === "avataaars" && genderTop
+    ? `&top=${genderTop === "m" ? MASC_TOP_FILTER : FEM_TOP_FILTER}`
+    : "";
+  return `${DICEBEAR}/${style}/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${b}${baseExtras}${topFilter}${extras ? "&" + extras : ""}`;
 };
 
 /**
- * Build the full 40-avatar library.
+ * Build the avatar library.
  * @param {string} bg — hex color WITHOUT the leading #, e.g. "02C0FF".
  */
 export const buildAvatarLibrary = (bg) => ([
-  ...WESTERN_M.map((w, i) => ({ id: `westm-${i}`, url: buildUrl("avataaars", w.seed, bg, w.extra), category: "masculine", seed: `West ${i + 1}` })),
-  ...MASC_SEEDS.map((s, i) => ({ id: `masc-${i}`, url: buildUrl("avataaars", `${s}-m`, bg), category: "masculine", seed: s })),
-  ...WESTERN_F.map((w, i) => ({ id: `westf-${i}`, url: buildUrl("avataaars", w.seed, bg, w.extra), category: "feminine", seed: `West ${i + 1}` })),
-  ...FEM_SEEDS.map((s, i) => ({ id: `fem-${i}`, url: buildUrl("avataaars", `${s}-f`, bg), category: "feminine", seed: s })),
-  ...OVERIGE_SEEDS.map((sc, i) => ({ id: `over-${i}`, url: buildUrl("avataaars", sc.seed, bg), category: "overige", seed: sc.label })),
+  ...WESTERN_M.map((w, i) => ({ id: `westm-${i}`, url: buildUrl("avataaars", w.seed, bg, w.extra, "m"), category: "masculine", seed: `West ${i + 1}` })),
+  ...MASC_SEEDS.map((s, i) => ({ id: `masc-${i}`, url: buildUrl("avataaars", `${s}-m`, bg, "", "m"), category: "masculine", seed: s })),
+  ...WESTERN_F.map((w, i) => ({ id: `westf-${i}`, url: buildUrl("avataaars", w.seed, bg, w.extra, "f"), category: "feminine", seed: `West ${i + 1}` })),
+  ...FEM_SEEDS.map((s, i) => ({ id: `fem-${i}`, url: buildUrl("avataaars", `${s}-f`, bg, "", "f"), category: "feminine", seed: s })),
   ...ROBOT_SEEDS.map((s, i) => ({ id: `bot-${i}`, url: buildUrl("bottts-neutral", s, bg), category: "robots", seed: s })),
 ]);
 
@@ -187,7 +212,6 @@ export const AvatarPicker = ({ currentUrl, onSelect, onCancel }) => {
           { key: "all", label: "Alles" },
           { key: "masculine", label: "Mannelijk" },
           { key: "feminine", label: "Vrouwelijk" },
-          { key: "overige", label: "Overige" },
           { key: "robots", label: "Robots" },
         ].map((t) => (
           <button

@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { LanguageProvider } from "@/i18n/LanguageContext";
@@ -32,6 +33,9 @@ import ChangelogPage from "@/pages/ChangelogPage";
 import AdminLogin from "@/pages/AdminLogin";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import AdminDashboard from "@/pages/AdminDashboard";
+import MaintenancePage from "@/pages/MaintenancePage";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -44,8 +48,40 @@ const useIsAdminRoute = () => {
   return pathname.startsWith("/admin");
 };
 
+// Public-facing maintenance / coming-soon gate.
+// - Polls /api/site/maintenance every 60s so it flips on/off live.
+// - Never blocks /admin/* (staff can still fix things) or the Zoho OAuth callback.
+// - When ?preview=1 is present, bypass the gate so admins can inspect the site.
+const useMaintenance = () => {
+  const { pathname, search } = useLocation();
+  const [state, setState] = useState({ loaded: false, on: false, config: null });
+  useEffect(() => {
+    let alive = true;
+    const fetchIt = async () => {
+      try {
+        const r = await axios.get(`${API}/site/maintenance`);
+        if (alive) setState({ loaded: true, on: !!r.data?.maintenance_mode, config: r.data });
+      } catch {
+        if (alive) setState({ loaded: true, on: false, config: null });
+      }
+    };
+    fetchIt();
+    const iv = setInterval(fetchIt, 60000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+  const bypass =
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/oauth") ||
+    new URLSearchParams(search).get("preview") === "1";
+  return { ...state, blocked: state.on && !bypass };
+};
+
 function Shell() {
   const isAdmin = useIsAdminRoute();
+  const m = useMaintenance();
+  if (m.loaded && m.blocked) {
+    return <MaintenancePage config={m.config} />;
+  }
   return (
     <div className="min-h-screen flex flex-col relative">
       {!isAdmin && <ParallaxBackground />}
