@@ -21,7 +21,20 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 28 (this session, v0.6.5-Beta) — Maintenance mode + form/avatar polish
+### Feb 2026 — Iteration 29 (this session, v0.6.5-Beta continued) — Coming-soon splash + admin bypass
+- **Tri-state site status** — `site_status` in SiteSettings kan nu `live`, `maintenance` of `coming_soon` zijn. Vervangt de simpele boolean uit iter 28. Segmented control in CMS → Engineering met **direct auto-save** (geen Save-knop meer nodig).
+- **Twee themed splash-varianten**:
+  - `maintenance` → amber accent, wrench-mascotte, "We're polishing things up" / "We poetsen even iets bij"
+  - `coming_soon` → violet accent, rocket-mascotte, "Something new is on its way" / "Er komt iets nieuws aan"
+- **Alle copy hard-coded + auto-vertaald** — geen title/message input velden meer in de CMS. Nieuwe **Language on splash** segmented control (Auto/NL/EN) — Auto pakt de browsertaal van de bezoeker.
+- **Admin bypass zonder ?preview=1** — iedereen met `pb_admin_token` in localStorage ziet altijd de normale site. Bezoekers zonder token krijgen de splash. `/admin/*` en `/oauth/*` blijven altijd bereikbaar.
+- **Dynamische bokeh-achtergrond** — 6 curated Unsplash bokeh-foto's, per page-load willekeurig gekozen en 10% gebluurd voor een soft-focus atmosfeer. Alternatief: eigen URL invoeren (`bg_mode = custom`).
+- **Achtergrondanimatie**: 3 kleurgloed-blobs (accent-specifiek) driften rond, 20 twinklende sterretjes drijven omhoog met individuele delays.
+- **Grote PearBlue-logo** boven de titel (h-40 → h-64 responsive), oude header verwijderd. Nieuwsbrief-hint "Blijf op de hoogte!" / "Stay in the loop!".
+- **Preview knoppen** — 2 aparte buttons in CMS ("Preview Maintenance" / "Preview Coming Soon") die `?preview=maintenance` en `?preview=coming_soon` openen in een nieuw tabblad. Deze force-render de splash zonder de live status te wijzigen.
+- **Testing**: handmatig geverifieerd - admin bypass ✓, guest ziet splash ✓, beide preview modes renderen ✓, CMS auto-save ✓.
+
+### Feb 2026 — Iteration 28 (v0.6.5-Beta) — Maintenance mode + form/avatar polish
 - **Onderhoudsmodus (Maintenance / Coming-soon)** — nieuwe schakelaar in CMS → Site instellingen → **Engineering** tab. Playful splash-pagina met wobbly wrench-mascotte, floating pear/violet blobs, dot-grid overlay, PearBlue-gradient achtergrond (of custom URL), NL/EN titel + bericht, optionele nieuwsbrief-aanmelding en versienummer.
 - **MaintenanceGate** — `useMaintenance` hook in `App.js` polt elke 60s `/api/site/maintenance`; publieke routes tonen `<MaintenancePage/>` zodra `maintenance_mode:true`. Admin (`/admin/*`) en Zoho-callback altijd toegankelijk. Bypass: `?preview=1`.
 - **Newsletter Brevo-ready** — inschrijving op maintenance-pagina schrijft naar `db.newsletter_subscribers` met `source:"maintenance"` zodat lijst klaar staat voor Brevo import zodra keys binnen zijn.

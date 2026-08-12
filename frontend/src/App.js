@@ -49,38 +49,45 @@ const useIsAdminRoute = () => {
 };
 
 // Public-facing maintenance / coming-soon gate.
-// - Polls /api/site/maintenance every 60s so it flips on/off live.
-// - Never blocks /admin/* (staff can still fix things) or the Zoho OAuth callback.
-// - When ?preview=1 is present, bypass the gate so admins can inspect the site.
+// - Polls /api/site/maintenance every 60s so mode changes flip live.
+// - NEVER blocks /admin/* or the Zoho OAuth callback (staff always work).
+// - Any user with an admin token in localStorage is treated as staff and passes.
+// - Preview overrides: ?preview=maintenance or ?preview=coming_soon force-render
+//   the matching splash page (used by the Preview buttons in the CMS) even when
+//   the site is live.
 const useMaintenance = () => {
   const { pathname, search } = useLocation();
-  const [state, setState] = useState({ loaded: false, on: false, config: null });
+  const [state, setState] = useState({ loaded: false, status: "live", config: null });
   useEffect(() => {
     let alive = true;
     const fetchIt = async () => {
       try {
         const r = await axios.get(`${API}/site/maintenance`);
-        if (alive) setState({ loaded: true, on: !!r.data?.maintenance_mode, config: r.data });
+        if (alive) setState({ loaded: true, status: r.data?.site_status || "live", config: r.data });
       } catch {
-        if (alive) setState({ loaded: true, on: false, config: null });
+        if (alive) setState({ loaded: true, status: "live", config: null });
       }
     };
     fetchIt();
     const iv = setInterval(fetchIt, 60000);
     return () => { alive = false; clearInterval(iv); };
   }, []);
-  const bypass =
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/oauth") ||
-    new URLSearchParams(search).get("preview") === "1";
-  return { ...state, blocked: state.on && !bypass };
+  const previewParam = new URLSearchParams(search).get("preview");
+  const isAdminRoute = pathname.startsWith("/admin") || pathname.startsWith("/oauth");
+  const hasAdminToken = typeof window !== "undefined" && !!localStorage.getItem("pb_admin_token");
+  // Explicit preview always wins so admins can eyeball the splash from the CMS.
+  if (previewParam === "maintenance" || previewParam === "coming_soon") {
+    return { ...state, blocked: true, forceMode: previewParam };
+  }
+  const blocked = state.status !== "live" && !isAdminRoute && !hasAdminToken;
+  return { ...state, blocked, forceMode: null };
 };
 
 function Shell() {
   const isAdmin = useIsAdminRoute();
   const m = useMaintenance();
   if (m.loaded && m.blocked) {
-    return <MaintenancePage config={m.config} />;
+    return <MaintenancePage config={m.config} forceMode={m.forceMode} />;
   }
   return (
     <div className="min-h-screen flex flex-col relative">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Navigate, NavLink, Routes, Route, Link } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -479,24 +479,37 @@ const SettingsAdmin = () => {
     search_console_verification: "",
     hero_headline_nl: "",
     hero_headline_en: "",
-    maintenance_mode: false,
-    maintenance_title_nl: "",
-    maintenance_title_en: "",
-    maintenance_message_nl: "",
-    maintenance_message_en: "",
+    site_status: "live",
+    site_status_lang: "auto",
+    maintenance_bg_mode: "dynamic",
     maintenance_bg_url: "",
-    maintenance_show_newsletter: true,
-    maintenance_show_version: true,
   });
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("general");
+  const [instantMsg, setInstantMsg] = useState("");
+  const loadedRef = useRef(false);
 
   useEffect(() => {
-    axios.get(`${API}/settings`).then((r) => setForm((prev) => ({ ...prev, ...(r.data || {}) }))).catch(() => {});
+    axios.get(`${API}/settings`).then((r) => {
+      setForm((prev) => ({ ...prev, ...(r.data || {}) }));
+      loadedRef.current = true;
+    }).catch(() => { loadedRef.current = true; });
   }, []);
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const toggle = (k) => () => setForm((f) => ({ ...f, [k]: !f[k] }));
+
+  // Instant-save helper for the Engineering controls — no need to click Save.
+  const patch = async (partial) => {
+    setForm((f) => ({ ...f, ...partial }));
+    if (!loadedRef.current) return;
+    try {
+      await axios.put(`${API}/settings`, partial, { headers: authHeader() });
+      setInstantMsg(en ? "Saved" : "Opgeslagen");
+      setTimeout(() => setInstantMsg(""), 1400);
+    } catch {
+      toast.error(en ? "Save failed" : "Opslaan mislukt");
+    }
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -506,6 +519,8 @@ const SettingsAdmin = () => {
       toast.success(en ? "Settings saved" : "Instellingen opgeslagen");
     } catch { toast.error(en ? "Save failed" : "Opslaan mislukt"); } finally { setSaving(false); }
   };
+
+  const previewUrl = (mode) => `/?preview=${mode}`;
 
   return (
     <div data-testid="cms-settings">
@@ -530,123 +545,153 @@ const SettingsAdmin = () => {
         ))}
       </div>
 
-      <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-5 max-w-2xl" data-testid="cms-settings-form">
-        {tab === "general" && (
-          <>
-            <div>
-              <h3 className="font-heading font-semibold text-strong mb-3">Google Analytics 4</h3>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Measurement ID (G-XXXXXXX)</span>
-                <input value={form.ga4_measurement_id || ""} onChange={change("ga4_measurement_id")} placeholder="G-XXXXXXXXXX" data-testid="cms-input-ga4"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
-              </label>
-              <p className="text-xs text-muted-fg mt-2">{en ? "Find your Measurement ID in Google Analytics → Admin → Data streams → Web." : "Vind je Measurement ID in Google Analytics → Beheerder → Datastreams → Web."}</p>
-            </div>
-
-            <div className="pt-4 border-t border-app">
-              <h3 className="font-heading font-semibold text-strong mb-3">Google Search Console</h3>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Verification code (content value)" : "Verificatie code (content-waarde)"}</span>
-                <input value={form.search_console_verification || ""} onChange={change("search_console_verification")} placeholder="abcdef123456..." data-testid="cms-input-search-console"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
-              </label>
-              <p className="text-xs text-muted-fg mt-2">{en ? "Paste only the content=\"...\" value from the meta-tag Search Console gives you." : "Plak alleen de content=\"...\" waarde uit de meta-tag die Search Console je geeft."}</p>
-            </div>
-
-            <div className="pt-4 border-t border-app">
-              <h3 className="font-heading font-semibold text-strong mb-3">{en ? "Hero text (optional)" : "Hero-tekst (optioneel)"}</h3>
-              <label className="block mb-3">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "NL headline (empty = default)" : "NL headline (leeg = standaard)"}</span>
-                <input value={form.hero_headline_nl || ""} onChange={change("hero_headline_nl")} data-testid="cms-input-hero-nl"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "EN headline (empty = default)" : "EN headline (leeg = standaard)"}</span>
-                <input value={form.hero_headline_en || ""} onChange={change("hero_headline_en")} data-testid="cms-input-hero-en"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-              </label>
-            </div>
-          </>
-        )}
-
-        {tab === "engineering" && (
+      {tab === "general" && (
+        <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-5 max-w-2xl" data-testid="cms-settings-form">
           <div>
-            <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4 mb-5">
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">🚧 {en ? "Maintenance / Coming-soon mode" : "Onderhoudsmodus / Coming-soon"}</p>
-              <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">
-                {en ? "When ON, every public page shows a playful maintenance splash. Admins can still access /admin. Bypass with ?preview=1." : "Wanneer AAN krijgt elke publieke pagina de speelse onderhoudspagina te zien. Admins kunnen nog steeds naar /admin. Bypass met ?preview=1."}
-              </p>
-            </div>
-            <label className="flex items-center gap-3 cursor-pointer select-none" data-testid="cms-maintenance-toggle">
-              <button
-                type="button"
-                onClick={toggle("maintenance_mode")}
-                className={`relative h-6 w-11 rounded-full transition ${form.maintenance_mode ? "bg-red-500" : "bg-slate-300 dark:bg-slate-700"}`}
-                aria-pressed={form.maintenance_mode}
-              >
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${form.maintenance_mode ? "left-5" : "left-0.5"}`} />
-              </button>
-              <span className="text-sm font-semibold text-strong">
-                {form.maintenance_mode
-                  ? (en ? "Maintenance mode ON — public site is blocked" : "Onderhoudsmodus AAN — publieke site is geblokkeerd")
-                  : (en ? "Maintenance mode OFF" : "Onderhoudsmodus UIT")}
-              </span>
+            <h3 className="font-heading font-semibold text-strong mb-3">Google Analytics 4</h3>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">Measurement ID (G-XXXXXXX)</span>
+              <input value={form.ga4_measurement_id || ""} onChange={change("ga4_measurement_id")} placeholder="G-XXXXXXXXXX" data-testid="cms-input-ga4"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
             </label>
+            <p className="text-xs text-muted-fg mt-2">{en ? "Find your Measurement ID in Google Analytics → Admin → Data streams → Web." : "Vind je Measurement ID in Google Analytics → Beheerder → Datastreams → Web."}</p>
+          </div>
 
-            <div className="grid sm:grid-cols-2 gap-3 mt-5">
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Title (NL)" : "Titel (NL)"}</span>
-                <input value={form.maintenance_title_nl || ""} onChange={change("maintenance_title_nl")} data-testid="cms-maintenance-title-nl"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Title (EN)" : "Titel (EN)"}</span>
-                <input value={form.maintenance_title_en || ""} onChange={change("maintenance_title_en")} data-testid="cms-maintenance-title-en"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Message (NL)" : "Bericht (NL)"}</span>
-                <textarea rows={3} value={form.maintenance_message_nl || ""} onChange={change("maintenance_message_nl")} data-testid="cms-maintenance-message-nl"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong resize-none" />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Message (EN)" : "Bericht (EN)"}</span>
-                <textarea rows={3} value={form.maintenance_message_en || ""} onChange={change("maintenance_message_en")} data-testid="cms-maintenance-message-en"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong resize-none" />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Background image URL (optional)" : "Achtergrondafbeelding URL (optioneel)"}</span>
-                <input value={form.maintenance_bg_url || ""} onChange={change("maintenance_bg_url")} placeholder="https://..." data-testid="cms-maintenance-bg"
-                  className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
-                <span className="text-[11px] text-muted-fg">{en ? "Left empty falls back to the PearBlue gradient." : "Leeg = automatische PearBlue gradient."}</span>
-              </label>
-            </div>
+          <div className="pt-4 border-t border-app">
+            <h3 className="font-heading font-semibold text-strong mb-3">Google Search Console</h3>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Verification code (content value)" : "Verificatie code (content-waarde)"}</span>
+              <input value={form.search_console_verification || ""} onChange={change("search_console_verification")} placeholder="abcdef123456..." data-testid="cms-input-search-console"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono" />
+            </label>
+          </div>
 
-            <div className="flex flex-wrap gap-4 mt-5">
-              <label className="inline-flex items-center gap-2 text-sm cursor-pointer" data-testid="cms-maintenance-newsletter-toggle">
-                <input type="checkbox" checked={!!form.maintenance_show_newsletter} onChange={toggle("maintenance_show_newsletter")} className="rounded border-slate-400" />
-                <span>{en ? "Show newsletter signup" : "Toon nieuwsbrief-aanmelding"}</span>
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm cursor-pointer" data-testid="cms-maintenance-version-toggle">
-                <input type="checkbox" checked={!!form.maintenance_show_version} onChange={toggle("maintenance_show_version")} className="rounded border-slate-400" />
-                <span>{en ? "Show version number" : "Toon versienummer"}</span>
-              </label>
-            </div>
+          <div className="pt-4 border-t border-app">
+            <h3 className="font-heading font-semibold text-strong mb-3">{en ? "Hero text (optional)" : "Hero-tekst (optioneel)"}</h3>
+            <label className="block mb-3">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "NL headline (empty = default)" : "NL headline (leeg = standaard)"}</span>
+              <input value={form.hero_headline_nl || ""} onChange={change("hero_headline_nl")} data-testid="cms-input-hero-nl"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "EN headline (empty = default)" : "EN headline (leeg = standaard)"}</span>
+              <input value={form.hero_headline_en || ""} onChange={change("hero_headline_en")} data-testid="cms-input-hero-en"
+                className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
+            </label>
+          </div>
 
-            <p className="text-xs text-muted-fg mt-5">
-              {en ? "Preview the maintenance page without turning it on for everyone:" : "Bekijk de onderhoudspagina zonder deze voor iedereen aan te zetten:"}
-              {" "}
-              <a href="/?preview=maintenance" target="_blank" rel="noreferrer" className="text-pear-500 underline" data-testid="cms-maintenance-preview-link">
-                {en ? "Open preview" : "Open preview"}
-              </a>
+          <button type="submit" disabled={saving} className="btn-primary" data-testid="cms-settings-submit">
+            {saving ? "…" : <><Save className="h-4 w-4" /> {en ? "Save" : "Opslaan"}</>}
+          </button>
+        </form>
+      )}
+
+      {tab === "engineering" && (
+        <div className="surface border border-app rounded-2xl p-6 space-y-6 max-w-3xl" data-testid="cms-settings-engineering">
+          <div className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">🚧 {en ? "Site status" : "Site-status"}</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">
+              {en
+                ? "Choose what public visitors see. Any signed-in admin (with an admin token in this browser) always keeps normal access."
+                : "Kies wat publieke bezoekers zien. Iedere ingelogde beheerder (met admin-token in deze browser) blijft altijd normaal toegang houden."}
             </p>
           </div>
-        )}
 
-        <button type="submit" disabled={saving} className="btn-primary" data-testid="cms-settings-submit">
-          {saving ? "…" : <><Save className="h-4 w-4" /> {en ? "Save" : "Opslaan"}</>}
-        </button>
-      </form>
+          {/* Mode segmented control — auto-saves */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Mode" : "Modus"}</p>
+            <div className="inline-flex rounded-full border border-app p-1 surface-2" data-testid="cms-site-status-group">
+              {[
+                { key: "live", label: en ? "Live" : "Live", tid: "cms-site-status-live" },
+                { key: "maintenance", label: en ? "Maintenance" : "Onderhoud", tid: "cms-site-status-maintenance" },
+                { key: "coming_soon", label: en ? "Coming soon" : "Binnenkort", tid: "cms-site-status-coming_soon" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => patch({ site_status: s.key })}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition ${form.site_status === s.key ? (s.key === "live" ? "bg-emerald-500 text-white shadow" : s.key === "maintenance" ? "bg-amber-500 text-white shadow" : "bg-violet-500 text-white shadow") : "text-muted-fg hover:text-strong"}`}
+                  data-testid={s.tid}
+                >{s.label}</button>
+              ))}
+            </div>
+            {instantMsg && <span className="ml-3 text-xs text-emerald-500" data-testid="cms-instant-saved">✓ {instantMsg}</span>}
+          </div>
+
+          {/* Language segmented control */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Language on splash" : "Taal op splashpagina"}</p>
+            <div className="inline-flex rounded-full border border-app p-1 surface-2" data-testid="cms-site-lang-group">
+              {[
+                { key: "auto", label: en ? "Auto (browser)" : "Auto (browser)" },
+                { key: "nl", label: "🇳🇱 NL" },
+                { key: "en", label: "🇬🇧 EN" },
+              ].map((l) => (
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => patch({ site_status_lang: l.key })}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition ${form.site_status_lang === l.key ? "bg-pear-500 text-white shadow" : "text-muted-fg hover:text-strong"}`}
+                  data-testid={`cms-site-lang-${l.key}`}
+                >{l.label}</button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-fg mt-2">
+              {en ? "Auto follows the visitor's browser language. Copy is baked-in — no need to type anything." : "Auto volgt de browsertaal van de bezoeker. Teksten zijn ingebakken — hoef je niets in te vullen."}
+            </p>
+          </div>
+
+          {/* Background */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Background" : "Achtergrond"}</p>
+            <div className="inline-flex rounded-full border border-app p-1 surface-2 mb-3" data-testid="cms-site-bg-group">
+              {[
+                { key: "dynamic", label: en ? "Dynamic bokeh (auto rotates)" : "Dynamische bokeh (auto-wissel)" },
+                { key: "custom", label: en ? "Custom image URL" : "Eigen afbeelding (URL)" },
+              ].map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => patch({ maintenance_bg_mode: b.key })}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-full transition ${form.maintenance_bg_mode === b.key ? "bg-slate-800 dark:bg-white dark:text-slate-900 text-white shadow" : "text-muted-fg hover:text-strong"}`}
+                  data-testid={`cms-site-bg-${b.key}`}
+                >{b.label}</button>
+              ))}
+            </div>
+            {form.maintenance_bg_mode === "custom" && (
+              <div className="flex gap-2">
+                <input
+                  value={form.maintenance_bg_url || ""}
+                  onChange={change("maintenance_bg_url")}
+                  onBlur={() => patch({ maintenance_bg_url: form.maintenance_bg_url })}
+                  placeholder="https://..."
+                  className="flex-1 rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono"
+                  data-testid="cms-site-bg-url"
+                />
+              </div>
+            )}
+            <p className="text-[11px] text-muted-fg mt-2">
+              {en ? "Bokeh photos are randomly picked every page load and blurred at 10% for a soft, atmospheric look." : "Bokeh-foto's worden per herlaad willekeurig gekozen en 10% gebluurd voor een sfeervolle look."}
+            </p>
+          </div>
+
+          {/* Preview buttons */}
+          <div className="pt-4 border-t border-app">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-fg mb-2">{en ? "Preview" : "Voorvertoning"}</p>
+            <div className="flex flex-wrap gap-2">
+              <a href={previewUrl("maintenance")} target="_blank" rel="noreferrer" className="text-xs px-4 py-2 rounded-full border border-amber-400 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10 inline-flex items-center gap-1.5" data-testid="cms-preview-maintenance">
+                🔧 {en ? "Preview Maintenance" : "Preview Onderhoud"}
+              </a>
+              <a href={previewUrl("coming_soon")} target="_blank" rel="noreferrer" className="text-xs px-4 py-2 rounded-full border border-violet-400 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 inline-flex items-center gap-1.5" data-testid="cms-preview-coming-soon">
+                🚀 {en ? "Preview Coming Soon" : "Preview Binnenkort"}
+              </a>
+            </div>
+            <p className="text-[11px] text-muted-fg mt-2">
+              {en ? "Preview opens in a new tab without affecting live visitors." : "Voorvertoning opent in een nieuw tabblad zonder de live-bezoekers te beïnvloeden."}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

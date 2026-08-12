@@ -224,13 +224,19 @@ class SiteSettings(BaseModel):
     search_console_verification: Optional[str] = ""
     hero_headline_nl: Optional[str] = ""
     hero_headline_en: Optional[str] = ""
-    # Maintenance / Coming-soon mode (public UI switches when enabled)
+    # Site status controls the public gate. "live" = site is up as normal.
+    # "maintenance" and "coming_soon" each render their own themed splash page
+    # with hard-coded, translated copy — no admin input required.
+    site_status: Optional[str] = "live"  # "live" | "maintenance" | "coming_soon"
+    site_status_lang: Optional[str] = "auto"  # "auto" | "nl" | "en"
+    maintenance_bg_mode: Optional[str] = "dynamic"  # "dynamic" | "custom"
+    maintenance_bg_url: Optional[str] = ""  # only used when bg_mode == "custom"
+    # Legacy fields — kept for backwards compat but not surfaced in the UI anymore.
     maintenance_mode: Optional[bool] = False
-    maintenance_title_nl: Optional[str] = "We werken aan iets moois"
-    maintenance_title_en: Optional[str] = "We are polishing something great"
-    maintenance_message_nl: Optional[str] = "Onze site staat even in onderhoud. Laat je e-mail achter en we sturen je een berichtje zodra we live gaan."
-    maintenance_message_en: Optional[str] = "Our site is briefly under maintenance. Drop your email and we'll let you know the moment we go live."
-    maintenance_bg_url: Optional[str] = ""
+    maintenance_title_nl: Optional[str] = ""
+    maintenance_title_en: Optional[str] = ""
+    maintenance_message_nl: Optional[str] = ""
+    maintenance_message_en: Optional[str] = ""
     maintenance_show_newsletter: Optional[bool] = True
     maintenance_show_version: Optional[bool] = True
 
@@ -240,14 +246,10 @@ class SiteSettingsUpdate(BaseModel):
     search_console_verification: Optional[str] = Field(None, max_length=200)
     hero_headline_nl: Optional[str] = Field(None, max_length=200)
     hero_headline_en: Optional[str] = Field(None, max_length=200)
-    maintenance_mode: Optional[bool] = None
-    maintenance_title_nl: Optional[str] = Field(None, max_length=200)
-    maintenance_title_en: Optional[str] = Field(None, max_length=200)
-    maintenance_message_nl: Optional[str] = Field(None, max_length=1200)
-    maintenance_message_en: Optional[str] = Field(None, max_length=1200)
+    site_status: Optional[str] = Field(None, pattern="^(live|maintenance|coming_soon)$")
+    site_status_lang: Optional[str] = Field(None, pattern="^(auto|nl|en)$")
+    maintenance_bg_mode: Optional[str] = Field(None, pattern="^(dynamic|custom)$")
     maintenance_bg_url: Optional[str] = Field(None, max_length=500)
-    maintenance_show_newsletter: Optional[bool] = None
-    maintenance_show_version: Optional[bool] = None
 
 
 class PortalRegistration(BaseModel):
@@ -1020,15 +1022,17 @@ async def update_settings(payload: SiteSettingsUpdate, current=Depends(require_a
 @api_router.get("/site/maintenance")
 async def get_public_maintenance():
     doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0}) or {}
+    # Migrate legacy `maintenance_mode` bool into the new tri-state site_status.
+    site_status = doc.get("site_status")
+    if not site_status:
+        site_status = "maintenance" if doc.get("maintenance_mode") else "live"
+    if site_status not in ("live", "maintenance", "coming_soon"):
+        site_status = "live"
     return {
-        "maintenance_mode": bool(doc.get("maintenance_mode", False)),
-        "maintenance_title_nl": doc.get("maintenance_title_nl") or "We werken aan iets moois",
-        "maintenance_title_en": doc.get("maintenance_title_en") or "We are polishing something great",
-        "maintenance_message_nl": doc.get("maintenance_message_nl") or "",
-        "maintenance_message_en": doc.get("maintenance_message_en") or "",
+        "site_status": site_status,
+        "site_status_lang": doc.get("site_status_lang") or "auto",
+        "maintenance_bg_mode": doc.get("maintenance_bg_mode") or "dynamic",
         "maintenance_bg_url": doc.get("maintenance_bg_url") or "",
-        "maintenance_show_newsletter": bool(doc.get("maintenance_show_newsletter", True)),
-        "maintenance_show_version": bool(doc.get("maintenance_show_version", True)),
         "version": APP_VERSION,
     }
 
