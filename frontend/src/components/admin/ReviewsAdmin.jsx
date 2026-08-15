@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, Trash2, Sparkles, Send, Clock } from "lucide-react";
+import { Check, Trash2, Sparkles, Send, Clock, BarChart3 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { API, StarsRow, AssigneeChip, assigneeLabel, prettyRole } from "./_shared";
 import { BulkTranslateButton } from "./BulkTranslateButton";
@@ -55,6 +55,7 @@ export const ReviewsAdmin = () => {
   const [invLog, setInvLog] = useState([]);
   const [scanBusy, setScanBusy] = useState(false);
   const [autopilotStatus, setAutopilotStatus] = useState(null);
+  const [weekly, setWeekly] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -71,8 +72,11 @@ export const ReviewsAdmin = () => {
     axios.get(`${API}/admin/reviews/books-autopilot-status`, { headers: authHeader() })
       .then((r) => setAutopilotStatus(r.data || null))
       .catch(() => setAutopilotStatus(null));
+    axios.get(`${API}/admin/reviews/books-autopilot-weekly?days=7`, { headers: authHeader() })
+      .then((r) => setWeekly(r.data || null))
+      .catch(() => setWeekly(null));
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { load(); }, []);
 
   const scanInvites = async () => {
     setScanBusy(true);
@@ -195,6 +199,64 @@ export const ReviewsAdmin = () => {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        {weekly && (
+          <div className="mt-5 border-t border-app pt-4" data-testid="cms-books-autopilot-weekly">
+            <h3 className="text-xs uppercase tracking-widest text-muted-fg mb-3 flex items-center gap-1">
+              <BarChart3 className="h-3 w-3" /> Autopilot weekrapport (laatste {weekly.range_days} dagen)
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div className="rounded-xl surface-2 border border-app p-3">
+                <p className="text-[10px] uppercase tracking-widest text-muted-fg">Totaal</p>
+                <p className="font-heading text-2xl font-medium text-strong" data-testid="weekly-total">{weekly.invites_total}</p>
+              </div>
+              <div className="rounded-xl surface-2 border border-emerald-200 dark:border-emerald-500/30 p-3">
+                <p className="text-[10px] uppercase tracking-widest text-emerald-700">Verstuurd</p>
+                <p className="font-heading text-2xl font-medium text-emerald-700" data-testid="weekly-delivered">{weekly.invites_delivered}</p>
+              </div>
+              <div className="rounded-xl surface-2 border border-amber-200 dark:border-amber-500/30 p-3">
+                <p className="text-[10px] uppercase tracking-widest text-amber-700">Overgeslagen</p>
+                <p className="font-heading text-2xl font-medium text-amber-700" data-testid="weekly-skipped">{weekly.invites_skipped}</p>
+              </div>
+              <div className={`rounded-xl surface-2 border p-3 ${weekly.invites_errored > 0 ? "border-red-200 dark:border-red-500/30" : "border-app"}`}>
+                <p className={`text-[10px] uppercase tracking-widest ${weekly.invites_errored > 0 ? "text-red-600" : "text-muted-fg"}`}>Fouten</p>
+                <p className={`font-heading text-2xl font-medium ${weekly.invites_errored > 0 ? "text-red-600" : "text-strong"}`} data-testid="weekly-errored">{weekly.invites_errored}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-muted-fg mb-2">
+              <span>Aflever-ratio: <strong className="text-strong">{weekly.delivery_rate}%</strong></span>
+              {weekly.last_run?.at && <span>Laatste scan: {new Date(weekly.last_run.at).toLocaleString("nl-NL")}</span>}
+            </div>
+            {weekly.per_day?.length > 0 && (
+              <div className="flex items-end gap-1 h-16 rounded-xl surface-2 border border-app p-2" data-testid="weekly-sparkline">
+                {(() => {
+                  const max = Math.max(1, ...weekly.per_day.map((d) => d.delivered + d.skipped));
+                  return weekly.per_day.map((d) => {
+                    const total = d.delivered + d.skipped;
+                    const deliveredPct = total ? (d.delivered / max) * 100 : 0;
+                    const skippedPct = total ? (d.skipped / max) * 100 : 0;
+                    return (
+                      <div key={d.date} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`${d.date} · ${d.delivered} verstuurd, ${d.skipped} overgeslagen`}>
+                        <div className="w-full bg-emerald-500 rounded-sm" style={{ height: `${deliveredPct}%` }} />
+                        <div className="w-full bg-amber-400 rounded-sm" style={{ height: `${skippedPct}%` }} />
+                        <span className="text-[8px] text-muted-fg mt-0.5">{d.date.slice(5)}</span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+            {weekly.recent_errors?.length > 0 && (
+              <div className="mt-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 p-2 text-[11px] text-red-700 dark:text-red-400" data-testid="weekly-errors">
+                <p className="font-semibold mb-1">Recente fouten:</p>
+                <ul className="space-y-0.5 list-disc list-inside">
+                  {weekly.recent_errors.slice(0, 5).map((e, i) => (
+                    <li key={i}><span className="font-mono">{e.email || "—"}</span>: {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </section>

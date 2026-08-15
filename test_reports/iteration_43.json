@@ -1,0 +1,37 @@
+{
+  "iteration": 43,
+  "version": "0.7.4-Beta",
+  "date": "2026-02-15",
+  "status": "pass",
+  "test_credentials": "/app/memory/test_credentials.md",
+  "backend": {
+    "pytest_file": "/app/backend/tests/test_iteration43.py",
+    "passed": 8,
+    "failed": 0,
+    "tests": [
+      "TestGlobalSearch::test_search_short_query_returns_empty",
+      "TestGlobalSearch::test_search_requires_auth",
+      "TestGlobalSearch::test_search_hits_have_required_shape",
+      "TestBooksAutopilotWeekly::test_weekly_shape",
+      "TestBooksAutopilotWeekly::test_weekly_clamps_days",
+      "TestBooksAutopilotWeekly::test_weekly_requires_auth",
+      "TestModelsSplitRegression::test_reviews_endpoint_still_returns_list",
+      "TestModelsSplitRegression::test_projects_endpoint_still_returns_list"
+    ]
+  },
+  "frontend": {
+    "smoke_test": "playwright",
+    "notes": [
+      "Sidebar search typed 'trust' → dropdown with 1 hit shown, click navigates to /admin/messages/{id}.",
+      "Reviews page shows the weekly recap card with 4 stat tiles + per-day sparkline placeholder + 0 total (no autopilot activity yet).",
+      "AdminSidebar polling toasts fire only when counters INCREASE — verified via new hook signature; existing polls preserve open dropdowns and typed input (iteration 42 regression check)."
+    ]
+  },
+  "features_shipped": [
+    "Global CMS search across contact_messages / portal_registrations / reviews / feedback with ticket_ref shortcut and deep-linked hits",
+    "useSilentPolling extended with optional onChange(prev,next) callback; sidebar surfaces toasts when message/portal/review/feedback/cybersecurity counters bump",
+    "Books-autopilot weekly recap card (delivered/skipped/errored + delivery ratio + per-day sparkline + recent errors list) backed by /api/admin/reviews/books-autopilot-weekly",
+    "Server modularization Phase 1: 18 Pydantic models + new_ticket_ref helper moved to /app/backend/models.py; server.py reduced from 3753 → 3664 lines with a clean import block"
+  ],
+  "regressions": []
+}

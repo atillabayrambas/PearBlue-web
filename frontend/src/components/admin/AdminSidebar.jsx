@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { NavLink, Link } from "react-router-dom";
-import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, BarChart3, UserPlus, Star, Users, Code, ShieldAlert, MessageSquare, Send, Menu, XCircle, Euro } from "lucide-react";
+import { NavLink, Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { Briefcase, Settings as SettingsIcon, Inbox, LogOut, BarChart3, UserPlus, Star, Users, Code, ShieldAlert, MessageSquare, Send, Menu, XCircle, Euro, Search } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { useTheme } from "../../theme/ThemeContext";
@@ -10,27 +11,94 @@ import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { useSilentPolling } from "../../hooks/useSilentPolling";
 import { API, PEARBLUE_LOGO, authHeaderFromStorage } from "./_shared";
 
+// Counter keys that should trigger a "new item" toast when they increment
+// during a silent poll. Deliberately excludes `messages` because those are
+// already streamed live via the mailboxes IMAP UI and would spam.
+const TOAST_COUNTER_KEYS = [
+  { key: "messages", labelNl: "nieuw bericht", labelEn: "new message", target: "/admin/messages" },
+  { key: "portal", labelNl: "portaal-aanvraag", labelEn: "portal request", target: "/admin/registrations" },
+  { key: "reviews", labelNl: "review", labelEn: "review", target: "/admin/reviews" },
+  { key: "feedback", labelNl: "feedback", labelEn: "feedback", target: "/admin/feedback" },
+  { key: "cybersecurity", labelNl: "veiligheidsmelding", labelEn: "security event", target: "/admin/cybersecurity" },
+];
+
 export const AdminSidebar = () => {
   const { user, logout } = useAuth();
   const { lang, setLang } = useLang();
   const { mode, setMode } = useTheme();
+  const navigate = useNavigate();
   const [counters, setCounters] = useState({});
   const [profile, setProfile] = useState(null);
   const [version, setVersion] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchHits, setSearchHits] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const searchTimer = useRef(null);
   useBodyScrollLock(mobileOpen);
   useEffect(() => {
     axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => setCounters(r.data || {})).catch(() => {});
     axios.get(`${API}/site/version`).then((r) => setVersion(r.data?.version || "")).catch(() => {});
   }, []);
-  // Refresh sidebar badge counters silently every 30s — does NOT force a
-  // loading state or clobber user interactions elsewhere in the CMS.
+  // Refresh sidebar badge counters silently every 30s. When a counter INCREASES
+  // between polls, surface a subtle toast so the admin never misses inbound
+  // items. Existing item states (dropdowns, forms) are preserved because the
+  // hook already skips ticks while the user is interacting.
   useSilentPolling(
     () => axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => r.data || {}).catch(() => null),
     (data) => { if (data) setCounters(data); },
     30000,
     [],
+    (prev, next) => {
+      if (!prev || !next) return;
+      const en = lang === "en";
+      TOAST_COUNTER_KEYS.forEach(({ key, labelNl, labelEn, target }) => {
+        const before = prev?.[key] || 0;
+        const after = next?.[key] || 0;
+        if (after > before) {
+          const delta = after - before;
+          const label = en ? labelEn : labelNl;
+          toast(
+            en
+              ? `${delta} new ${label}${delta > 1 ? "s" : ""}`
+              : `${delta} nieuwe ${label}${delta > 1 ? "s" : ""}`,
+            {
+              description: en ? "Click to open" : "Klik om te openen",
+              action: {
+                label: en ? "Open" : "Open",
+                onClick: () => navigate(target),
+              },
+            }
+          );
+        }
+      });
+    },
   );
+
+  // Global search — debounced 250ms. Empty query closes the dropdown.
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = searchQ.trim();
+    if (q.length < 2) { setSearchHits([]); setSearchOpen(false); return; }
+    setSearchBusy(true);
+    setSearchOpen(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const r = await axios.get(`${API}/admin/search`, { params: { q, limit: 12 }, headers: authHeaderFromStorage() });
+        setSearchHits(r.data?.hits || []);
+      } catch { setSearchHits([]); }
+      finally { setSearchBusy(false); }
+    }, 250);
+    return () => searchTimer.current && clearTimeout(searchTimer.current);
+  }, [searchQ]);
+
+  const goHit = (hit) => {
+    setSearchOpen(false);
+    setSearchQ("");
+    if (hit?.target) navigate(hit.target);
+  };
+
   useEffect(() => {
     if (!user?.email) return;
     axios.get(`${API}/admin/users/${encodeURIComponent(user.email)}/details`, { headers: authHeaderFromStorage() })
@@ -91,6 +159,61 @@ export const AdminSidebar = () => {
             <p className="font-heading font-semibold text-strong text-sm mt-0.5 truncate">{displayName}</p>
             {user?.email && <p className="text-[10px] text-muted-fg truncate mt-0.5" data-testid="cms-sidebar-email">{user.email}</p>}
           </div>
+        </div>
+
+        {/* Global CMS search */}
+        <div className="relative mb-4" data-testid="cms-sidebar-search">
+          <div className="flex items-center gap-2 rounded-xl surface-2 border border-app px-3 py-2 focus-within:border-pear-500 transition-colors">
+            <Search className="h-4 w-4 text-muted-fg shrink-0" />
+            <input
+              type="text"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              onFocus={() => searchQ.trim().length >= 2 && setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+              placeholder={lang === "en" ? "Search messages, tickets…" : "Zoek berichten, tickets…"}
+              className="flex-1 bg-transparent text-xs text-strong placeholder:text-muted-fg outline-none"
+              data-testid="cms-sidebar-search-input"
+              aria-label={lang === "en" ? "Global CMS search" : "Globaal zoeken"}
+            />
+            {searchBusy && <span className="text-[10px] text-muted-fg animate-pulse">…</span>}
+          </div>
+          {searchOpen && (searchHits.length > 0 || (!searchBusy && searchQ.trim().length >= 2)) && (
+            <div
+              className="absolute left-0 right-0 top-full mt-1 max-h-96 overflow-auto rounded-xl surface border border-app shadow-xl z-50"
+              data-testid="cms-sidebar-search-results"
+            >
+              {searchHits.length === 0 ? (
+                <div className="p-3 text-xs text-muted-fg" data-testid="cms-sidebar-search-empty">
+                  {lang === "en" ? "No matches" : "Geen resultaten"}
+                </div>
+              ) : (
+                searchHits.map((h, i) => (
+                  <button
+                    key={`${h.kind}-${h.id || i}`}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); goHit(h); }}
+                    className="w-full text-left px-3 py-2 hover:bg-pear-100/50 dark:hover:bg-pear-500/10 border-b border-app last:border-b-0 flex items-start gap-2"
+                    data-testid={`cms-sidebar-search-hit-${i}`}
+                  >
+                    <span className={`shrink-0 text-[9px] uppercase tracking-widest rounded-full px-1.5 py-0.5 mt-0.5 ${
+                      h.kind === "message" ? "bg-pear-100 text-pear-600 dark:bg-pear-500/20"
+                      : h.kind === "portal" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20"
+                      : h.kind === "review" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20"
+                      : "bg-slate-100 text-slate-700 dark:bg-slate-500/20"
+                    }`}>{h.kind}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-semibold text-strong truncate">
+                        {h.ref && <span className="font-mono text-pear-500 mr-1">#{h.ref}</span>}
+                        {h.title}
+                      </span>
+                      {h.subtitle && <span className="block text-[10px] text-muted-fg truncate">{h.subtitle}</span>}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         <nav className="flex flex-col gap-1">

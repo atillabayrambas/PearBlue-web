@@ -100,243 +100,29 @@ security = HTTPBearer(auto_error=False)
 
 
 # ---------- Models ----------
-def _new_ticket_ref() -> str:
-    """Human-readable ticket reference used in outgoing emails.
-    Format: `TKT-XXXXXX` (6 uppercase hex chars). Uniqueness comes from the
-    underlying uuid `id`; collisions on the short ref are extremely unlikely."""
-    return f"TKT-{uuid.uuid4().hex[:6].upper()}"
-
-
-class ContactMessage(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    ticket_ref: Optional[str] = None  # e.g. "TKT-A1B2C3" — human-readable ref shown in emails
-    name: str
-    email: EmailStr
-    phone: Optional[str] = None
-    company: Optional[str] = None
-    subject: Optional[str] = None
-    message: str
-    language: Optional[str] = "nl"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    email_sent: bool = False
-    status: Optional[str] = "new"
-    priority: Optional[str] = "P3"
-    assigned_to: Optional[str] = None
-    notes: Optional[list] = None
-    replies: Optional[list] = None
-    attachments: Optional[list] = None
-    spam: Optional[bool] = False
-    spam_reason: Optional[str] = None
-
-
-class ContactCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    email: EmailStr
-    phone: Optional[str] = Field(None, max_length=40)
-    company: Optional[str] = Field(None, max_length=120)
-    subject: Optional[str] = Field(None, max_length=200)
-    message: str = Field(..., min_length=1, max_length=5000)
-    language: Optional[str] = "nl"
-
-
-class QuoteRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    email: EmailStr
-    company: Optional[str] = None
-    pages: Optional[int] = None
-    budget: Optional[str] = None
-    services: List[str] = []
-    description: Optional[str] = None
-    language: Optional[str] = "nl"
-    # Extended: wishlist + story from calculator
-    wishlist_items: Optional[List[Dict[str, Any]]] = None
-    wishlist_totals: Optional[Dict[str, Any]] = None
-    story: Optional[str] = None
-    custom_request: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class QuoteCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    email: EmailStr
-    company: Optional[str] = Field(None, max_length=120)
-    pages: Optional[int] = None
-    budget: Optional[str] = None
-    services: List[str] = []
-    description: Optional[str] = Field(None, max_length=5000)
-    language: Optional[str] = "nl"
-    wishlist_items: Optional[List[Dict[str, Any]]] = Field(None, description="[{id,label,qty,unit,price}]")
-    wishlist_totals: Optional[Dict[str, Any]] = None
-    story: Optional[str] = Field(None, max_length=5000)
-    custom_request: Optional[str] = Field(None, max_length=5000)
-
-
-class Project(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    title: str
-    category: str
-    tag: Optional[str] = None
-    description: Optional[str] = None
-    # Optional English translations — filled by the CMS "Bulk translate" button
-    # or the per-field "AI vertaal" chip. Public site prefers these when lang=en.
-    title_en: Optional[str] = None
-    description_en: Optional[str] = None
-    image_url: str
-    external_url: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class ProjectCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=140)
-    category: str = Field(..., min_length=1, max_length=40)
-    tag: Optional[str] = Field(None, max_length=80)
-    description: Optional[str] = Field(None, max_length=2000)
-    image_url: str = Field(..., min_length=4)
-    external_url: Optional[str] = None
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1, max_length=200)
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    user: dict
-
-
-class ChatRequest(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=120)
-    message: str = Field(..., min_length=1, max_length=2000)
-    language: Optional[str] = "nl"
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    session_id: str
-    remaining: int
-
-
-class SiteSettings(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    ga4_measurement_id: Optional[str] = ""
-    search_console_verification: Optional[str] = ""
-    hero_headline_nl: Optional[str] = ""
-    hero_headline_en: Optional[str] = ""
-    # Site status controls the public gate. "live" = site is up as normal.
-    # "maintenance" and "coming_soon" each render their own themed splash page
-    # with hard-coded, translated copy — no admin input required.
-    site_status: Optional[str] = "live"  # "live" | "maintenance" | "coming_soon"
-    site_status_lang: Optional[str] = "auto"  # "auto" | "nl" | "en"
-    maintenance_bg_mode: Optional[str] = "dynamic"  # "dynamic" | "custom"
-    maintenance_bg_url: Optional[str] = ""  # only used when bg_mode == "custom"
-    # Legacy fields — kept for backwards compat but not surfaced in the UI anymore.
-    maintenance_mode: Optional[bool] = False
-    maintenance_title_nl: Optional[str] = ""
-    maintenance_title_en: Optional[str] = ""
-    maintenance_message_nl: Optional[str] = ""
-    maintenance_message_en: Optional[str] = ""
-    maintenance_show_newsletter: Optional[bool] = True
-    maintenance_show_version: Optional[bool] = True
-    # AI translate rate limit (per admin, per minute). Set via CMS.
-    ai_translate_limit_per_minute: Optional[int] = 30
-
-
-class SiteSettingsUpdate(BaseModel):
-    ga4_measurement_id: Optional[str] = Field(None, max_length=40)
-    search_console_verification: Optional[str] = Field(None, max_length=200)
-    hero_headline_nl: Optional[str] = Field(None, max_length=200)
-    hero_headline_en: Optional[str] = Field(None, max_length=200)
-    site_status: Optional[str] = Field(None, pattern="^(live|maintenance|coming_soon)$")
-    site_status_lang: Optional[str] = Field(None, pattern="^(auto|nl|en)$")
-    maintenance_bg_mode: Optional[str] = Field(None, pattern="^(dynamic|custom)$")
-    maintenance_bg_url: Optional[str] = Field(None, max_length=500)
-    ai_translate_limit_per_minute: Optional[int] = Field(None, ge=1, le=500)
-
-
-class PortalRegistration(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    email: EmailStr
-    company: Optional[str] = None
-    phone: Optional[str] = None
-    message: Optional[str] = None
-    language: Optional[str] = "nl"
-    address: Optional[str] = None
-    postal_code: Optional[str] = None
-    city: Optional[str] = None
-    region: Optional[str] = None
-    country: Optional[str] = None
-    status: str = "pending"  # pending | approved | rejected
-    admin_note: Optional[str] = None
-    assigned_to: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    reviewed_at: Optional[datetime] = None
-
-
-class PortalRegistrationCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    email: EmailStr
-    company: Optional[str] = Field(None, max_length=120)
-    phone: Optional[str] = Field(None, max_length=40)
-    message: Optional[str] = Field(None, max_length=2000)
-    language: Optional[str] = "nl"
-    # Address block (required by the new portal registration UX)
-    address: Optional[str] = Field(None, max_length=200)
-    postal_code: Optional[str] = Field(None, max_length=20)
-    city: Optional[str] = Field(None, max_length=120)
-    region: Optional[str] = Field(None, max_length=120)
-    country: Optional[str] = Field(None, max_length=80)
-
-
-class RegistrationReview(BaseModel):
-    status: str = Field(..., pattern="^(approved|rejected|pending)$")
-    admin_note: Optional[str] = Field(None, max_length=1000)
-    assigned_to: Optional[str] = None
-
-
-class Review(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    company: Optional[str] = None
-    project: Optional[str] = None
-    rating: int = Field(..., ge=1, le=5)
-    quote: str
-    # Optional English translation for the review quote — filled by the CMS
-    # "Bulk translate" button. Public site uses it when lang=en.
-    quote_en: Optional[str] = None
-    approved: bool = False
-    featured: bool = False
-    assigned_to: Optional[str] = None
-    status: Optional[str] = "new"  # new | in_progress | done
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class ReviewCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    company: Optional[str] = Field(None, max_length=120)
-    project: Optional[str] = Field(None, max_length=200)
-    rating: int = Field(..., ge=1, le=5)
-    quote: str = Field(..., min_length=10, max_length=1000)
-
-
-class ReviewUpdate(BaseModel):
-    approved: Optional[bool] = None
-    featured: Optional[bool] = None
-    assigned_to: Optional[str] = None
-    status: Optional[str] = Field(None, pattern="^(new|in_progress|done)$")
-    quote_en: Optional[str] = Field(None, max_length=1500)
+# Split into /app/backend/models.py (iteration 43 modularization Phase 1).
+# server.py continues to reference these names unchanged.
+from models import (  # noqa: E402
+    new_ticket_ref as _new_ticket_ref,
+    ContactMessage,
+    ContactCreate,
+    QuoteRequest,
+    QuoteCreate,
+    Project,
+    ProjectCreate,
+    LoginRequest,
+    LoginResponse,
+    ChatRequest,
+    ChatResponse,
+    SiteSettings,
+    SiteSettingsUpdate,
+    PortalRegistration,
+    PortalRegistrationCreate,
+    RegistrationReview,
+    Review,
+    ReviewCreate,
+    ReviewUpdate,
+)
 
 
 # ---------- Auth helpers ----------
@@ -3245,6 +3031,131 @@ async def admin_books_autopilot_status(current=Depends(require_admin)):
     doc = await db.books_autopilot_status.find_one({"_id": "last_run"}) or {}
     doc.pop("_id", None)
     return doc
+
+
+@api_router.get("/admin/reviews/books-autopilot-weekly")
+async def admin_books_autopilot_weekly(days: int = 7, current=Depends(require_admin)):
+    """Weekly recap of the Books review-autopilot activity.
+    Aggregates the last `days` days of `review_invites` records + the current
+    last-run status doc so the CMS can render a summary card with invites
+    sent, invoices scanned, delivery success rate and any errors seen."""
+    days = max(1, min(days, 90))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    # All autopilot-sourced invites in the window (delivered + skipped/no-email stubs)
+    invites = await db.review_invites.find(
+        {"source": "zoho_books_autopilot", "recorded_at": {"$gte": since}},
+        {"_id": 0},
+    ).sort("recorded_at", -1).to_list(1000)
+    delivered = [i for i in invites if i.get("delivered")]
+    skipped = [i for i in invites if not i.get("delivered")]
+    errors = [i for i in invites if i.get("error") and i.get("error") != "no-email"]
+    # Approximate "invoices scanned" from status doc — it holds the latest scan
+    # total but not a rolling sum; expose the latest run summary alongside.
+    last_run = await db.books_autopilot_status.find_one({"_id": "last_run"}) or {}
+    last_run.pop("_id", None)
+    # Per-day sparkline (delivered vs skipped)
+    per_day: Dict[str, Dict[str, int]] = {}
+    for i in invites:
+        d = (i.get("recorded_at") or "")[:10] or "unknown"
+        b = per_day.setdefault(d, {"delivered": 0, "skipped": 0})
+        b["delivered" if i.get("delivered") else "skipped"] += 1
+    per_day_list = [{"date": k, **v} for k, v in sorted(per_day.items())]
+    return {
+        "range_days": days,
+        "since": since,
+        "invites_total": len(invites),
+        "invites_delivered": len(delivered),
+        "invites_skipped": len(skipped),
+        "invites_errored": len(errors),
+        "delivery_rate": round(len(delivered) / len(invites) * 100, 1) if invites else 0.0,
+        "per_day": per_day_list,
+        "recent_errors": [
+            {"at": i.get("recorded_at"), "email": i.get("email"), "error": i.get("error"), "ref": i.get("project_id")}
+            for i in errors[:10]
+        ],
+        "last_run": last_run,
+    }
+
+
+@api_router.get("/admin/search")
+async def admin_global_search(q: str = "", limit: int = 20, current=Depends(require_admin)):
+    """Global CMS search across messages, portal-registrations, reviews and
+    feedback. Case-insensitive substring match on name/email/subject/message +
+    exact `ticket_ref` shortcut. Returns a mixed list of hits with a `kind`
+    tag and a `target` deep-link so the frontend can route directly."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"query": q, "hits": []}
+    esc = _re.escape(q)
+    rx = {"$regex": esc, "$options": "i"}
+    limit = max(1, min(limit, 50))
+
+    hits: List[Dict[str, Any]] = []
+
+    # 1) Messages / tickets — search subject, name, email, message, ticket_ref
+    msg_filter = {
+        "$or": [
+            {"ticket_ref": {"$regex": f"^{esc}$", "$options": "i"}},
+            {"subject": rx},
+            {"name": rx},
+            {"email": rx},
+            {"message": rx},
+        ]
+    }
+    async for m in db.contact_messages.find(msg_filter, {"_id": 0}).sort("created_at", -1).limit(limit):
+        hits.append({
+            "kind": "message",
+            "id": m.get("id"),
+            "title": m.get("subject") or "(geen onderwerp)",
+            "subtitle": f"{m.get('name', '')} — {m.get('email', '')}",
+            "ref": m.get("ticket_ref"),
+            "created_at": m.get("created_at"),
+            "target": f"/admin/messages/{m.get('id')}",
+        })
+
+    # 2) Portal registrations — name/email/company/message
+    reg_filter = {
+        "$or": [{"name": rx}, {"email": rx}, {"company": rx}, {"message": rx}],
+    }
+    async for r in db.portal_registrations.find(reg_filter, {"_id": 0}).sort("created_at", -1).limit(limit):
+        hits.append({
+            "kind": "portal",
+            "id": r.get("id"),
+            "title": r.get("name") or r.get("email"),
+            "subtitle": f"{r.get('company') or '—'} · {r.get('status', 'pending')}",
+            "ref": None,
+            "created_at": r.get("created_at"),
+            "target": "/admin/registrations",
+        })
+
+    # 3) Reviews — name/company/quote
+    rev_filter = {"$or": [{"name": rx}, {"company": rx}, {"quote": rx}]}
+    async for r in db.reviews.find(rev_filter, {"_id": 0}).sort("created_at", -1).limit(limit):
+        hits.append({
+            "kind": "review",
+            "id": r.get("id"),
+            "title": f"⭐ {r.get('rating', 0)} — {r.get('name', '')}",
+            "subtitle": (r.get("quote") or "")[:120],
+            "ref": None,
+            "created_at": r.get("created_at"),
+            "target": "/admin/reviews",
+        })
+
+    # 4) Feedback — name/email/comment
+    fb_filter = {"$or": [{"name": rx}, {"email": rx}, {"comment": rx}]}
+    async for f in db.feedback.find(fb_filter, {"_id": 0}).sort("created_at", -1).limit(limit):
+        hits.append({
+            "kind": "feedback",
+            "id": f.get("id"),
+            "title": f.get("name") or f.get("email") or "(anoniem)",
+            "subtitle": (f.get("comment") or "")[:120],
+            "ref": None,
+            "created_at": f.get("created_at"),
+            "target": "/admin/feedback",
+        })
+
+    hits.sort(key=lambda h: h.get("created_at") or "", reverse=True)
+    return {"query": q, "hits": hits[: limit * 2]}
 
 
 @api_router.get("/admin/financials")
