@@ -1,9 +1,13 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Sparkles, Leaf, Wallet, HeartHandshake, ArrowRight, MessageSquare, Palette, Wrench, Rocket, ShieldCheck, LifeBuoy } from "lucide-react";
+import { Sparkles, Leaf, Wallet, HeartHandshake, ArrowRight, MessageSquare, Palette, Wrench, Rocket, ShieldCheck, LifeBuoy, CheckCircle2, Target } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
+import { iconFromName } from "../data/roadmapIcons";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const IMG_OFFICE = "https://images.unsplash.com/photo-1606836591695-4d58a73eba1e?crop=entropy&cs=srgb&fm=jpg&w=1200&q=85";
 const IMG_TEAM = "https://images.unsplash.com/photo-1711558596331-900d9cb71f62?crop=entropy&cs=srgb&fm=jpg&w=900&q=85";
@@ -80,11 +84,179 @@ export default function About() {
         </div>
       </section>
 
+      {/* Company roadmap — achieved milestones + future goals */}
+      <RoadmapSection lang={lang} />
+
       {/* OTAP procedure — visual timeline of our end-to-end delivery process */}
       <ProcedureSection lang={lang} />
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Roadmap timeline — behaalde doelen + toekomstplannen (CMS-driven)
+// -----------------------------------------------------------------------------
+const RoadmapSection = ({ lang }) => {
+  const nl = lang !== "en";
+  const [achieved, setAchieved] = useState([]);
+  const [planned, setPlanned] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    axios.get(`${API}/site/roadmap`).then((r) => {
+      setAchieved(r.data?.achieved || []);
+      setPlanned(r.data?.planned || []);
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, []);
+
+  // Interleave achieved then planned so the timeline reads left → right as
+  // "waar we vandaan komen → waar we naartoe gaan".
+  const items = [...achieved, ...planned];
+  if (loaded && items.length === 0) return null;
+
+  const titleOf = (i) => (lang === "en" ? (i.title_en || i.title_nl) : i.title_nl);
+  const descOf = (i) => (lang === "en" ? (i.description_en || i.description_nl) : i.description_nl);
+
+  return (
+    <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-4" data-testid="about-roadmap">
+      <div className="max-w-3xl mb-12">
+        <p className="overline mb-4">{nl ? "Onze reis" : "Our journey"}</p>
+        <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-strong" data-testid="roadmap-title">
+          {nl ? "Van wens naar werkelijkheid — een tijdlijn." : "From wish to reality — a timeline."}
+        </h2>
+        <p className="mt-5 text-lg text-muted-fg leading-relaxed">
+          {nl
+            ? "Elke pear-groene stip is een behaald doel. De doorzichtige stippen zijn wat komt: producten, platforms en dromen die we samen met onze klanten waarmaken."
+            : "Every pear-green dot is an achieved goal. The translucent dots are what's next: products, platforms and dreams we bring to life with our customers."}
+        </p>
+      </div>
+
+      {/* Desktop: horizontal connected timeline */}
+      <div className="hidden lg:block relative pt-6" data-testid="roadmap-desktop">
+        {/* Continuous rail: solid pear for the achieved run, dashed slate for planned */}
+        <div className="absolute top-14 left-0 right-0 flex items-center" aria-hidden="true">
+          <div
+            className="h-1 bg-gradient-to-r from-pear-500 via-pear-500 to-pear-400 rounded-full"
+            style={{ width: `${achieved.length ? (achieved.length / Math.max(items.length, 1)) * 100 : 0}%` }}
+          />
+          <div
+            className="h-0.5 border-t-2 border-dashed border-slate-300 dark:border-slate-600 flex-1"
+          />
+        </div>
+        <div className="grid gap-6 relative" style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}>
+          {items.map((i, idx) => {
+            const Icon = iconFromName(i.icon);
+            const done = i.status === "achieved";
+            return (
+              <motion.div
+                key={i.id || idx}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.45, delay: idx * 0.07 }}
+                className="text-center relative"
+                data-testid={`roadmap-item-${idx}`}
+              >
+                <div
+                  className={`mx-auto w-16 h-16 rounded-2xl flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-lg transition-transform hover:scale-105 ${
+                    done
+                      ? "bg-gradient-to-br from-pear-500 to-pear-600 text-white"
+                      : "surface border-2 border-dashed border-pear-500/50 text-pear-500"
+                  }`}
+                  data-testid={`roadmap-icon-${idx}`}
+                >
+                  <Icon className="h-7 w-7" strokeWidth={done ? 2 : 1.75} />
+                </div>
+                {done && (
+                  <span className="absolute -top-1 left-1/2 translate-x-6 rounded-full bg-emerald-500 text-white p-0.5 shadow" aria-label="Behaald">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  </span>
+                )}
+                {i.date_label && (
+                  <p className={`mt-4 text-[10px] uppercase tracking-widest font-bold ${done ? "text-pear-500" : "text-muted-fg"}`}>
+                    {i.date_label}
+                  </p>
+                )}
+                <h3 className="mt-1 font-heading font-semibold text-strong text-sm leading-tight" data-testid={`roadmap-title-${idx}`}>
+                  {titleOf(i)}
+                </h3>
+                <p className="mt-2 text-xs text-muted-fg leading-relaxed">{descOf(i)}</p>
+                <p className={`mt-3 inline-block text-[10px] uppercase tracking-widest font-bold rounded-full px-2 py-1 ${
+                  done ? "bg-pear-100 text-pear-700 dark:bg-pear-500/20 dark:text-pear-300" : "surface-2 text-muted-fg border border-dashed border-slate-300 dark:border-slate-600"
+                }`}>
+                  {done
+                    ? (nl ? "Behaald" : "Achieved")
+                    : (nl ? "Gepland" : "Planned")}
+                </p>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Mobile/tablet: vertical timeline */}
+      <div className="lg:hidden relative pl-8" data-testid="roadmap-mobile">
+        <div className="absolute top-2 bottom-2 left-3 w-0.5" aria-hidden="true">
+          <div
+            className="w-full bg-pear-500"
+            style={{ height: `${achieved.length ? (achieved.length / Math.max(items.length, 1)) * 100 : 0}%` }}
+          />
+          <div
+            className="w-0.5 border-l-2 border-dashed border-slate-300 dark:border-slate-600 -ml-px flex-1"
+            style={{ height: `${(1 - achieved.length / Math.max(items.length, 1)) * 100}%` }}
+          />
+        </div>
+        {items.map((i, idx) => {
+          const Icon = iconFromName(i.icon);
+          const done = i.status === "achieved";
+          return (
+            <motion.div
+              key={i.id || idx}
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.4, delay: idx * 0.05 }}
+              className="relative pb-8 last:pb-0"
+              data-testid={`roadmap-item-mobile-${idx}`}
+            >
+              <div
+                className={`absolute -left-8 top-0 w-7 h-7 rounded-lg flex items-center justify-center ring-4 ring-white dark:ring-slate-900 ${
+                  done
+                    ? "bg-gradient-to-br from-pear-500 to-pear-600 text-white"
+                    : "surface border-2 border-dashed border-pear-500/50 text-pear-500"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" strokeWidth={done ? 2 : 1.75} />
+              </div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] uppercase tracking-widest font-bold rounded-full px-2 py-0.5 ${
+                  done ? "bg-pear-100 text-pear-700 dark:bg-pear-500/20 dark:text-pear-300" : "surface-2 text-muted-fg border border-dashed border-slate-300 dark:border-slate-600"
+                }`}>
+                  {done ? (nl ? "Behaald" : "Achieved") : (nl ? "Gepland" : "Planned")}
+                </span>
+                {i.date_label && <span className="text-[10px] uppercase tracking-widest font-bold text-muted-fg">{i.date_label}</span>}
+              </div>
+              <h3 className="font-heading font-semibold text-strong">{titleOf(i)}</h3>
+              <p className="mt-1 text-sm text-muted-fg leading-relaxed">{descOf(i)}</p>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Summary chips */}
+      <div className="mt-10 flex flex-wrap gap-3 justify-center" data-testid="roadmap-summary">
+        <span className="inline-flex items-center gap-2 rounded-full bg-pear-100 dark:bg-pear-500/20 text-pear-700 dark:text-pear-300 px-4 py-1.5 text-sm font-semibold">
+          <CheckCircle2 className="h-4 w-4" />
+          {achieved.length} {nl ? "behaald" : "achieved"}
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full surface-2 border border-dashed border-slate-300 dark:border-slate-600 text-muted-fg px-4 py-1.5 text-sm font-semibold">
+          <Target className="h-4 w-4" />
+          {planned.length} {nl ? "gepland" : "planned"}
+        </span>
+      </div>
+    </section>
+  );
+};
 
 // -----------------------------------------------------------------------------
 // OTAP procedure — Ontwikkeling → Test → Acceptatie → Productie

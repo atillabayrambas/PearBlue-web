@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Save, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, Target, Sparkles } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { API } from "./_shared";
+import { ROADMAP_ICON_NAMES, iconFromName } from "../../data/roadmapIcons";
 
 export const SettingsAdmin = () => {
   const { authHeader } = useAuth();
@@ -70,6 +71,7 @@ export const SettingsAdmin = () => {
       <div className="flex flex-wrap gap-1 border-b border-app mb-6" data-testid="cms-settings-tabs">
         {[
           { key: "general", label: en ? "General" : "Algemeen" },
+          { key: "roadmap", label: en ? "Roadmap" : "Roadmap" },
           { key: "engineering", label: en ? "Engineering" : "Engineering" },
         ].map((t) => (
           <button
@@ -81,6 +83,8 @@ export const SettingsAdmin = () => {
           >{t.label}</button>
         ))}
       </div>
+
+      {tab === "roadmap" && <RoadmapAdminTab en={en} />}
 
       {tab === "general" && (
         <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-5 max-w-2xl" data-testid="cms-settings-form">
@@ -305,7 +309,7 @@ const ZohoBooksCard = ({ en }) => {
   const loadStatus = () => axios.get(`${API}/admin/integrations/zoho-books`, { headers: authHeader() })
     .then((r) => { setStatus(r.data || {}); setForm((f) => ({ ...f, org_id: r.data?.org_id || "", dc: r.data?.dc || "eu" })); })
     .catch(() => {});
-  useEffect(() => { loadStatus(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { loadStatus(); }, []);
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -517,6 +521,302 @@ const ZohoBooksCard = ({ en }) => {
           ? "Once saved, /admin/financials switches from mocked to live invoice data automatically."
           : "Zodra opgeslagen schakelt /admin/financials automatisch van mocked naar live factuur-data."}
       </p>
+    </div>
+  );
+};
+
+
+// -----------------------------------------------------------------------------
+// Roadmap admin tab — CRUD for the /over-ons timeline items
+// -----------------------------------------------------------------------------
+const EMPTY_FORM = {
+  icon: "Sparkles",
+  title_nl: "",
+  title_en: "",
+  description_nl: "",
+  description_en: "",
+  status: "planned",
+  date_label: "",
+  order: 100,
+};
+
+const RoadmapAdminTab = ({ en }) => {
+  const { authHeader } = useAuth();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API}/admin/roadmap`, { headers: authHeader() });
+      setItems(r.data || []);
+    } catch { toast.error(en ? "Load failed" : "Laden mislukt"); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const reset = () => { setForm(EMPTY_FORM); setEditingId(null); };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.title_nl.trim() || !form.description_nl.trim()) {
+      toast.error(en ? "Dutch title and description are required" : "NL-titel en -beschrijving zijn verplicht");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (editingId) {
+        await axios.patch(`${API}/admin/roadmap/${editingId}`, form, { headers: authHeader() });
+        toast.success(en ? "Updated" : "Bijgewerkt");
+      } else {
+        await axios.post(`${API}/admin/roadmap`, form, { headers: authHeader() });
+        toast.success(en ? "Added" : "Toegevoegd");
+      }
+      reset();
+      load();
+    } catch (err) { toast.error(err?.response?.data?.detail || (en ? "Save failed" : "Opslaan mislukt")); }
+    finally { setBusy(false); }
+  };
+
+  const edit = (i) => {
+    setEditingId(i.id);
+    setForm({
+      icon: i.icon || "Sparkles",
+      title_nl: i.title_nl || "",
+      title_en: i.title_en || "",
+      description_nl: i.description_nl || "",
+      description_en: i.description_en || "",
+      status: i.status || "planned",
+      date_label: i.date_label || "",
+      order: i.order || 0,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm(en ? "Delete this roadmap item?" : "Dit roadmap-item verwijderen?")) return;
+    try {
+      await axios.delete(`${API}/admin/roadmap/${id}`, { headers: authHeader() });
+      toast.success(en ? "Deleted" : "Verwijderd");
+      if (editingId === id) reset();
+      load();
+    } catch { toast.error(en ? "Delete failed" : "Verwijderen mislukt"); }
+  };
+
+  const move = async (idx, delta) => {
+    const newItems = [...items];
+    const swap = idx + delta;
+    if (swap < 0 || swap >= newItems.length) return;
+    [newItems[idx], newItems[swap]] = [newItems[swap], newItems[idx]];
+    const order = newItems.map((i, ord) => ({ id: i.id, order: ord * 10 }));
+    setItems(newItems); // optimistic
+    try {
+      await axios.put(`${API}/admin/roadmap/reorder`, { order }, { headers: authHeader() });
+    } catch { toast.error(en ? "Reorder failed" : "Herordenen mislukt"); load(); }
+  };
+
+  return (
+    <div className="space-y-6" data-testid="cms-roadmap-tab">
+      {/* Editor */}
+      <form onSubmit={submit} className="surface border border-app rounded-2xl p-6 space-y-4" data-testid="cms-roadmap-form">
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="font-heading font-semibold text-strong">
+            {editingId ? (en ? "Edit roadmap item" : "Roadmap-item bewerken") : (en ? "New roadmap item" : "Nieuw roadmap-item")}
+          </h3>
+          {editingId && (
+            <button type="button" onClick={reset} className="text-xs text-muted-fg hover:text-pear-500" data-testid="cms-roadmap-cancel-edit">
+              ({en ? "cancel" : "annuleren"})
+            </button>
+          )}
+        </div>
+
+        {/* Icon picker */}
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg block mb-2">
+            {en ? "Icon" : "Icoontje"}
+          </span>
+          <div className="grid grid-cols-8 sm:grid-cols-12 gap-2" data-testid="cms-roadmap-icon-picker">
+            {ROADMAP_ICON_NAMES.map((name) => {
+              const Icon = iconFromName(name);
+              const selected = form.icon === name;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setForm({ ...form, icon: name })}
+                  title={name}
+                  className={`aspect-square rounded-xl flex items-center justify-center transition-all ${
+                    selected
+                      ? "bg-pear-500 text-white ring-2 ring-pear-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-lg scale-105"
+                      : "surface-2 border border-app text-strong hover:border-pear-500 hover:text-pear-500"
+                  }`}
+                  data-testid={`cms-roadmap-icon-${name}`}
+                >
+                  <Icon className="h-5 w-5" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Status + date label + order */}
+        <div className="grid sm:grid-cols-3 gap-3">
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Status" : "Status"}</span>
+            <select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong"
+              data-testid="cms-roadmap-status"
+            >
+              <option value="achieved">{en ? "Achieved" : "Behaald"}</option>
+              <option value="planned">{en ? "Planned" : "Gepland"}</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Date label (optional)" : "Datumlabel (optioneel)"}</span>
+            <input
+              value={form.date_label}
+              onChange={(e) => setForm({ ...form, date_label: e.target.value })}
+              placeholder="2026 · Q3"
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong"
+              data-testid="cms-roadmap-date-label"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Order (asc)" : "Volgorde (opl)"}</span>
+            <input
+              type="number"
+              value={form.order}
+              onChange={(e) => setForm({ ...form, order: parseInt(e.target.value, 10) || 0 })}
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong font-mono"
+              data-testid="cms-roadmap-order"
+            />
+          </label>
+        </div>
+
+        {/* NL/EN titles */}
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Title (NL)*" : "Titel (NL)*"}</span>
+            <input
+              required
+              value={form.title_nl}
+              onChange={(e) => setForm({ ...form, title_nl: e.target.value })}
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong"
+              data-testid="cms-roadmap-title-nl"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Title (EN)" : "Titel (EN)"}</span>
+            <input
+              value={form.title_en}
+              onChange={(e) => setForm({ ...form, title_en: e.target.value })}
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong"
+              data-testid="cms-roadmap-title-en"
+            />
+          </label>
+        </div>
+
+        {/* NL/EN descriptions */}
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Description (NL)*" : "Beschrijving (NL)*"}</span>
+            <textarea
+              required
+              rows={3}
+              value={form.description_nl}
+              onChange={(e) => setForm({ ...form, description_nl: e.target.value })}
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong resize-y"
+              data-testid="cms-roadmap-desc-nl"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">{en ? "Description (EN)" : "Beschrijving (EN)"}</span>
+            <textarea
+              rows={3}
+              value={form.description_en}
+              onChange={(e) => setForm({ ...form, description_en: e.target.value })}
+              className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-3 py-2 text-sm outline-none text-strong resize-y"
+              data-testid="cms-roadmap-desc-en"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-app">
+          <button type="submit" disabled={busy} className="btn-primary text-sm" data-testid="cms-roadmap-submit">
+            {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {busy ? (en ? "Saving…" : "Bezig…") : (editingId ? (en ? "Save changes" : "Wijzigingen opslaan") : (en ? "Add item" : "Item toevoegen"))}
+          </button>
+          {editingId && (
+            <button type="button" onClick={reset} className="btn-secondary text-sm" data-testid="cms-roadmap-reset">
+              {en ? "New instead" : "Nieuw i.p.v."}
+            </button>
+          )}
+        </div>
+      </form>
+
+      {/* List */}
+      <div className="surface border border-app rounded-2xl overflow-hidden" data-testid="cms-roadmap-list">
+        <div className="flex items-center justify-between p-4 border-b border-app">
+          <h3 className="font-heading font-semibold text-strong">
+            {en ? "Timeline items" : "Tijdlijn-items"} ({items.length})
+          </h3>
+          <button onClick={load} type="button" className="text-xs text-muted-fg hover:text-pear-500" data-testid="cms-roadmap-refresh">
+            {en ? "↻ Refresh" : "↻ Vernieuwen"}
+          </button>
+        </div>
+        {loading ? (
+          <p className="p-6 text-sm text-muted-fg">{en ? "Loading…" : "Laden…"}</p>
+        ) : items.length === 0 ? (
+          <p className="p-6 text-sm text-muted-fg">{en ? "No items yet — add one above." : "Nog geen items — voeg er hierboven één toe."}</p>
+        ) : (
+          <ul className="divide-y divide-app">
+            {items.map((i, idx) => {
+              const Icon = iconFromName(i.icon);
+              const done = i.status === "achieved";
+              return (
+                <li key={i.id} className="p-4 flex items-start gap-3" data-testid={`cms-roadmap-row-${idx}`}>
+                  <div className={`shrink-0 w-11 h-11 rounded-xl flex items-center justify-center ${done ? "bg-gradient-to-br from-pear-500 to-pear-600 text-white" : "surface-2 border-2 border-dashed border-pear-500/50 text-pear-500"}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className={`text-[10px] uppercase tracking-widest font-bold rounded-full px-2 py-0.5 ${done ? "bg-pear-100 text-pear-700 dark:bg-pear-500/20" : "surface-2 text-muted-fg border border-dashed border-slate-400"}`}>
+                        {done ? <><CheckCircle2 className="h-3 w-3 inline -mt-0.5" /> {en ? "Achieved" : "Behaald"}</> : <><Target className="h-3 w-3 inline -mt-0.5" /> {en ? "Planned" : "Gepland"}</>}
+                      </span>
+                      {i.date_label && <span className="text-[10px] uppercase tracking-widest text-muted-fg">{i.date_label}</span>}
+                      <span className="text-[10px] text-muted-fg font-mono">#{i.order}</span>
+                    </div>
+                    <p className="font-semibold text-strong">{i.title_nl}</p>
+                    {i.title_en && <p className="text-xs text-muted-fg">{i.title_en}</p>}
+                    <p className="text-sm text-strong/90 mt-1">{i.description_nl}</p>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} className="p-1.5 rounded-lg surface-2 hover:bg-pear-100 disabled:opacity-30" title={en ? "Move up" : "Omhoog"} data-testid={`cms-roadmap-up-${idx}`}>
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button type="button" onClick={() => move(idx, 1)} disabled={idx === items.length - 1} className="p-1.5 rounded-lg surface-2 hover:bg-pear-100 disabled:opacity-30" title={en ? "Move down" : "Omlaag"} data-testid={`cms-roadmap-down-${idx}`}>
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button type="button" onClick={() => edit(i)} className="text-xs px-3 py-1 rounded-full border border-pear-500 text-pear-500 hover:bg-pear-50 dark:hover:bg-pear-500/10" data-testid={`cms-roadmap-edit-${idx}`}>
+                      {en ? "Edit" : "Bewerk"}
+                    </button>
+                    <button type="button" onClick={() => remove(i.id)} className="text-xs px-3 py-1 rounded-full border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" data-testid={`cms-roadmap-delete-${idx}`}>
+                      <Trash2 className="h-3 w-3 inline" /> {en ? "Delete" : "Verwijder"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 };

@@ -36,7 +36,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 # Single source of truth for the running app version. Displayed in footer, CMS
 # sidebar, changelog and the maintenance/coming-soon page. Bump on release.
-APP_VERSION = os.environ.get("APP_VERSION", "0.7.5-Beta")
+APP_VERSION = os.environ.get("APP_VERSION", "0.7.6-Beta")
 
 # Fernet cipher for encrypting integration secrets (Brevo API key, IMAP passwords)
 # Uses TOKEN_ENCRYPTION_KEY from env (already used by zoho_portal/stripe_payments)
@@ -122,6 +122,9 @@ from models import (  # noqa: E402
     Review,
     ReviewCreate,
     ReviewUpdate,
+    RoadmapItem,
+    RoadmapItemCreate,
+    RoadmapItemUpdate,
 )
 
 
@@ -1795,6 +1798,18 @@ async def public_changelog():
     v1.0 will be the official launch, dropping the -Beta suffix.
     """
     entries = [
+        {
+            "version": "0.7.6-Beta",
+            "date": "2026-02-15",
+            "type": "feature",
+            "highlights": [
+                "🗺️ **Bedrijfs-tijdlijn op /over-ons** — nieuwe visuele roadmap onder onze waarden: pear-groene stippen voor behaalde doelen (met ✓ vinkje), gestreepte transparante stippen voor toekomstplannen. Doorlopende horizontale rail met solide→dashed overgang zodra 'gepland' begint",
+                "🌱 **5 seed-doelen**: Website LIVE (behaald), Live Website Builder (Q3 2026), PearPhone met aankoppelbare controllers (2027), PearTab (2027), Pear OS (2028) — precies zoals gevraagd",
+                "🛠️ **CMS 'Roadmap' tab** in Site instellingen — voeg items toe/bewerk/verwijder met 25-icoontjes picker (Globe, Wand2, Smartphone, Tablet, Cpu, Gamepad2, Rocket, ShieldCheck, Trophy, en meer), NL/EN titel + beschrijving, status (Behaald/Gepland), datumlabel en volgorde. Up/Down knoppen voor snelle reorder",
+                "🔌 Endpoints: `GET /api/site/roadmap` (public), `GET /api/site/roadmap-icons` (whitelist), `GET|POST|PATCH|DELETE /api/admin/roadmap` + `PUT /api/admin/roadmap/reorder`",
+                "🧪 Tests: `tests/test_iteration44.py` — 7/7 pass (seed shape, icon whitelist, full CRUD cycle, reorder, bad-icon rejection)",
+            ],
+        },
         {
             "version": "0.7.5-Beta",
             "date": "2026-02-15",
@@ -3617,6 +3632,184 @@ async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(requir
         raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
 
 
+# ---------- Company roadmap (About page timeline) ----------
+# Curated Lucide-react icon whitelist the CMS may choose from. Keep this list
+# aligned with `ROADMAP_ICONS` in `/app/frontend/src/data/roadmapIcons.js`.
+ROADMAP_ICON_WHITELIST = [
+    "Globe", "Wand2", "Smartphone", "Tablet", "Gamepad2", "Cpu",
+    "Rocket", "Sparkles", "Palette", "ShieldCheck", "Wrench",
+    "Layers", "Star", "Trophy", "Award", "Package", "Zap", "Brain",
+    "Cloud", "Code", "Database", "MessageCircle", "Lock", "Leaf",
+]
+
+
+_SEED_ROADMAP = [
+    {
+        "seed_id": "achieved-website",
+        "icon": "Globe",
+        "title_nl": "PearBlue website live",
+        "title_en": "PearBlue website live",
+        "description_nl": "Onze eigen tweetalige site (NL/EN) met portfolio, klantportaal, AI-chatbot, prijslijst en volledig CMS.",
+        "description_en": "Our own bilingual site (NL/EN) with portfolio, client portal, AI chatbot, pricing and full CMS.",
+        "status": "achieved",
+        "order": 10,
+        "date_label": "2026 · Live",
+    },
+    {
+        "seed_id": "planned-website-builder",
+        "icon": "Wand2",
+        "title_nl": "Live Website Builder",
+        "title_en": "Live Website Builder",
+        "description_nl": "Klanten bouwen live hun eigen website in de browser met AI-assistentie en onze pear-templates.",
+        "description_en": "Customers build their own website live in the browser with AI assistance and our pear templates.",
+        "status": "planned",
+        "order": 20,
+        "date_label": "2026 · Q3",
+    },
+    {
+        "seed_id": "planned-pear-phone",
+        "icon": "Smartphone",
+        "title_nl": "PearPhone",
+        "title_en": "PearPhone",
+        "description_nl": "Eigen smartphone op basis van Android + Pear UI, met aankoppelbare game-controllers aan de zijkanten.",
+        "description_en": "Our own smartphone based on Android + Pear UI, with attachable game controllers on the sides.",
+        "status": "planned",
+        "order": 30,
+        "date_label": "2027",
+    },
+    {
+        "seed_id": "planned-pear-tablet",
+        "icon": "Tablet",
+        "title_nl": "PearTab",
+        "title_en": "PearTab",
+        "description_nl": "Tablet op basis van Pear OS, met dezelfde aankoppelbare controllers voor gamers en creators onderweg.",
+        "description_en": "Tablet powered by Pear OS with the same attachable controllers for gamers and creators on the go.",
+        "status": "planned",
+        "order": 40,
+        "date_label": "2027",
+    },
+    {
+        "seed_id": "planned-pear-os",
+        "icon": "Cpu",
+        "title_nl": "Pear OS",
+        "title_en": "Pear OS",
+        "description_nl": "Eigen besturingssysteem met bijpassend Pear-logo — privacy-first, opensource-hart, tuned voor PearPhone en PearTab.",
+        "description_en": "Our own operating system with matching Pear logo — privacy-first, open-source at heart, tuned for PearPhone and PearTab.",
+        "status": "planned",
+        "order": 50,
+        "date_label": "2028",
+    },
+]
+
+
+async def seed_roadmap():
+    """One-shot: seed the company roadmap timeline if the collection is empty.
+
+    Idempotent — subsequent boots leave the collection untouched (so admin
+    edits/deletes stick). Uses `seed_id` as a stable marker for legacy
+    reference; admins may safely delete seeded rows.
+    """
+    try:
+        existing = await db.roadmap_items.count_documents({})
+        if existing > 0:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        for item in _SEED_ROADMAP:
+            doc = {
+                "id": str(uuid.uuid4()),
+                "seed_id": item["seed_id"],
+                "icon": item["icon"],
+                "title_nl": item["title_nl"],
+                "title_en": item["title_en"],
+                "description_nl": item["description_nl"],
+                "description_en": item["description_en"],
+                "status": item["status"],
+                "order": item["order"],
+                "date_label": item["date_label"],
+                "created_at": now,
+            }
+            await db.roadmap_items.insert_one(doc)
+        logger.info("Roadmap seeded.")
+    except Exception as e:
+        logger.warning(f"Roadmap seed failed: {e}")
+
+
+@api_router.get("/site/roadmap")
+async def public_roadmap():
+    """Public roadmap timeline used by the /over-ons page. Split into
+    achieved + planned buckets, each sorted by `order` then `created_at`."""
+    items = await db.roadmap_items.find({}, {"_id": 0}).to_list(200)
+    items.sort(key=lambda x: (x.get("order", 0), x.get("created_at", "")))
+    achieved = [i for i in items if i.get("status") == "achieved"]
+    planned = [i for i in items if i.get("status") != "achieved"]
+    return {"achieved": achieved, "planned": planned}
+
+
+@api_router.get("/site/roadmap-icons")
+async def public_roadmap_icons():
+    """Returns the whitelist of Lucide-react icon names the CMS may pick.
+    Kept public so the CMS form can render an icon-picker without auth
+    plumbing — the values themselves are non-sensitive."""
+    return {"icons": ROADMAP_ICON_WHITELIST}
+
+
+@api_router.get("/admin/roadmap")
+async def admin_list_roadmap(current=Depends(require_admin)):
+    items = await db.roadmap_items.find({}, {"_id": 0}).to_list(500)
+    items.sort(key=lambda x: (x.get("order", 0), x.get("created_at", "")))
+    return items
+
+
+@api_router.post("/admin/roadmap", response_model=RoadmapItem)
+async def admin_create_roadmap(payload: RoadmapItemCreate, current=Depends(require_admin)):
+    if payload.icon not in ROADMAP_ICON_WHITELIST:
+        raise HTTPException(status_code=400, detail=f"Icon '{payload.icon}' niet toegestaan.")
+    item = RoadmapItem(**payload.model_dump())
+    doc = item.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.roadmap_items.insert_one(doc)
+    await _log_activity(current.get("email"), "roadmap.create", item.id, {"title_nl": item.title_nl})
+    return item
+
+
+@api_router.patch("/admin/roadmap/{item_id}")
+async def admin_update_roadmap(item_id: str, patch: RoadmapItemUpdate, current=Depends(require_admin)):
+    updates = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if v is not None}
+    if "icon" in updates and updates["icon"] not in ROADMAP_ICON_WHITELIST:
+        raise HTTPException(status_code=400, detail=f"Icon '{updates['icon']}' niet toegestaan.")
+    if not updates:
+        raise HTTPException(status_code=400, detail="Geen wijzigingen aangeleverd.")
+    res = await db.roadmap_items.update_one({"id": item_id}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Roadmap item niet gevonden.")
+    doc = await db.roadmap_items.find_one({"id": item_id}, {"_id": 0})
+    await _log_activity(current.get("email"), "roadmap.update", item_id, updates)
+    return doc
+
+
+@api_router.delete("/admin/roadmap/{item_id}")
+async def admin_delete_roadmap(item_id: str, current=Depends(require_admin)):
+    res = await db.roadmap_items.delete_one({"id": item_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Roadmap item niet gevonden.")
+    await _log_activity(current.get("email"), "roadmap.delete", item_id)
+    return {"ok": True}
+
+
+@api_router.put("/admin/roadmap/reorder")
+async def admin_reorder_roadmap(payload: Dict[str, Any], current=Depends(require_admin)):
+    """Body: `{ order: [{id, order}, ...] }`. Bulk-updates the sort key."""
+    order = payload.get("order") or []
+    if not isinstance(order, list):
+        raise HTTPException(status_code=400, detail="`order` moet een lijst zijn.")
+    for row in order:
+        if not isinstance(row, dict) or "id" not in row or "order" not in row:
+            continue
+        await db.roadmap_items.update_one({"id": row["id"]}, {"$set": {"order": int(row["order"])}})
+    await _log_activity(current.get("email"), "roadmap.reorder", None, {"count": len(order)})
+    return {"ok": True, "updated": len(order)}
+
+
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
 app.include_router(make_stripe_router(db))
@@ -3652,6 +3845,7 @@ async def on_startup():
     await seed_admin()
     await seed_portfolio()
     await seed_virus_scans()
+    await seed_roadmap()
     # TTL index on ai_translate_hits — auto-expire rate-limit rows after 120s
     # (2× the 60s rolling window), keeps the collection bounded forever.
     try:

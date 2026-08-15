@@ -1,0 +1,25 @@
+{
+  "iteration": 44,
+  "version": "0.7.6-Beta",
+  "date": "2026-02-15",
+  "status": "pass",
+  "backend": {
+    "pytest_file": "/app/backend/tests/test_iteration44.py",
+    "passed": 7,
+    "failed": 0
+  },
+  "frontend": {
+    "smoke_test": "playwright",
+    "notes": [
+      "/over-ons roadmap section renders 5 items on desktop with continuous rail (solid pear for achieved → dashed slate for planned)",
+      "Achieved: PearBlue website live (Globe icon, ✓ checkmark). Planned: Live Website Builder (Wand2), PearPhone (Smartphone), PearTab (Tablet), Pear OS (Cpu). Summary chips at bottom: 1 achieved · 4 planned",
+      "CMS Settings → Roadmap tab renders icon-picker (25 icons), form with NL/EN title+desc, status+date+order controls, and a sortable list with edit/delete/up/down buttons. Verified end-to-end: added test row, saw success toast, list count went 5 → 6"
+    ]
+  },
+  "features_shipped": [
+    "Company roadmap timeline on /over-ons — visual, animated, split into achieved (solid pear) + planned (dashed) with a continuous rail and per-item date labels",
+    "CMS Roadmap admin tab in Site Settings with icon-picker (25 curated Lucide icons), NL/EN copy, status/date/order + up/down reorder + edit/delete",
+    "Backend endpoints /api/site/roadmap (public), /api/site/roadmap-icons (whitelist), and full admin CRUD + PUT /reorder",
+    "Idempotent seed of 5 goals on startup: PearBlue website (achieved), Live Website Builder, PearPhone (Android + Pear UI + attachable controllers), PearTab (Pear OS + controllers), Pear OS"
+  ]
+}

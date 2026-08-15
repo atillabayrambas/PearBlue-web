@@ -21,6 +21,22 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 44 (this session, v0.7.6-Beta) — Company Roadmap Timeline + CMS Editor
+- **Publieke tijdlijn op /over-ons** — nieuwe `<RoadmapSection>` onder de kernwaarden. Desktop = horizontale connected timeline met **doorlopende rail die overgaat van solide pear (behaald) naar gestreepte grijs (gepland)**. Mobile = verticale variant. Elk item: gradient pear-500→pear-600 tegel voor behaald (+ emerald ✓ chip), transparante `surface` met gestreepte pear-500 rand voor gepland. Framer-motion staggered reveal + summary chips ("1 behaald / 4 gepland") onderaan.
+- **5 seed-items**: `PearBlue website live` (Globe, achieved, "2026 · Live"), `Live Website Builder` (Wand2, "2026 · Q3"), `PearPhone` (Smartphone, "2027"), `PearTab` (Tablet, "2027"), `Pear OS` (Cpu, "2028"). Idempotent seed op startup — admin edits/deletes stick.
+- **CMS "Roadmap" tab** in Site instellingen naast General/Engineering:
+  - 25-icoontjes picker (Globe, Wand2, Smartphone, Tablet, Cpu, Gamepad2, Rocket, ShieldCheck, Trophy, Palette, Wrench, Layers, Star, Award, Package, Zap, Brain, Cloud, Code, Database, MessageCircle, Lock, Leaf, Sparkles, Sparkles-fallback).
+  - Status-toggle (Behaald/Gepland), datumlabel (vrije tekst zoals "2026 · Q3"), volgorde (int), NL/EN titel + beschrijving.
+  - Sortable list met per-rij `↑/↓` reorder-knoppen (optimistic update + bulk PUT), `Bewerk` + `Verwijder`.
+- **Backend endpoints** (all `/api`):
+  - `GET /site/roadmap` — publiek, buckets `{achieved, planned}` sorted by `order`.
+  - `GET /site/roadmap-icons` — publieke whitelist voor de icon-picker.
+  - `GET|POST|PATCH|DELETE /admin/roadmap` (admin-guarded, activity-logged).
+  - `PUT /admin/roadmap/reorder` — bulk order update `{order: [{id, order}, ...]}`.
+- **Icon whitelist enforcement** — POST/PATCH rejecteren onbekende icons met 400 en Nederlandse foutmelding; frontend en backend share dezelfde 25-key set (`/data/roadmapIcons.js` ↔ `ROADMAP_ICON_WHITELIST`).
+- **Nieuwe model file**: `RoadmapItem` + `RoadmapItemCreate` + `RoadmapItemUpdate` toegevoegd aan `/app/backend/models.py`.
+- **Testing**: `tests/test_iteration44.py` — 7/7 pass (seed shape, icon whitelist, auth, unknown-icon reject, full CRUD cycle, reorder, patch-bad-icon). Playwright smoke test: `/over-ons` toont 5 items met correcte solid/dashed switch en summary chip; CMS-tab kan een testitem toevoegen → verwijderen zonder issue.
+
 ### Feb 2026 — Iteration 43 (this session, v0.7.5-Beta) — Global CMS Search + Live Toasts + Autopilot Weekly + Models Split
 - **Global CMS search** — new `GET /api/admin/search?q=…` endpoint that scans `contact_messages` (subject/name/email/message/ticket_ref), `portal_registrations` (name/email/company/message), `reviews` (name/company/quote) and `feedback` (name/email/comment) via case-insensitive regex + exact ticket_ref shortcut. Returns kind-tagged hits with deep-linked `target` URLs. Frontend adds a debounced (250ms) search box directly under the sidebar profile block — dropdown with kind chips, ticket_ref highlight and click-to-navigate. Testids: `cms-sidebar-search-input`, `cms-sidebar-search-results`, `cms-sidebar-search-hit-{i}`.
 - **Live toast notifications on new items** — `useSilentPolling` extended with an optional `onChange(prev, next)` callback that fires only when the payload changed. `AdminSidebar` uses it: when `messages/portal/reviews/feedback/cybersecurity` counters INCREMENT between polls, a Sonner toast pops with a delta count + "Open" action that navigates to the right admin route. NL/EN aware.

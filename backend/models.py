@@ -251,3 +251,43 @@ class ReviewUpdate(BaseModel):
     assigned_to: Optional[str] = None
     status: Optional[str] = Field(None, pattern="^(new|in_progress|done)$")
     quote_en: Optional[str] = Field(None, max_length=1500)
+
+
+class RoadmapItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    # Lucide-react icon name (curated set — see /api/site/roadmap-icons for allowed values)
+    icon: str = Field(default="Sparkles")
+    title_nl: str
+    title_en: Optional[str] = None
+    description_nl: str
+    description_en: Optional[str] = None
+    status: str = Field(default="planned", pattern="^(achieved|planned)$")
+    order: int = 0
+    # Free-form label the CMS admin sets — e.g. "2026 Q1" or "Live". Rendered
+    # as a chip on the timeline. Kept optional so the CMS can leave it empty.
+    date_label: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RoadmapItemCreate(BaseModel):
+    icon: str = Field(default="Sparkles", max_length=40)
+    title_nl: str = Field(..., min_length=1, max_length=120)
+    title_en: Optional[str] = Field(None, max_length=120)
+    description_nl: str = Field(..., min_length=1, max_length=600)
+    description_en: Optional[str] = Field(None, max_length=600)
+    status: str = Field(default="planned", pattern="^(achieved|planned)$")
+    order: Optional[int] = 0
+    date_label: Optional[str] = Field(None, max_length=40)
+
+
+class RoadmapItemUpdate(BaseModel):
+    icon: Optional[str] = Field(None, max_length=40)
+    title_nl: Optional[str] = Field(None, min_length=1, max_length=120)
+    title_en: Optional[str] = Field(None, max_length=120)
+    description_nl: Optional[str] = Field(None, min_length=1, max_length=600)
+    description_en: Optional[str] = Field(None, max_length=600)
+    status: Optional[str] = Field(None, pattern="^(achieved|planned)$")
+    order: Optional[int] = None
+    date_label: Optional[str] = Field(None, max_length=40)
