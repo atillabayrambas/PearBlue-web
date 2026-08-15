@@ -84,11 +84,13 @@ export default function About() {
         </div>
       </section>
 
-      {/* Company roadmap — achieved milestones + future goals */}
-      <RoadmapSection lang={lang} />
-
       {/* OTAP procedure — visual timeline of our end-to-end delivery process */}
       <ProcedureSection lang={lang} />
+
+      {/* Company roadmap — achieved milestones + future goals (placed below
+          the procedure + belofte-callout so the page reads: waarden → hoe wij
+          werken → onze belofte → waar we naartoe gaan) */}
+      <RoadmapSection lang={lang} />
     </div>
   );
 }
@@ -118,7 +120,7 @@ const RoadmapSection = ({ lang }) => {
   const descOf = (i) => (lang === "en" ? (i.description_en || i.description_nl) : i.description_nl);
 
   return (
-    <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-4" data-testid="about-roadmap">
+    <section className="max-w-7xl mx-auto px-6 lg:px-10 pt-4 pb-24" data-testid="about-roadmap">
       <div className="max-w-3xl mb-12">
         <p className="overline mb-4">{nl ? "Onze reis" : "Our journey"}</p>
         <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-strong" data-testid="roadmap-title">
