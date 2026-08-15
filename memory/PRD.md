@@ -21,7 +21,13 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 40 (this session, v0.7.2-Beta) — IMAP fuzzy match + Auto-tickets
+### Feb 2026 — Iteration 41 (this session, v0.7.3-Beta) — Discovery Log + Auto-Ticket Dedup
+- **Notification-type discovery log** — nieuwe `_FALLBACK_SEEN` set in `imap_parser.py` logt een `WARNING` **exactly one time per unique subject-prefix** (eerste 5 woorden, lowercased) wanneer de generieke `[PearBlue]` fallback vuurt. Zo zien we automatisch welke nieuwe notificatie-types nog een specifieke regex verdienen zonder logspam.
+- **Auto-ticket dedup window** — `_create_ticket_from_email()` zoekt eerst een bestaand open ticket van dezelfde `from_email` (case-insensitive) met een genormaliseerde subject-match binnen `AUTO_TICKET_DEDUP_HOURS` (default 24u, env-configureerbaar). Match → append als `contact_message_replies` doc (`source: "imap_dedup"`). Geen match → verse ticket met nieuw `ticket_ref`.
+- **Subject normalization** — `_normalize_subject()` strip herhaaldelijk `Re:/Fwd:/Fw:/Antw:/AW:/VS:` + `[TAG]` prefixen en lowercased whitespace, zodat een threaded reply-mail dedup-matcht met de originele.
+- **Bevestigd via async test**: `dedup-test@example.com` stuurt 3 mails → resultaat is 2 tickets + 1 reply (2e mail met `Re:` prefix wordt gededupliceerd, 3e mail met ander onderwerp krijgt eigen ticket). Discovery log: 2 unieke prefixen → 2 warnings; hetzelfde prefix een tweede keer → 0 extra warnings.
+
+### Feb 2026 — Iteration 40 (v0.7.2-Beta) — IMAP fuzzy match + Auto-tickets
 - **Uitbreidbare notificatie-classifier in de IMAP parser** — `_classify_notification()` herkent 4 uitgaande subject-patronen (`Nieuw contactbericht`, `Nieuwe klantbeoordeling`, `Nieuwe portaal-aanvraag`, `Chat handoff`, `Offerte-aanvraag`) + een generieke `[PearBlue]` fallback. Specifieke patronen komen eerst (was bug: greedy fallback pikte alle andere types op).
 - **Case-insensitive fuzzy name-match** — matcht een notificatie-mail terug naar het originele `contact_messages` / `reviews` / `portal_registrations` record via `{name: {$regex: ^X$, $options: i}}`. Als het bron-record een `ticket_ref` heeft, wordt die direct op de ingest-rij gezet zodat de CMS-chip #TKT-XXX toont i.p.v. "Zonder ticket".
 - **Auto-ticket vanaf externe e-mails** — inkomende klant-mails uit domeinen buiten `OWN_NOTIFICATION_DOMAINS` (resend.dev/notifications.resend.com/pearblue.nl) worden nu automatisch omgezet in een nieuw `contact_messages` doc met eigen `ticket_ref`. Zowel live-poll (`_sync_one_mailbox`) als rebuild-batch doen dit.

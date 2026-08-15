@@ -20,9 +20,9 @@ import logging
 import os
 import re
 import socket
-from datetime import datetime, timezone
-from email.utils import parseaddr
+from datetime import datetime, timezone, timedelta
 from typing import Optional
+from email.utils import parseaddr
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +55,37 @@ _NOTIF_PATTERNS = [
 ]
 
 
+# Track which subjects triggered the generic fallback — logged once per unique
+# subject prefix so admins can spot new notification types worth an explicit rule.
+_FALLBACK_SEEN: set[str] = set()
+
+
 def _classify_notification(subject: str):
     """Return (kind, name, collection) for a notification-style subject, or
-    (None, None, None) when the subject doesn't match any pattern."""
+    (None, None, None) when the subject doesn't match any pattern. When the
+    generic `[PearBlue]` fallback fires on a subject we haven't seen before,
+    a warning is logged so we can add a specific pattern in a future release."""
     if not subject:
         return None, None, None
-    for kind, pat, coll in _NOTIF_PATTERNS:
-        m = pat.match(subject.strip())
+    subj = subject.strip()
+    for idx, (kind, pat, coll) in enumerate(_NOTIF_PATTERNS):
+        m = pat.match(subj)
         if m:
             name = m.group(1).strip()
             # Skip obvious junk / quota emails (from Resend/system providers).
             if not name or name.lower() in {"pearblue", "test"}:
                 continue
+            # `idx == last` is the greedy generic fallback — emit a discovery
+            # warning once per unique subject-prefix (first 5 words) so we can
+            # add a specific rule for this notification type later.
+            if idx == len(_NOTIF_PATTERNS) - 1:
+                key = " ".join(subj.split()[:5]).lower()
+                if key not in _FALLBACK_SEEN:
+                    _FALLBACK_SEEN.add(key)
+                    logger.warning(
+                        f"IMAP notification classifier: generic fallback fired for '{subj[:120]}' — "
+                        f"consider adding a specific _NOTIF_PATTERNS entry for this subject."
+                    )
             return kind, name, coll
     return None, None, None
 
@@ -97,25 +116,87 @@ def _is_own_notification_sender(from_email: str, subject: str) -> bool:
     return False
 
 
+# Window used by _create_ticket_from_email to group repeat customer emails
+# into a single conversation instead of creating N separate tickets.
+AUTO_TICKET_DEDUP_HOURS = int(os.environ.get("IMAP_AUTO_TICKET_DEDUP_HOURS", "24"))
+
+
+def _normalize_subject(subject: str) -> str:
+    """Normalize an inbound subject for dedup grouping — strips leading
+    Re:/Fwd:/[TAG] prefixes and lowercases whitespace so that a fresh reply
+    thread lands on the same base subject."""
+    s = (subject or "").strip()
+    # Repeatedly strip leading Re:/Fwd:/Antw:/AW:/[TAG]
+    prev = None
+    while prev != s:
+        prev = s
+        s = re.sub(r"^\s*(re|fwd|fw|antw|aw|vs)\s*:\s*", "", s, flags=re.IGNORECASE)
+        s = re.sub(r"^\s*\[[^\]]+\]\s*", "", s)
+    return " ".join(s.lower().split())
+
+
 async def _create_ticket_from_email(db, m: dict, mbox: dict) -> Optional[dict]:
     """Create a new contact_messages doc from an incoming customer email so
-    it appears in the Berichten CMS tab. Idempotent on the RFC-822
+    it appears in the Berichten CMS tab, OR — if the same customer already
+    has an open ticket in the last AUTO_TICKET_DEDUP_HOURS with the same
+    normalized subject — append the new email as a reply to that existing
+    ticket instead of spawning a duplicate. Idempotent on the RFC-822
     Message-ID (see idempotency guard in the caller — this is only called
     once per unique UID)."""
     try:
-        # Generate a short ticket_ref just like the /contact endpoint does.
         import secrets, string, uuid as _uuid  # local import: keeps top-level imports minimal
+        from_email = (m.get("from_email") or "").lower().strip()
+        subject_norm = _normalize_subject(m.get("subject") or "")
+        now = datetime.now(timezone.utc)
+        cutoff_iso = (now - timedelta(hours=AUTO_TICKET_DEDUP_HOURS)).isoformat()
+        # ── Dedup: is there an existing ticket from the same customer with
+        # the same normalized subject in the last N hours? Prefer the newest.
+        existing = None
+        if from_email and subject_norm:
+            existing = await db.contact_messages.find_one(
+                {
+                    "email": {"$regex": f"^{re.escape(from_email)}$", "$options": "i"},
+                    "created_at": {"$gt": cutoff_iso},
+                    "status": {"$ne": "done"},
+                },
+                sort=[("created_at", -1)],
+            )
+            if existing:
+                exist_norm = _normalize_subject(existing.get("subject") or "")
+                if exist_norm != subject_norm:
+                    existing = None
+        if existing:
+            # Append this email as a client-side reply instead of creating a
+            # second ticket. Same shape as the ticket-ref match in Case A.
+            reply = {
+                "id": f"imap-{m.get('uid')}-dedup",
+                "parent_id": existing.get("id"),
+                "author": "client",
+                "author_name": m.get("from_name") or from_email,
+                "author_email": from_email,
+                "body": m.get("body") or "",
+                "created_at": now.isoformat(),
+                "source": "imap_dedup",
+                "message_id": m.get("message_id"),
+            }
+            await db.contact_message_replies.insert_one(reply)
+            await db.contact_messages.update_one(
+                {"id": existing["id"]},
+                {"$set": {"last_reply_at": reply["created_at"], "status": "open"}},
+            )
+            return existing
+        # ── No recent match → fresh ticket
         ref = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
         doc = {
             "id": str(_uuid.uuid4()),
-            "name": (m.get("from_name") or (m.get("from_email") or "").split("@")[0] or "IMAP klant").strip()[:80],
-            "email": m.get("from_email") or "",
+            "name": (m.get("from_name") or (from_email or "").split("@")[0] or "IMAP klant").strip()[:80],
+            "email": from_email,
             "phone": None,
             "company": None,
             "subject": (m.get("subject") or "(geen onderwerp)")[:180],
             "message": m.get("body") or "",
             "consent": True,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": now.isoformat(),
             "status": "new",
             "priority": "P3",
             "spam": False,
