@@ -21,7 +21,18 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 35 (this session, v0.6.7-Beta) — Polish & Rate-Limit
+### Feb 2026 — Iteration 36 (this session, v0.6.8-Beta) — Persistent rate-limit + Zoho refresh-token wizard
+- **AI Vertaal rate-limit — MongoDB persistent**
+  - `_ai_translate_hits` dict verwijderd; nieuwe collection `ai_translate_hits` slaat elke succesvolle call op als `{email, ts, created_at}`.
+  - Rolling 60s window wordt geteld met `count_documents`, en oude entries (>5 min) worden op elk succes lazily geprund.
+  - **Bewezen persistent**: limit=3 → 3× 200, 4× 429 → `supervisorctl restart backend` → 5e call retourneert nog steeds 429. Ook robuust bij horizontal scaling (meerdere backend-replicas delen nu dezelfde teller).
+- **Zoho Books refresh-token wizard** — 100% self-service in de CMS
+  - Nieuwe endpoint `POST /api/admin/integrations/zoho-books/exchange-code` neemt een fresh Self-Client `code` + `client_id/secret/dc`, doet server-side de OAuth code→refresh_token exchange bij Zoho, en haalt meteen `/organizations` op zodat de admin org kan kiezen.
+  - Nieuwe wizard-paneel in de Zoho Books-kaart (paars, `zoho-wizard-toggle`, `zoho-wizard-panel`, `zoho-wizard-code-input`, `zoho-wizard-exchange`): 3-stappen instructies, één-klik exchange, auto-fill van refresh_token-veld + organization-dropdown.
+  - Foutmeldingen zijn NL en helder (bv. "Kon geen refresh_token krijgen: invalid_client. Genereer een nieuwe code (deze is maar 10 min geldig).").
+- **Testing**: Bash curl volledig, incl. persistence-check na backend-restart en fake-code exchange (400 met heldere melding).
+
+### Feb 2026 — Iteration 35 (v0.6.7-Beta) — Polish & Rate-Limit
 - **House # label EN-fix** — Portal registration form: label `House #` (EN) that pushed the input naar beneden is nu `House no.` en alle drie labels op de postcode-rij (`Postal code`, `House no.`, `Address`) hebben `whitespace-nowrap` zodat ze nooit wrappen bij smallere breakpoints.
 - **Female avatar tab — no more beards** — `AvatarPicker.jsx.buildUrl()` voegt nu `&facialHairProbability=0` toe voor alle feminiene avatars (`genderTop === "f"`). DiceBear enum `facialHair=blank` bestaat niet — de juiste key is de probability. Alle 19 tegels in de Vrouwelijk-tab renderen nu gegarandeerd zonder baard/snor.
 - **AI Translate rate limit + CMS instelling**

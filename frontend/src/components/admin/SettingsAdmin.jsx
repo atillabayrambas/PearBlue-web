@@ -295,6 +295,12 @@ const ZohoBooksCard = ({ en }) => {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  // Wizard state — turns a freshly-generated Self-Client `code` into a
+  // permanent refresh_token + populates the org_id dropdown for the admin.
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardCode, setWizardCode] = useState("");
+  const [wizardBusy, setWizardBusy] = useState(false);
+  const [wizardOrgs, setWizardOrgs] = useState([]);
 
   const loadStatus = () => axios.get(`${API}/admin/integrations/zoho-books`, { headers: authHeader() })
     .then((r) => { setStatus(r.data || {}); setForm((f) => ({ ...f, org_id: r.data?.org_id || "", dc: r.data?.dc || "eu" })); })
@@ -334,6 +340,39 @@ const ZohoBooksCard = ({ en }) => {
     } finally { setTesting(false); }
   };
 
+  const runWizard = async () => {
+    if (!form.client_id || !form.client_secret) {
+      toast.error(en ? "First enter your Client ID + Secret above." : "Vul eerst je Client ID + Secret in hierboven.");
+      return;
+    }
+    if (!wizardCode || wizardCode.length < 20) {
+      toast.error(en ? "Paste the generated code from api-console" : "Plak de gegenereerde code uit api-console");
+      return;
+    }
+    setWizardBusy(true);
+    setWizardOrgs([]);
+    try {
+      const r = await axios.post(`${API}/admin/integrations/zoho-books/exchange-code`, {
+        code: wizardCode.trim(),
+        client_id: form.client_id.trim(),
+        client_secret: form.client_secret.trim(),
+        dc: form.dc,
+      }, { headers: authHeader() });
+      const { refresh_token, organizations } = r.data || {};
+      setForm((f) => ({
+        ...f,
+        refresh_token: refresh_token || "",
+        // Auto-select the org_id if there's exactly one — otherwise let the admin pick.
+        org_id: organizations && organizations.length === 1 ? organizations[0].organization_id : f.org_id,
+      }));
+      setWizardOrgs(organizations || []);
+      setWizardCode("");
+      toast.success(en ? "Refresh token generated ✓" : "Refresh token gegenereerd ✓");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (en ? "Exchange failed — code expired?" : "Exchange mislukt — code verlopen?"));
+    } finally { setWizardBusy(false); }
+  };
+
   return (
     <div className="pt-4 border-t border-app" data-testid="cms-zoho-books-card">
       <div className="flex items-center gap-3 mb-2">
@@ -362,7 +401,19 @@ const ZohoBooksCard = ({ en }) => {
         </label>
         <label className="block">
           <span className="text-[10px] uppercase tracking-widest text-muted-fg">Organization ID</span>
-          <input type="text" value={form.org_id} onChange={change("org_id")} placeholder="6xxxxxxxx" className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-org-id" />
+          {wizardOrgs.length > 0 ? (
+            <select
+              value={form.org_id}
+              onChange={change("org_id")}
+              className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono"
+              data-testid="zoho-input-org-id-select"
+            >
+              <option value="">— {en ? "Choose organization…" : "Kies organisatie…"} —</option>
+              {wizardOrgs.map((o) => <option key={o.organization_id} value={o.organization_id}>{o.name} · {o.organization_id}</option>)}
+            </select>
+          ) : (
+            <input type="text" value={form.org_id} onChange={change("org_id")} placeholder="6xxxxxxxx" className="mt-1 w-full rounded-lg surface-2 border border-app px-3 py-2 text-sm text-strong font-mono" data-testid="zoho-input-org-id" />
+          )}
         </label>
         <label className="block">
           <span className="text-[10px] uppercase tracking-widest text-muted-fg">Data centre</span>
@@ -381,13 +432,68 @@ const ZohoBooksCard = ({ en }) => {
         <button type="button" onClick={test} disabled={testing || !status.configured} className="text-xs px-4 py-2 rounded-full border border-app hover:border-pear-500 disabled:opacity-40" data-testid="zoho-test">
           {testing ? "…" : (en ? "Test connection" : "Test verbinding")}
         </button>
+        <button type="button" onClick={() => setWizardOpen((v) => !v)} className="text-xs px-4 py-2 rounded-full border border-violet-300 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10" data-testid="zoho-wizard-toggle">
+          🪄 {en ? "Refresh-token wizard" : "Refresh-token wizard"}
+        </button>
         {testResult && (
           <span className={`text-xs ${testResult.ok ? "text-emerald-600" : "text-red-500"}`} data-testid="zoho-test-result">
             {testResult.ok ? `✓ ${testResult.org_name || "OK"} · DC ${testResult.dc}` : `✗ ${testResult.error}`}
           </span>
         )}
       </div>
-      <p className="text-[11px] text-muted-fg mt-2">
+
+      {wizardOpen && (
+        <div className="mt-4 rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50/50 dark:bg-violet-500/5 p-4" data-testid="zoho-wizard-panel">
+          <p className="text-xs font-semibold uppercase tracking-widest text-violet-700 dark:text-violet-300 mb-2">
+            🪄 {en ? "Get refresh_token in 3 steps" : "Refresh_token in 3 stappen"}
+          </p>
+          <ol className="text-[11px] text-strong space-y-1.5 mb-3 list-decimal list-inside">
+            <li>
+              {en ? "Open " : "Open "}
+              <a href="https://api-console.zoho.eu" target="_blank" rel="noreferrer" className="text-pear-500 underline">api-console.zoho.eu</a>
+              {en ? " → your Self Client → tab " : " → jouw Self Client → tab "}
+              <strong>Generate Code</strong>.
+            </li>
+            <li>
+              {en
+                ? "Scope: "
+                : "Scope: "}
+              <code className="rounded surface-2 border border-app px-1.5 py-0.5">ZohoBooks.fullaccess.all</code>
+              {en ? " · Duration: 10 min · Description: pearblue" : " · Duur: 10 min · Beschrijving: pearblue"}
+            </li>
+            <li>{en ? "Click Create, copy the generated code, paste it below and click Exchange." : "Klik Create, kopieer de gegenereerde code, plak hem hieronder en klik Exchange."}</li>
+          </ol>
+          <p className="text-[11px] text-muted-fg mb-3">
+            💡 {en ? "Client ID + Secret above must already be filled in — the wizard uses them for the exchange (they are NOT saved yet)." : "Client ID + Secret hierboven moeten al ingevuld zijn — de wizard gebruikt ze voor de exchange (ze zijn nog niet opgeslagen)."}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={wizardCode}
+              onChange={(e) => setWizardCode(e.target.value)}
+              placeholder={en ? "Paste the code from api-console…" : "Plak de code uit api-console…"}
+              className="flex-1 min-w-[220px] rounded-lg surface border border-app px-3 py-2 text-sm text-strong font-mono"
+              data-testid="zoho-wizard-code-input"
+            />
+            <button
+              type="button"
+              onClick={runWizard}
+              disabled={wizardBusy}
+              className="btn-primary text-xs disabled:opacity-50"
+              data-testid="zoho-wizard-exchange"
+            >
+              {wizardBusy ? (en ? "Exchanging…" : "Exchangen…") : "⚡ Exchange"}
+            </button>
+          </div>
+          {wizardOrgs.length > 0 && (
+            <p className="text-[11px] text-emerald-600 mt-3" data-testid="zoho-wizard-result">
+              ✓ {en ? "Refresh token generated" : "Refresh token gegenereerd"} · {wizardOrgs.length} {en ? "organization(s) found — pick one above and click Save." : "organisatie(s) gevonden — kies er één hierboven en klik Opslaan."}
+            </p>
+          )}
+        </div>
+      )}
+
+      <p className="text-[11px] text-muted-fg mt-3">
         {en
           ? "Once saved, /admin/financials switches from mocked to live invoice data automatically."
           : "Zodra opgeslagen schakelt /admin/financials automatisch van mocked naar live factuur-data."}

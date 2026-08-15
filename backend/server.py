@@ -2800,6 +2800,72 @@ async def test_zoho_books_conn(current=Depends(require_admin)):
         raise HTTPException(500, f"Onbekende fout: {e}")
 
 
+# ---------------------------------------------------------------------------
+# Self-Client OAuth wizard — one-shot helper that turns a freshly generated
+# `code` from https://api-console.zoho.eu into a permanent refresh_token, and
+# also lists the visible organizations so the admin can pick their org_id in
+# one click. This exists so admins never have to run curl themselves.
+# ---------------------------------------------------------------------------
+class ZohoBooksExchangeCode(BaseModel):
+    code: str = Field(..., min_length=20, max_length=500)
+    client_id: str = Field(..., min_length=10, max_length=200)
+    client_secret: str = Field(..., min_length=10, max_length=200)
+    dc: str = Field("eu", pattern=r"^(eu|com|in|com\.au)$")
+
+
+@api_router.post("/admin/integrations/zoho-books/exchange-code")
+async def zoho_books_exchange_code(payload: ZohoBooksExchangeCode, current=Depends(require_admin)):
+    """Exchange a freshly-generated Self-Client `code` for a permanent
+    refresh_token, then fetch the caller's visible organizations. Returns
+    { refresh_token, organizations: [{organization_id, name}] } so the CMS
+    wizard can auto-fill both fields. Does NOT persist anything yet — the
+    normal Save flow (PUT /zoho-books) handles storage & encryption."""
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen beheerders mogen integraties instellen")
+    accounts, base = _books_endpoints(payload.dc)
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(
+                f"{accounts}/oauth/v2/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "client_id": payload.client_id.strip(),
+                    "client_secret": payload.client_secret.strip(),
+                    "code": payload.code.strip(),
+                },
+            )
+        data = r.json()
+        if r.status_code != 200 or "refresh_token" not in data:
+            err = data.get("error") or data.get("message") or f"HTTP {r.status_code}"
+            raise HTTPException(400, f"Kon geen refresh_token krijgen: {err}. Genereer een nieuwe code (deze is maar 10 min geldig).")
+        refresh_token = data["refresh_token"]
+        access_token = data.get("access_token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"OAuth exchange faalde: {e}")
+
+    # Immediately query /organizations so the admin can pick their org_id.
+    organizations = []
+    if access_token:
+        try:
+            async with httpx.AsyncClient(timeout=15) as c:
+                orgs_resp = await c.get(
+                    f"{base}/organizations",
+                    headers={"Authorization": f"Zoho-oauthtoken {access_token}"},
+                )
+            if orgs_resp.status_code == 200:
+                organizations = [
+                    {"organization_id": str(o.get("organization_id")), "name": o.get("name")}
+                    for o in orgs_resp.json().get("organizations", [])
+                ]
+        except Exception:
+            # Non-fatal — admin can enter org_id manually.
+            organizations = []
+    await _log_activity(current.get("email"), "zoho_books_code_exchanged")
+    return {"refresh_token": refresh_token, "organizations": organizations, "dc": payload.dc}
+
+
 async def _books_access_token(creds: dict) -> str:
     """Exchange refresh_token → short-lived access_token (cached ~50min in memory)."""
     accounts, _ = _books_endpoints(creds["dc"])
@@ -3113,7 +3179,6 @@ class AiTranslatePayload(BaseModel):
 
 
 AI_TRANSLATE_DEFAULT_LIMIT = 30
-_ai_translate_hits: dict[str, list[float]] = defaultdict(list)
 
 
 async def _get_ai_translate_limit() -> int:
@@ -3127,12 +3192,39 @@ async def _get_ai_translate_limit() -> int:
         return AI_TRANSLATE_DEFAULT_LIMIT
 
 
+async def _ai_translate_count_recent(admin_email: str, window_start: float) -> int:
+    """Count how many successful AI translate hits `admin_email` has in the
+    rolling 60-second window. Persisted in the `ai_translate_hits` collection
+    so it survives backend restarts and works across replicas."""
+    return await db.ai_translate_hits.count_documents({
+        "email": admin_email,
+        "ts": {"$gt": window_start},
+    })
+
+
+async def _ai_translate_record_hit(admin_email: str, now_ts: float):
+    """Persist one successful AI translate call. Old entries are lazily
+    pruned inside the same call to keep the collection small."""
+    await db.ai_translate_hits.insert_one({
+        "email": admin_email,
+        "ts": now_ts,
+        "created_at": datetime.now(timezone.utc),
+    })
+    # Prune entries older than 5 minutes for this admin (safety margin).
+    prune_before = now_ts - 300.0
+    await db.ai_translate_hits.delete_many({
+        "email": admin_email,
+        "ts": {"$lt": prune_before},
+    })
+
+
 @api_router.post("/admin/ai/translate")
 async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(require_admin)):
     """Translate short admin content (project title/description, review quote, etc.)
     between NL and EN. Uses the shared Emergent LLM key + Claude Sonnet 4.6.
     Returns 503 when the key is not configured, 429 when the admin has exceeded
-    the per-minute rate limit."""
+    the per-minute rate limit. Rate limit is persisted in MongoDB so it
+    survives restarts / works across replicas."""
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=503, detail="AI translation not configured (missing EMERGENT_LLM_KEY)")
     # Per-admin rolling 60s rate limit — protects EMERGENT_LLM_KEY budget from
@@ -3141,8 +3233,8 @@ async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(requir
     limit = await _get_ai_translate_limit()
     now_ts = time.time()
     window_start = now_ts - 60.0
-    hits = [t for t in _ai_translate_hits[admin_email] if t > window_start]
-    if len(hits) >= limit:
+    hits_used = await _ai_translate_count_recent(admin_email, window_start)
+    if hits_used >= limit:
         raise HTTPException(status_code=429, detail=f"AI translate rate limit ({limit}/min) exceeded. Try again in ~1 minute.")
     if payload.source_lang == payload.target_lang:
         # Do not count same-lang short-circuits against the budget.
@@ -3168,13 +3260,12 @@ async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(requir
         if len(translated) >= 2 and translated[0] in "\"'" and translated[-1] in "\"'":
             translated = translated[1:-1].strip()
         # Record the hit only on success so failing calls don't punish the admin.
-        hits.append(now_ts)
-        _ai_translate_hits[admin_email] = hits
+        await _ai_translate_record_hit(admin_email, now_ts)
         return {
             "translated": translated,
             "source_lang": payload.source_lang,
             "target_lang": payload.target_lang,
-            "remaining": max(0, limit - len(hits)),
+            "remaining": max(0, limit - (hits_used + 1)),
             "limit": limit,
         }
     except HTTPException:
