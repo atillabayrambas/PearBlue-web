@@ -21,7 +21,15 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 39 (this session, v0.7.1-Beta) — Autopilot Lock + Countdown Detail + EN Preview
+### Feb 2026 — Iteration 40 (this session, v0.7.2-Beta) — IMAP fuzzy match + Auto-tickets
+- **Uitbreidbare notificatie-classifier in de IMAP parser** — `_classify_notification()` herkent 4 uitgaande subject-patronen (`Nieuw contactbericht`, `Nieuwe klantbeoordeling`, `Nieuwe portaal-aanvraag`, `Chat handoff`, `Offerte-aanvraag`) + een generieke `[PearBlue]` fallback. Specifieke patronen komen eerst (was bug: greedy fallback pikte alle andere types op).
+- **Case-insensitive fuzzy name-match** — matcht een notificatie-mail terug naar het originele `contact_messages` / `reviews` / `portal_registrations` record via `{name: {$regex: ^X$, $options: i}}`. Als het bron-record een `ticket_ref` heeft, wordt die direct op de ingest-rij gezet zodat de CMS-chip #TKT-XXX toont i.p.v. "Zonder ticket".
+- **Auto-ticket vanaf externe e-mails** — inkomende klant-mails uit domeinen buiten `OWN_NOTIFICATION_DOMAINS` (resend.dev/notifications.resend.com/pearblue.nl) worden nu automatisch omgezet in een nieuw `contact_messages` doc met eigen `ticket_ref`. Zowel live-poll (`_sync_one_mailbox`) als rebuild-batch doen dit.
+- **`POST /api/admin/mailboxes/rebuild-matches`** — batch-endpoint dat alle bestaande unmatched ingest-rijen opnieuw classificeert. Idempotent: filter op `matched_kind = null` én `ticket_ref = null`, dus dubbele calls returnen `matched: 0` als er niks veranderd is. Live geverifieerd (145 rows → 97 matched (67%), 37 auto-tickets aangemaakt inclusief een echte klantmail van elghamrawy.com).
+- **Frontend chips upgrade** — MailboxesAdmin toont naast de bestaande pear `#TKT-XXXXXX` chip nu een emerald `✓ contact · Naam` / `✓ review · Naam` / `✓ portaal · Naam` / `✓ chat · Naam` / `✓ nieuw ticket · Naam` chip. Nieuwe knop "🔄 Match bestaande opnieuw" om de rebuild handmatig te triggeren.
+- **Testing**: iteration_40.json → **backend 18/18 pytest + 100% Playwright**, geen action items. Post-fix idempotentie via curl bevestigd.
+
+### Feb 2026 — Iteration 39 (v0.7.1-Beta) — Autopilot Lock + Countdown Detail + EN Preview
 - **MongoDB advisory lock voor Books-autopilot** — `_try_acquire_lock("books_autopilot")` in `_books_autopilot_loop()`; TTL index op `advisory_locks.expires_at` (expireAfterSeconds=0). Meerdere backend-replicas hameren niet meer gelijktijdig op Zoho. Manual scan endpoint blijft de lock bewust bypassen.
 - **Autopilot last-run status endpoint** — `GET /api/admin/reviews/books-autopilot-status` levert `{at, trigger, triggered_by, scanned, invited, skipped, errors}`. Reviews-CMS toont dit als groene/rode chip (`cms-books-autopilot-status`) met timestamp + tellers + eerste error inline.
 - **Zoho Access-Denied → NL hint** — `_books_autopilot_scan_once()` mapt Zoho's `ACCESS_DENIED` naar een actionable Dutch string die naar de refresh-token wizard verwijst (`ZohoBooks.fullaccess.all` scope).

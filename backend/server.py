@@ -2414,6 +2414,78 @@ async def mailboxes_ingested(current=Depends(require_admin)):
     return items
 
 
+@api_router.post("/admin/mailboxes/rebuild-matches")
+async def mailboxes_rebuild_matches(current=Depends(require_admin)):
+    """Re-classify every existing imap_ingested row without a ticket_ref, and
+    update `matched_kind`/`matched_id`/`ticket_ref` for the ones we can now
+    match to an existing contact_message / review / registration. External
+    customer emails (from senders outside PearBlue's own notification domains)
+    that still have no match get a fresh contact_message auto-created."""
+    from imap_parser import _classify_notification, _is_own_notification_sender, _create_ticket_from_email  # local import
+    checked = 0
+    matched = 0
+    auto_created = 0
+    # Idempotent filter — only touch rows that have NEITHER a ticket_ref NOR a
+    # matched_kind. A previous successful match leaves matched_kind set, so
+    # re-running the endpoint won't re-count those rows.
+    cursor = db.imap_ingested.find({
+        "$and": [
+            {"$or": [{"ticket_ref": None}, {"ticket_ref": {"$exists": False}}]},
+            {"$or": [{"matched_kind": None}, {"matched_kind": {"$exists": False}}]},
+        ]
+    })
+    async for r in cursor:
+        checked += 1
+        subject = r.get("subject") or ""
+        from_email = r.get("from_email") or ""
+        kind, name, coll = _classify_notification(subject)
+        if kind and coll and name:
+            try:
+                pattern = {"$regex": f"^{_re.escape(name)}$", "$options": "i"}
+                match = await db[coll].find_one({"name": pattern}, sort=[("created_at", -1)])
+            except Exception:
+                match = None
+            if match:
+                upd = {
+                    "matched_kind": kind,
+                    "matched_collection": coll,
+                    "matched_id": match.get("id"),
+                    "matched_display": match.get("name") or match.get("email"),
+                }
+                if kind in {"contact", "chat_handoff"} and match.get("ticket_ref"):
+                    upd["ticket_ref"] = match["ticket_ref"]
+                await db.imap_ingested.update_one({"_id": r["_id"]}, {"$set": upd})
+                matched += 1
+                continue
+        # No notification match — is this an external customer email? Auto-create
+        # a contact_message so it lands in the Berichten tab.
+        if from_email and not _is_own_notification_sender(from_email, subject):
+            # Build a synthetic {subject, from_email, from_name, body} dict
+            # matching what _create_ticket_from_email expects.
+            m_dict = {
+                "uid": r.get("uid"),
+                "message_id": r.get("message_id"),
+                "subject": subject,
+                "from_email": from_email,
+                "from_name": r.get("from_name") or "",
+                "body": r.get("body") or "",
+            }
+            mbox_dict = {"id": r.get("mailbox_id")}
+            new_msg = await _create_ticket_from_email(db, m_dict, mbox_dict)
+            if new_msg:
+                await db.imap_ingested.update_one({"_id": r["_id"]}, {"$set": {
+                    "matched_kind": "contact_auto",
+                    "matched_collection": "contact_messages",
+                    "matched_id": new_msg["id"],
+                    "matched_display": new_msg.get("name") or new_msg.get("email"),
+                    "ticket_ref": new_msg.get("ticket_ref"),
+                }})
+                matched += 1
+                auto_created += 1
+    await _log_activity(current.get("email"), "imap_rebuild_matches", meta={"checked": checked, "matched": matched, "auto_created": auto_created})
+    return {"checked": checked, "matched": matched, "auto_created": auto_created}
+
+
 # ---- Virus scanner (stub — records only, no real scanning) ----
 @api_router.get("/admin/virus-scanner/logs")
 async def virus_logs(current=Depends(require_permission("cybersecurity"))):

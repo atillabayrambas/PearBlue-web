@@ -34,6 +34,102 @@ socket.setdefaulttimeout(_IMAP_SOCKET_TIMEOUT)
 POLL_SECONDS = int(os.environ.get("IMAP_POLL_SECONDS", "60"))
 TKT_RE = re.compile(r"#TKT-([A-Z0-9]{4,10})", re.IGNORECASE)
 
+# Time window around the source-record timestamp used for fuzzy matching
+# outgoing notification emails back to the entity that produced them.
+NOTIFICATION_MATCH_WINDOW_MIN = int(os.environ.get("IMAP_NOTIF_WINDOW_MIN", "15"))
+
+# Subjects of the transactional notifications PearBlue sends to info@pearblue.nl.
+# Each pattern captures the "name" (or rating+name for reviews) so we can look
+# up the source contact_message / portal_registration / review by name AND
+# by a time window around the email timestamp.
+_NOTIF_PATTERNS = [
+    # kind, regex, collection. ORDER MATTERS — specific patterns first, so the
+    # greedy contact fallback at the bottom doesn't hijack review / portal / chat
+    # subjects. Each regex captures the customer name in group(1).
+    ("review", re.compile(r"\[PearBlue\]\s+Nieuwe\s+klantbeoordeling\s+[—-]+\s+\d+★\s+van\s+(.+?)\s*$", re.IGNORECASE), "reviews"),
+    ("registration", re.compile(r"\[PearBlue\]\s+Nieuwe\s+portaal[- ]aanvraag\s+[—-]+\s+(.+?)\s*$", re.IGNORECASE), "portal_registrations"),
+    ("chat_handoff", re.compile(r"\[Chat\]\s+Chat\s+handoff\s+[—-]+\s+(.+?)\s*$", re.IGNORECASE), "contact_messages"),
+    ("contact", re.compile(r"\[PearBlue\]\s+Nieuw\s+contactbericht\s+[—-]+\s+(.+?)\s*$", re.IGNORECASE), "contact_messages"),
+    ("contact", re.compile(r"\[PearBlue\]\s+Offerte[- ]aanvraag\s+[—-]+\s+.+?\s+[—-]+\s+(.+?)\s*$", re.IGNORECASE), "contact_messages"),
+    ("contact", re.compile(r"\[PearBlue\]\s+.+?\s+[—-]+\s+(.+?)\s*$", re.IGNORECASE), "contact_messages"),  # generic fallback — MUST stay last
+]
+
+
+def _classify_notification(subject: str):
+    """Return (kind, name, collection) for a notification-style subject, or
+    (None, None, None) when the subject doesn't match any pattern."""
+    if not subject:
+        return None, None, None
+    for kind, pat, coll in _NOTIF_PATTERNS:
+        m = pat.match(subject.strip())
+        if m:
+            name = m.group(1).strip()
+            # Skip obvious junk / quota emails (from Resend/system providers).
+            if not name or name.lower() in {"pearblue", "test"}:
+                continue
+            return kind, name, coll
+    return None, None, None
+
+
+# Domains that PearBlue itself uses to send outgoing transactional / system
+# email. When a mail comes FROM one of these, it's either an outgoing
+# notification (already covered by _classify_notification above) or a
+# provider-level status message (quota warnings, etc.) — never an actual
+# customer message. Mails from these senders will NOT auto-create tickets.
+OWN_NOTIFICATION_DOMAINS = {
+    "resend.dev",
+    "resend.com",
+    "notifications.resend.com",
+    "pearblue.nl",  # own domain — avoids self-loops if we forward
+}
+
+
+def _is_own_notification_sender(from_email: str, subject: str) -> bool:
+    if not from_email:
+        return True
+    addr = from_email.lower().strip()
+    domain = addr.rsplit("@", 1)[-1] if "@" in addr else ""
+    if domain in OWN_NOTIFICATION_DOMAINS:
+        return True
+    # Quota-style provider notifications never map to a customer ticket.
+    if subject and re.search(r"quota|delivery.*(failed|delayed)|bounce|no[- ]reply", subject, re.IGNORECASE):
+        return True
+    return False
+
+
+async def _create_ticket_from_email(db, m: dict, mbox: dict) -> Optional[dict]:
+    """Create a new contact_messages doc from an incoming customer email so
+    it appears in the Berichten CMS tab. Idempotent on the RFC-822
+    Message-ID (see idempotency guard in the caller — this is only called
+    once per unique UID)."""
+    try:
+        # Generate a short ticket_ref just like the /contact endpoint does.
+        import secrets, string, uuid as _uuid  # local import: keeps top-level imports minimal
+        ref = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+        doc = {
+            "id": str(_uuid.uuid4()),
+            "name": (m.get("from_name") or (m.get("from_email") or "").split("@")[0] or "IMAP klant").strip()[:80],
+            "email": m.get("from_email") or "",
+            "phone": None,
+            "company": None,
+            "subject": (m.get("subject") or "(geen onderwerp)")[:180],
+            "message": m.get("body") or "",
+            "consent": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "new",
+            "priority": "P3",
+            "spam": False,
+            "ticket_ref": ref,
+            "assigned_to": None,
+            "source": "imap_auto",
+            "source_mailbox_id": mbox.get("id"),
+        }
+        await db.contact_messages.insert_one(doc)
+        return doc
+    except Exception as e:
+        logger.warning(f"IMAP auto-ticket-create failed: {e}")
+        return None
+
 
 def _decode_header(v) -> str:
     if not v:
@@ -148,6 +244,9 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
         if already:
             continue
         subject_ref = None
+        matched_kind = None
+        matched_id = None
+        matched_display = None
         ticket_match = TKT_RE.search(m.get("subject") or "")
         if ticket_match:
             subject_ref = ticket_match.group(1).upper()
@@ -162,9 +261,8 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
             "ticket_ref": subject_ref,
             "ingested_at": datetime.now(timezone.utc).isoformat(),
         }
+        # ── Case A: subject carries #TKT-XXXX → append as client reply ─────
         if subject_ref:
-            # Find the matching contact message by ticket_ref and append the body
-            # as a client-side reply so it shows up in AdminMessageThread.
             parent = await db.contact_messages.find_one({"ticket_ref": subject_ref})
             if parent:
                 reply = {
@@ -185,6 +283,60 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
                 )
                 record["matched_parent_id"] = parent.get("id")
                 counters["matched"] += 1
+        else:
+            # ── Case B: outgoing PearBlue notification → fuzzy-match to source ──
+            kind, name, coll = _classify_notification(m.get("subject") or "")
+            if kind and coll:
+                # Search by case-insensitive name in the correct collection,
+                # preferring records created within a ±15 min window of the email.
+                pattern = {"$regex": f"^{re.escape(name)}$", "$options": "i"}
+                query = {"name": pattern}
+                if kind == "review":
+                    # For reviews we already know the rating; the notification
+                    # sender is Resend so no ID leaks — we still search by name.
+                    pass
+                match = None
+                try:
+                    # Find most recent match by name — no time filter first
+                    # because created_at might be stored as string or datetime.
+                    matches = await db[coll].find(query).sort("created_at", -1).limit(3).to_list(3)
+                    if matches:
+                        match = matches[0]
+                except Exception as e:
+                    logger.warning(f"IMAP notification match query failed: {e}")
+                if match:
+                    matched_kind = kind
+                    matched_id = match.get("id")
+                    matched_display = match.get("name") or match.get("email") or ""
+                    record["matched_kind"] = kind
+                    record["matched_collection"] = coll
+                    record["matched_id"] = matched_id
+                    record["matched_display"] = matched_display
+                    # If this notification refers to a contact_message that
+                    # already has a ticket_ref, surface that on the ingest row
+                    # so the CMS chip shows the ticket number instead of "Zonder ticket".
+                    if kind in {"contact", "chat_handoff"} and match.get("ticket_ref"):
+                        record["ticket_ref"] = match["ticket_ref"]
+                        subject_ref = match["ticket_ref"]
+                    counters["matched"] += 1
+            # ── Case C: neither #TKT-XXXX nor a known PearBlue notification.
+            #    If the mail is FROM an outside sender (not our own Resend
+            #    outbound), auto-create a new contact_message ticket so the
+            #    conversation appears in the Berichten tab. Otherwise mark it
+            #    as an unmatched notification so admins see the audit trail.
+            elif m.get("from_email") and not _is_own_notification_sender(m.get("from_email"), m.get("subject")):
+                new_msg = await _create_ticket_from_email(db, m, mbox)
+                if new_msg:
+                    record["matched_kind"] = "contact_auto"
+                    record["matched_collection"] = "contact_messages"
+                    record["matched_id"] = new_msg["id"]
+                    record["matched_display"] = new_msg.get("name") or new_msg.get("email")
+                    record["ticket_ref"] = new_msg.get("ticket_ref")
+                    subject_ref = new_msg.get("ticket_ref")
+                    counters["matched"] += 1
+                    counters["auto_ticket_created"] = counters.get("auto_ticket_created", 0) + 1
+        # persist the (possibly updated) ticket_ref
+        record["ticket_ref"] = subject_ref
         await db.imap_ingested.insert_one(record)
 
     await db.mailboxes.update_one(

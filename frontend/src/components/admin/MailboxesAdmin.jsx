@@ -14,7 +14,19 @@ export const MailboxesAdmin = () => {
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [ingested, setIngested] = useState([]);
+  const [rebuildBusy, setRebuildBusy] = useState(false);
   const canManage = ["super_admin", "admin", "beheerder"].includes(user?.role);
+
+  const rebuildMatches = async () => {
+    setRebuildBusy(true);
+    try {
+      const r = await axios.post(`${API}/admin/mailboxes/rebuild-matches`, {}, { headers: authHeader() });
+      const d = r.data || {};
+      toast.success(`Opnieuw gematcht: ${d.matched || 0} van ${d.checked || 0}`);
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Rebuild mislukt"); }
+    finally { setRebuildBusy(false); }
+  };
 
   const load = async () => {
     try {
@@ -148,19 +160,36 @@ export const MailboxesAdmin = () => {
           <h3 className="text-xs uppercase tracking-widest text-muted-fg mb-2 flex items-center gap-1"><Clock className="h-3 w-3" /> Laatste 100 IMAP-ingests</h3>
           <ul className="divide-y divide-app rounded-2xl border border-app surface max-h-72 overflow-y-auto">
             {ingested.slice(0, 100).map((r, i) => (
-              <li key={r.uid + "-" + i} className="p-3 flex items-center justify-between gap-3 text-xs">
+              <li key={r.uid + "-" + i} className="p-3 flex items-center justify-between gap-3 text-xs" data-testid={`mailbox-ingest-row-${i}`}>
                 <div className="min-w-0 flex-1">
                   <p className="text-strong truncate">{r.subject || "(geen onderwerp)"}</p>
                   <p className="text-muted-fg truncate">{r.from_email} · {new Date(r.ingested_at).toLocaleString("nl-NL")}</p>
                 </div>
                 {r.ticket_ref ? (
                   <span className="rounded-full bg-pear-100 text-pear-700 px-2 py-0.5 font-mono shrink-0" data-testid={`mailbox-ingest-tkt-${r.ticket_ref}`}>#TKT-{r.ticket_ref}</span>
+                ) : r.matched_kind ? (
+                  <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 shrink-0 truncate max-w-[180px]" title={`${r.matched_kind} · ${r.matched_display || ""}`} data-testid={`mailbox-ingest-matched-${i}`}>
+                    ✓ {r.matched_kind === "contact_auto" ? "nieuw ticket" : r.matched_kind === "review" ? "review" : r.matched_kind === "registration" ? "portaal" : r.matched_kind === "chat_handoff" ? "chat" : "contact"}
+                    {r.matched_display && ` · ${r.matched_display}`}
+                  </span>
                 ) : (
                   <span className="rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 shrink-0">Zonder ticket</span>
                 )}
               </li>
             ))}
           </ul>
+          <div className="flex justify-between items-center mt-2">
+            <p className="text-[10px] text-muted-fg">
+              Groene chip = automatisch gekoppeld aan {" "}
+              <code className="font-mono">contact</code>/{" "}
+              <code className="font-mono">review</code>/{" "}
+              <code className="font-mono">portaal</code>/{" "}
+              <code className="font-mono">chat</code>. Blauwe chip = ticket-nummer in onderwerp.
+            </p>
+            <button onClick={rebuildMatches} disabled={rebuildBusy} className="text-[11px] px-3 py-1 rounded-full border border-app hover:border-pear-500 disabled:opacity-40" data-testid="mailbox-rebuild-matches">
+              {rebuildBusy ? "Bezig…" : "🔄 Match bestaande opnieuw"}
+            </button>
+          </div>
         </div>
       )}
       <p className="text-[11px] text-muted-fg mt-4">
