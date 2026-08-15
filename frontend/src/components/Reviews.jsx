@@ -3,7 +3,11 @@ import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Send, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { useLang } from "../i18n/LanguageContext";
 import { LocalCaptcha, ConsentText } from "./LocalCaptcha";
+
+// Pick the localized review quote when EN is active and a translation exists.
+const localQuote = (r, lang) => (lang === "en" && r?.quote_en) ? r.quote_en : (r?.quote || "");
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -146,6 +150,7 @@ export const ReviewStars = ({ rating, size = 4 }) => (
 );
 
 export const FeaturedReviews = () => {
+  const { lang } = useLang();
   const [reviews, setReviews] = useState([]);
   const scrollerRef = useRef(null);
   const trackRef = useRef(null);
@@ -214,7 +219,7 @@ export const FeaturedReviews = () => {
               data-testid={`review-card-${i}`}
             >
               <ReviewStars rating={r.rating} />
-              <p className="mt-4 text-strong/90 leading-relaxed">&ldquo;{r.quote}&rdquo;</p>
+              <p className="mt-4 text-strong/90 leading-relaxed">&ldquo;{localQuote(r, lang)}&rdquo;</p>
               <div className="mt-5 pt-4 border-t border-app">
                 <p className="font-semibold text-strong text-sm">{r.name}</p>
                 {(r.company || r.project) && <p className="text-xs text-muted-fg">{[r.company, r.project].filter(Boolean).join(" · ")}</p>}
@@ -234,6 +239,7 @@ export const FeaturedReviews = () => {
 
 // Floating ticker for the homepage hero — fades one review in / out at a time.
 export const FloatingReviewTicker = () => {
+  const { lang } = useLang();
   const [reviews, setReviews] = useState([]);
   const [idx, setIdx] = useState(0);
   useEffect(() => {
@@ -260,7 +266,7 @@ export const FloatingReviewTicker = () => {
         >
           <ReviewStars rating={r.rating} size={3} />
           <div className="text-xs sm:text-sm text-strong/90 truncate flex-1 min-w-0">
-            <span className="italic">&ldquo;{r.quote}&rdquo;</span>
+            <span className="italic">&ldquo;{localQuote(r, lang)}&rdquo;</span>
             <span className="text-[10px] uppercase tracking-widest text-muted-fg ml-2 whitespace-nowrap">
               — {r.name}{r.company ? `, ${r.company}` : ""}
             </span>
@@ -273,6 +279,7 @@ export const FloatingReviewTicker = () => {
 
 // Compact horizontally-scrollable reviews strip — fits under trust-stats block on the homepage.
 export const FeaturedReviewsCompact = () => {
+  const { lang } = useLang();
   const [reviews, setReviews] = useState([]);
   useEffect(() => {
     axios.get(`${API}/reviews?featured=true`).then((r) => setReviews(r.data || [])).catch(() => setReviews([]));
@@ -296,7 +303,7 @@ export const FeaturedReviewsCompact = () => {
             data-testid={`review-card-compact-${i}`}
           >
             <ReviewStars rating={r.rating} />
-            <p className="mt-3 text-sm text-strong/90 leading-relaxed line-clamp-4">&ldquo;{r.quote}&rdquo;</p>
+            <p className="mt-3 text-sm text-strong/90 leading-relaxed line-clamp-4">&ldquo;{localQuote(r, lang)}&rdquo;</p>
             <div className="mt-4 pt-3 border-t border-app">
               <p className="font-semibold text-strong text-xs">{r.name}</p>
               {(r.company || r.project) && <p className="text-[11px] text-muted-fg truncate">{[r.company, r.project].filter(Boolean).join(" · ")}</p>}

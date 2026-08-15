@@ -21,7 +21,21 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 37 (this session, v0.6.9-Beta) — Zoho Books LIVE! 🎉
+### Feb 2026 — Iteration 38 (this session, v0.7.0-Beta) — Autopilot + Bulk Translate + Rate-Limit UX
+- **Zoho Books Paid-Invoice Review Autopilot** — nieuwe `_books_autopilot_loop()` scant elke 15 min in de achtergrond alle facturen met status `paid` uit de laatste 90 dagen. Dedupe via `review_invites.project_id` prefix `zohobooks:{invoice_id}`. Manual trigger endpoint `POST /api/admin/reviews/scan-books-invoices` + nieuwe **Scan Books nu**-knop in de Reviews CMS.
+- **Bulk AI Translate** — nieuwe herbruikbare `BulkTranslateButton.jsx` component met modal + live progressbar + auto-backoff bij 429 (respecteert `retry_after_seconds`). Ingebouwd in:
+  - **Portfolio CMS**: vertaalt `title` → `title_en` en `description` → `description_en` in bulk.
+  - **Reviews CMS**: vertaalt `quote` → `quote_en` voor alle approved reviews.
+  - Publieke site (`Home`, `Projects`, `FeaturedReviews`, `FloatingReviewTicker`, `FeaturedReviewsCompact`) toont automatisch de `_en`-versie zodra taal = EN, met NL-fallback.
+- **429 Countdown Chip** — `AiTranslateButton` toont bij een 429 een rode chip met de resterende seconden (leest `retry_after_seconds` uit de response, tikt elke seconde af). NaN-defensief.
+- **Zoho Books LIVE-banner** — `/admin/financials` toont nu een groene "Zoho Books LIVE" banner én een groene "live"-pill in de Zoho-sectie zodra `mocked=false`. Amber MOCKED-banner is weg.
+- **MongoDB TTL Index** op `ai_translate_hits.created_at` (120s expiry) — collection blijft bounded, geen handmatige purge nodig.
+- **Backend polish**:
+  - `POST /api/admin/ai/translate` 429-body is nu `{message, message_en, retry_after_seconds, limit}` + `Retry-After` header.
+  - `Project` + `Review` Pydantic models kregen `title_en` / `description_en` / `quote_en` (`ProjectUpdate` allowlist + `ReviewUpdate` uitgebreid).
+- **Testing**: iteration_35.json → **backend 6/6 pytest + 100% frontend**. Post-fix (mocked badge, NaN, TTL) via curl bevestigd.
+
+### Feb 2026 — Iteration 37 (v0.6.9-Beta) — Zoho Books LIVE! 🎉
 - **Zoho Books integratie is LIVE bevestigd** — `org_matched: true`, `org_name: PearBlue`, `mocked: false`. Live financials-endpoint pullt nu echte facturen uit de PearBlue Zoho Books organisatie (org_id `20109165270`, DC EU).
 - **Wizard UX gehard**:
   - `runWizard()` slaat na een succesvolle code→refresh_token exchange **automatisch alle 3 velden (client_id + client_secret + refresh_token + org_id)** in één PUT op, zodat de credentials nooit meer uit sync kunnen raken.

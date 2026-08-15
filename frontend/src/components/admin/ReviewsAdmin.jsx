@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Check, Trash2, Sparkles, Send, Clock } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { API, StarsRow, AssigneeChip, assigneeLabel, prettyRole } from "./_shared";
+import { BulkTranslateButton } from "./BulkTranslateButton";
 
 const ManualReviewInviteRow = ({ onSent }) => {
   const { authHeader } = useAuth();
@@ -30,7 +31,7 @@ const ManualReviewInviteRow = ({ onSent }) => {
   };
   return (
     <form onSubmit={send} className="mt-4 rounded-xl surface-2 border border-app p-3" data-testid="cms-manual-invite-row">
-      <p className="text-xs font-semibold text-strong mb-2 flex items-center gap-1.5"><Send className="h-3 w-3 text-violet-500" /> Handmatige review-uitnodiging <span className="text-[10px] font-normal text-muted-fg">(gebruik voor betaalde facturen — auto-trigger volgt zodra Zoho Books live is)</span></p>
+      <p className="text-xs font-semibold text-strong mb-2 flex items-center gap-1.5"><Send className="h-3 w-3 text-violet-500" /> Handmatige review-uitnodiging <span className="text-[10px] font-normal text-muted-fg">(automatisch verzonden zodra Zoho Books-factuur op &apos;paid&apos; gaat — gebruik dit voor uitzonderingen)</span></p>
       <div className="grid sm:grid-cols-4 gap-2">
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="klant@voorbeeld.nl" className="rounded-lg border border-app px-3 py-2 text-sm sm:col-span-2" data-testid="cms-manual-invite-email" />
         <input type="text" value={project} onChange={(e) => setProject(e.target.value)} placeholder="Projectnaam (optioneel)" className="rounded-lg border border-app px-3 py-2 text-sm" data-testid="cms-manual-invite-project" />
@@ -131,15 +132,32 @@ export const ReviewsAdmin = () => {
         </div>
       </header>
 
+      <div className="flex justify-end mb-3">
+        <BulkTranslateButton
+          items={items.filter((r) => r.approved)}
+          itemLabel={(r) => `${r.name} · ${(r.quote || "").slice(0, 40)}…`}
+          needsTranslation={(r) => r.quote && !r.quote_en}
+          fields={[{ srcKey: "quote", dstKey: "quote_en" }]}
+          patchUrl={(r) => `${API}/reviews/${r.id}`}
+          onDone={load}
+          testid="cms-reviews-bulk-translate"
+        />
+      </div>
+
       <section className="surface border border-app rounded-2xl p-5 mb-6" data-testid="cms-invite-panel">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="font-heading font-semibold text-strong flex items-center gap-2"><Send className="h-4 w-4 text-pear-500" /> Automatische review-uitnodigingen</h2>
-            <p className="text-xs text-muted-fg mt-1">Zoho-projecten met status <em>closed</em> krijgen automatisch een tweetalige review-uitnodiging (klant e-mail via Zoho Books). Poller draait elke 15 min.</p>
+            <p className="text-xs text-muted-fg mt-1">Twee scanners draaien elke 15 min: (1) Zoho <em>Projects</em> → status <em>closed</em>, (2) Zoho <em>Books</em> → factuur op <em>paid</em>. Beide sturen automatisch een tweetalige review-uitnodiging (met dedupe).</p>
           </div>
-          <button onClick={scanInvites} disabled={scanBusy} className="btn-primary shrink-0" data-testid="cms-invite-scan-now">
-            {scanBusy ? "Bezig…" : <><Send className="h-4 w-4" /> Scan nu</>}
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={scanInvites} disabled={scanBusy} className="btn-secondary text-xs" data-testid="cms-invite-scan-now">
+              {scanBusy ? "…" : <><Send className="h-3.5 w-3.5" /> Scan Projects</>}
+            </button>
+            <button onClick={async () => { try { const r = await axios.post(`${API}/admin/reviews/scan-books-invoices`, {}, { headers: authHeader() }); toast.success(`Books: ${r.data?.invited || 0} verzonden · ${r.data?.skipped || 0} overgeslagen`); axios.get(`${API}/admin/reviews/invite-log`, { headers: authHeader() }).then((r2) => setInvLog(r2.data || [])).catch(() => {}); } catch (e) { toast.error(e?.response?.data?.detail || "Scan mislukt"); } }} className="btn-primary text-xs" data-testid="cms-invite-scan-books">
+              <Send className="h-3.5 w-3.5" /> Scan Books nu
+            </button>
+          </div>
         </div>
         <ManualReviewInviteRow onSent={() => axios.get(`${API}/admin/reviews/invite-log`, { headers: authHeader() }).then((r) => setInvLog(r.data || [])).catch(() => {})} />
         {invLog.length > 0 && (

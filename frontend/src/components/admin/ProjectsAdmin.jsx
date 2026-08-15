@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { API, CATEGORIES, emptyProjectForm as emptyForm } from "./_shared";
 import { AiTranslateButton } from "./AiTranslateButton";
+import { BulkTranslateButton } from "./BulkTranslateButton";
 
 export const ProjectsAdmin = () => {
   const { authHeader } = useAuth();
@@ -122,6 +123,21 @@ export const ProjectsAdmin = () => {
           >{f.label}</button>
         ))}
         <span className="ml-auto text-xs text-muted-fg">Totaal: {items.length} · Actief: {items.filter((p) => !p.archived).length}</span>
+      </div>
+
+      <div className="flex items-center justify-end mb-3">
+        <BulkTranslateButton
+          items={shown.filter((p) => !p.archived)}
+          itemLabel={(p) => p.title}
+          needsTranslation={(p) => (p.title && !p.title_en) || (p.description && !p.description_en)}
+          fields={[
+            { srcKey: "title", dstKey: "title_en" },
+            { srcKey: "description", dstKey: "description_en" },
+          ]}
+          patchUrl={(p) => `${API}/projects/${p.id}`}
+          onDone={load}
+          testid="cms-projects-bulk-translate"
+        />
       </div>
 
       <div className="surface border border-app rounded-2xl overflow-hidden">

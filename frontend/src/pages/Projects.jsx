@@ -86,8 +86,8 @@ export default function Projects() {
                 </div>
                 <div className="p-5">
                   <div className="text-[11px] uppercase tracking-widest text-pear-500 mb-1">{p.tag || p.category}</div>
-                  <h3 className="font-heading text-xl font-semibold text-strong">{p.title}</h3>
-                  {p.description && <p className="text-sm text-muted-fg mt-2 line-clamp-2">{p.description}</p>}
+                  <h3 className="font-heading text-xl font-semibold text-strong">{(lang === "en" && p.title_en) || p.title}</h3>
+                  {(p.description_en || p.description) && <p className="text-sm text-muted-fg mt-2 line-clamp-2">{(lang === "en" && p.description_en) || p.description}</p>}
                   <div className="mt-4 inline-flex items-center gap-1.5 text-pear-500 text-sm font-semibold">
                     {t("projects.view_detail")} <ArrowRight className="h-3.5 w-3.5" />
                   </div>
@@ -121,8 +121,8 @@ export default function Projects() {
               </div>
               <div className="p-8">
                 <div className="text-xs uppercase tracking-widest text-pear-500 mb-2">{selected.tag || selected.category}</div>
-                <h3 className="font-heading text-3xl font-semibold text-strong mb-4">{selected.title}</h3>
-                {selected.description && <p className="text-muted-fg leading-relaxed">{selected.description}</p>}
+                <h3 className="font-heading text-3xl font-semibold text-strong mb-4">{(lang === "en" && selected.title_en) || selected.title}</h3>
+                {(selected.description_en || selected.description) && <p className="text-muted-fg leading-relaxed">{(lang === "en" && selected.description_en) || selected.description}</p>}
                 <div className="mt-8 flex flex-wrap items-center gap-3">
                   {selected.external_url && selected.external_url !== "#" && (
                     <a href={selected.external_url} target="_blank" rel="noreferrer" className="btn-primary" data-testid="project-modal-external">

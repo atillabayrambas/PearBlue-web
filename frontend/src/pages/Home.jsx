@@ -145,7 +145,7 @@ export default function Home() {
                 <div className="absolute bottom-5 left-5 right-5 text-white flex items-end justify-between">
                   <div>
                     <div className="text-[11px] uppercase tracking-widest text-white/80">{p.tag || p.category}</div>
-                    <div className="font-heading text-2xl font-medium">{p.title}</div>
+                    <div className="font-heading text-2xl font-medium">{(lang === "en" && p.title_en) || p.title}</div>
                   </div>
                   <Link to="/portfolio" className="text-xs bg-white/20 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/25 hover:bg-white/30">{t("portfolio.view")}</Link>
                 </div>

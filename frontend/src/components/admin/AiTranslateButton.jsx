@@ -3,10 +3,10 @@
 // Detects source language from the current field content (defaults NL) and
 // asks the backend to translate to the opposite language (or a specified one).
 // Renders a compact chip so it fits next to the field label without cluttering.
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Clock } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { API } from "./_shared";
@@ -31,10 +31,29 @@ export const AiTranslateButton = ({
   const { lang } = useLang();
   const en = lang === "en";
   const [busy, setBusy] = useState(false);
+  // Countdown-until-retry when the backend returns 429. Ticks down every second.
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!cooldownUntil) return undefined;
+    const iv = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(iv);
+  }, [cooldownUntil]);
+  const cooldownRemaining = cooldownUntil ? Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000)) : 0;
+  if (cooldownUntil && cooldownRemaining === 0) {
+    // Clear expired lock on next render.
+    setTimeout(() => setCooldownUntil(0), 0);
+  }
   const btnLabel = label || (en ? "AI translate" : "AI vertaal");
   const busyLabel = en ? "Translating…" : "Vertalen…";
+  // eslint-disable-next-line no-unused-vars
+  const _tickUsed = tick; // referenced so React re-renders each second while counting down.
 
   const run = async () => {
+    if (cooldownRemaining > 0) {
+      toast.error(en ? `Wait ${cooldownRemaining}s — rate limit hit.` : `Wacht ${cooldownRemaining}s — rate limit bereikt.`);
+      return;
+    }
     if (!value || !value.trim()) {
       toast.error(en ? "Type text first to translate" : "Vul eerst tekst in om te vertalen");
       return;
@@ -57,7 +76,21 @@ export const AiTranslateButton = ({
       onTranslated?.(translated, { source_lang: src, target_lang: tgt });
       toast.success(`${en ? "Translated" : "Vertaald"} ${src.toUpperCase()} → ${tgt.toUpperCase()}`);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || (en ? "Translation failed" : "Vertaling mislukt"));
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (status === 429) {
+        // Detail is either {message, retry_after_seconds, limit} or the legacy string.
+        const retryRaw = detail && typeof detail === "object" ? detail.retry_after_seconds : undefined;
+        const retry = Number.isFinite(retryRaw) && retryRaw > 0 ? retryRaw : 60;
+        const lim = detail && typeof detail === "object" && detail.limit;
+        setCooldownUntil(Date.now() + retry * 1000);
+        toast.error(en
+          ? `Rate limit${lim ? ` (${lim}/min)` : ""} — retry in ${retry}s`
+          : `Rate limit${lim ? ` (${lim}/min)` : ""} bereikt — probeer over ${retry}s`);
+      } else {
+        const msg = (typeof detail === "string" ? detail : detail?.message) || (en ? "Translation failed" : "Vertaling mislukt");
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -66,6 +99,20 @@ export const AiTranslateButton = ({
   const cls = size === "xs"
     ? "text-[10px] px-2 py-0.5"
     : "text-[11px] px-2.5 py-1";
+
+  // While on cooldown, render a countdown chip instead of the normal button.
+  if (cooldownRemaining > 0) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border border-red-300 text-red-600 bg-red-50/50 dark:bg-red-500/10 font-semibold uppercase tracking-widest cursor-not-allowed ${cls}`}
+        data-testid={`${testid}-cooldown`}
+        title={en ? "AI translate rate limit — wait to retry" : "AI vertaal limiet — wacht om opnieuw te proberen"}
+      >
+        <Clock className="h-3 w-3" />
+        {cooldownRemaining}s
+      </span>
+    );
+  }
 
   return (
     <button

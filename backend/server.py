@@ -184,6 +184,10 @@ class Project(BaseModel):
     category: str
     tag: Optional[str] = None
     description: Optional[str] = None
+    # Optional English translations — filled by the CMS "Bulk translate" button
+    # or the per-field "AI vertaal" chip. Public site prefers these when lang=en.
+    title_en: Optional[str] = None
+    description_en: Optional[str] = None
     image_url: str
     external_url: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -309,6 +313,9 @@ class Review(BaseModel):
     project: Optional[str] = None
     rating: int = Field(..., ge=1, le=5)
     quote: str
+    # Optional English translation for the review quote — filled by the CMS
+    # "Bulk translate" button. Public site uses it when lang=en.
+    quote_en: Optional[str] = None
     approved: bool = False
     featured: bool = False
     assigned_to: Optional[str] = None
@@ -329,6 +336,7 @@ class ReviewUpdate(BaseModel):
     featured: Optional[bool] = None
     assigned_to: Optional[str] = None
     status: Optional[str] = Field(None, pattern="^(new|in_progress|done)$")
+    quote_en: Optional[str] = Field(None, max_length=1500)
 
 
 # ---------- Auth helpers ----------
@@ -2192,7 +2200,7 @@ async def public_changelog():
 # ---- Portfolio: archive support ----
 @api_router.patch("/projects/{project_id}")
 async def patch_project(project_id: str, patch: dict, current=Depends(require_admin)):
-    allowed = {"title", "category", "tag", "description", "image_url", "external_url", "archived"}
+    allowed = {"title", "category", "tag", "description", "title_en", "description_en", "image_url", "external_url", "archived"}
     upd = {k: v for k, v in (patch or {}).items() if k in allowed}
     if not upd:
         raise HTTPException(400, "Nothing to update")
@@ -2963,6 +2971,128 @@ async def _zoho_books_fetch(start, end) -> Optional[dict]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Review Autopilot — scans Zoho Books for paid invoices and sends a bilingual
+# review invite for each one exactly once. Runs every 15 min in the background.
+# Idempotent: uses the `review_invites` collection (keyed on the invoice ref)
+# so the same invoice never triggers a second email.
+# ---------------------------------------------------------------------------
+BOOKS_AUTOPILOT_INTERVAL_SECONDS = 15 * 60  # 15 min
+
+
+async def _books_autopilot_scan_once() -> dict:
+    """Fetch invoices with status=paid from Zoho Books, dedupe against past
+    invites, and email new customers. Returns a summary dict."""
+    result = {"scanned": 0, "invited": 0, "skipped": 0, "errors": []}
+    creds = await _get_books_creds()
+    if not creds:
+        return result  # silently skip when not configured
+    try:
+        token = await _books_access_token(creds)
+    except Exception as e:
+        result["errors"].append(f"token exchange failed: {e}")
+        return result
+    _, base = _books_endpoints(creds["dc"])
+    # Pull the last 90 days of paid invoices — new-only dedupe handles the rest.
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=90)
+    params = {
+        "organization_id": creds["org_id"],
+        "status": "paid",
+        "date_start": start.strftime("%Y-%m-%d"),
+        "date_end": end.strftime("%Y-%m-%d"),
+        "per_page": 200,
+    }
+    headers = {"Authorization": f"Zoho-oauthtoken {token}"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get(f"{base}/invoices", params=params, headers=headers)
+        r.raise_for_status()
+        invoices = r.json().get("invoices", [])
+    except Exception as e:
+        result["errors"].append(f"invoices fetch failed: {e}")
+        return result
+
+    result["scanned"] = len(invoices)
+    # Import inside function to avoid circular-import surprises during startup.
+    from review_invites import send_manual_invite
+
+    for inv in invoices:
+        inv_id = str(inv.get("invoice_id") or "")
+        if not inv_id:
+            continue
+        # Only paid invoices with a customer email — dedupe on invoice_id.
+        ref = f"zohobooks:{inv_id}"
+        if await db.review_invites.find_one({"project_id": ref}):
+            result["skipped"] += 1
+            continue
+        email = (inv.get("email") or inv.get("customer_email") or "").strip().lower()
+        name = inv.get("customer_name") or "PearBlue klant"
+        if not email:
+            # Fetch full invoice for missing email (list endpoint sometimes omits it)
+            try:
+                async with httpx.AsyncClient(timeout=15) as c:
+                    detail_resp = await c.get(f"{base}/invoices/{inv_id}", params={"organization_id": creds["org_id"]}, headers=headers)
+                if detail_resp.status_code == 200:
+                    detail = detail_resp.json().get("invoice", {}) or {}
+                    contact_persons = detail.get("contact_persons") or []
+                    if contact_persons:
+                        email = (contact_persons[0].get("email") or "").strip().lower()
+            except Exception:
+                pass
+        if not email:
+            # Record a stub so we don't retry endlessly.
+            await db.review_invites.insert_one({
+                "project_id": ref,
+                "project_name": f"Invoice {inv.get('invoice_number', inv_id)}",
+                "email": None,
+                "sent_at": None,
+                "delivered": False,
+                "error": "no-email",
+                "source": "zoho_books_autopilot",
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            })
+            result["skipped"] += 1
+            continue
+        try:
+            out = await send_manual_invite(
+                db, _send_email,
+                email=email,
+                name=name,
+                subject_ref=ref,
+            )
+            if out.get("delivered"):
+                result["invited"] += 1
+            else:
+                result["errors"].append(f"invoice {inv_id}: send failed → {email}")
+        except Exception as e:
+            result["errors"].append(f"invoice {inv_id}: {e}")
+    return result
+
+
+async def _books_autopilot_loop():
+    """Background task: run the scanner every 15 min forever."""
+    logger.info(f"Zoho Books review-autopilot started (interval={BOOKS_AUTOPILOT_INTERVAL_SECONDS}s)")
+    # Small delay so the app fully boots (esp. IMAP) before we hammer Zoho.
+    await asyncio.sleep(60)
+    while True:
+        try:
+            r = await _books_autopilot_scan_once()
+            if r.get("invited") or r.get("errors"):
+                logger.info(f"Books review-autopilot: {r}")
+        except Exception as e:
+            logger.error(f"Books review-autopilot crashed: {e}")
+        await asyncio.sleep(BOOKS_AUTOPILOT_INTERVAL_SECONDS)
+
+
+@api_router.post("/admin/reviews/scan-books-invoices")
+async def admin_scan_books_invoices(current=Depends(require_admin)):
+    """Manual trigger — force one scan of Zoho Books paid invoices and return
+    the summary immediately (does not wait for the background timer)."""
+    r = await _books_autopilot_scan_once()
+    return r
+
+
 @api_router.get("/admin/financials")
 async def financials_dashboard(
     period: str = "30d",
@@ -3251,7 +3381,24 @@ async def admin_ai_translate(payload: AiTranslatePayload, current=Depends(requir
     window_start = now_ts - 60.0
     hits_used = await _ai_translate_count_recent(admin_email, window_start)
     if hits_used >= limit:
-        raise HTTPException(status_code=429, detail=f"AI translate rate limit ({limit}/min) exceeded. Try again in ~1 minute.")
+        # Find the oldest still-counting hit so we can tell the client the earliest safe retry time.
+        oldest = await db.ai_translate_hits.find(
+            {"email": admin_email, "ts": {"$gt": window_start}},
+            {"_id": 0, "ts": 1},
+        ).sort("ts", 1).limit(1).to_list(1)
+        retry_after = 60
+        if oldest:
+            retry_after = max(1, int(round(60 - (now_ts - oldest[0]["ts"]))))
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": f"AI translate rate limit ({limit}/min) exceeded.",
+                "message_en": f"AI translate rate limit ({limit}/min) exceeded.",
+                "retry_after_seconds": retry_after,
+                "limit": limit,
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
     if payload.source_lang == payload.target_lang:
         # Do not count same-lang short-circuits against the budget.
         return {"translated": payload.text, "source_lang": payload.source_lang, "target_lang": payload.target_lang}
@@ -3326,10 +3473,18 @@ async def on_startup():
     await seed_admin()
     await seed_portfolio()
     await seed_virus_scans()
+    # TTL index on ai_translate_hits — auto-expire rate-limit rows after 120s
+    # (2× the 60s rolling window), keeps the collection bounded forever.
+    try:
+        await db.ai_translate_hits.create_index("created_at", expireAfterSeconds=120)
+    except Exception as e:
+        logger.warning(f"Could not create ai_translate_hits TTL index: {e}")
     # Background poller for review invites (runs every ~15 min)
     asyncio.create_task(review_poller(db, _send_email))
     # Background poller for IMAP inbound tickets (runs every ~60s)
     asyncio.create_task(imap_poller(db, dec_secret))
+    # Background poller: Zoho Books paid-invoice → review invite autopilot
+    asyncio.create_task(_books_autopilot_loop())
 
 
 async def seed_virus_scans():

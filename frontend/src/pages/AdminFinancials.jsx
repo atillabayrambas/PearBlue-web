@@ -116,13 +116,24 @@ export const FinancialsAdmin = () => {
         </div>
       )}
 
-      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 dark:bg-amber-500/10 p-3 flex gap-2 text-xs" data-testid="financials-mocked-banner">
-        <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-        <div className="text-strong/90">
-          <strong>Zoho Books-cijfers zijn MOCKED</strong> — deze module wordt geactiveerd zodra de Zoho Books API-key en organisatie-ID
-          in de site-instellingen zijn ingevuld. De AI-kosten zijn gebaseerd op werkelijk verzonden chatberichten.
+      {data?.zoho_books?.mocked && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 dark:bg-amber-500/10 p-3 flex gap-2 text-xs" data-testid="financials-mocked-banner">
+          <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-strong/90">
+            <strong>Zoho Books-cijfers zijn MOCKED</strong> — deze module wordt geactiveerd zodra de Zoho Books API-key en organisatie-ID
+            in de site-instellingen zijn ingevuld. De AI-kosten zijn gebaseerd op werkelijk verzonden chatberichten.
+          </div>
         </div>
-      </div>
+      )}
+
+      {data?.zoho_books && data.zoho_books.mocked === false && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-500/10 p-3 flex gap-2 text-xs" data-testid="financials-live-banner">
+          <span className="text-emerald-600 shrink-0 mt-0.5">✓</span>
+          <div className="text-strong/90">
+            <strong>Zoho Books LIVE</strong> — factuur-cijfers komen rechtstreeks uit je Zoho Books organisatie. AI-kosten zijn gebaseerd op werkelijk verzonden chatberichten.
+          </div>
+        </div>
+      )}
 
       {loading && <p className="text-muted-fg">Laden…</p>}
 
@@ -177,7 +188,11 @@ export const FinancialsAdmin = () => {
             <div className="flex items-center gap-2 mb-4">
               <Euro className="h-4 w-4 text-pear-500" />
               <h3 className="font-heading font-semibold text-strong">Zoho Books</h3>
-              <span className="text-[10px] uppercase tracking-widest bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-bold">mocked</span>
+              {zoho?.mocked ? (
+                <span className="text-[10px] uppercase tracking-widest bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-bold" data-testid="financials-zoho-badge-mocked">mocked</span>
+              ) : (
+                <span className="text-[10px] uppercase tracking-widest bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 font-bold" data-testid="financials-zoho-badge-live">live</span>
+              )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="surface-2 rounded-xl p-3">
