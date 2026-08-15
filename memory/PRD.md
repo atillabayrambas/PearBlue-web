@@ -21,7 +21,16 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 41 (this session, v0.7.3-Beta) — Discovery Log + Auto-Ticket Dedup
+### Feb 2026 — Iteration 42 (this session, v0.7.4-Beta) — CMS Silent Polling (no more state resets)
+- **New `useSilentPolling` hook** (`/app/frontend/src/hooks/useSilentPolling.js`) — background-refresh helper that (1) NEVER toggles a `loading` flag, (2) skips the tick while the user is actively interacting with an `<input>`/`<select>`/`<textarea>`/contentEditable so open dropdowns and half-typed notes are preserved, (3) skips ticks when the tab is hidden, and (4) only calls `setData` when the fetched JSON has actually changed (hash-diff via `JSON.stringify`).
+- **Refactored 4 CMS surfaces** to use the hook instead of a raw `setInterval` that called a full `load()` (which reset `loading=true` and clobbered local component state every 15–60s):
+  - `MessagesAdmin.jsx` — 15s poll for `/contact` + `/admin/assignees`.
+  - `pages/AdminAnalytics.jsx` — 15s poll for `/chat/stats` (respects `[days, customFrom, customTo]` deps).
+  - `AdminSidebar.jsx` — 30s poll for badge counters.
+  - `PriorityAlerts.jsx` — 60s poll for `/admin/priority-alerts`.
+- **Verified via Playwright**: opened a message accordion, focused a `<select>`, typed a note, waited 18s (past the poll interval) — text was preserved, accordion stayed open, all three inline dropdowns retained their selections.
+
+### Feb 2026 — Iteration 41 (v0.7.3-Beta) — Discovery Log + Auto-Ticket Dedup
 - **Notification-type discovery log** — nieuwe `_FALLBACK_SEEN` set in `imap_parser.py` logt een `WARNING` **exactly one time per unique subject-prefix** (eerste 5 woorden, lowercased) wanneer de generieke `[PearBlue]` fallback vuurt. Zo zien we automatisch welke nieuwe notificatie-types nog een specifieke regex verdienen zonder logspam.
 - **Auto-ticket dedup window** — `_create_ticket_from_email()` zoekt eerst een bestaand open ticket van dezelfde `from_email` (case-insensitive) met een genormaliseerde subject-match binnen `AUTO_TICKET_DEDUP_HOURS` (default 24u, env-configureerbaar). Match → append als `contact_message_replies` doc (`source: "imap_dedup"`). Geen match → verse ticket met nieuw `ticket_ref`.
 - **Subject normalization** — `_normalize_subject()` strip herhaaldelijk `Re:/Fwd:/Fw:/Antw:/AW:/VS:` + `[TAG]` prefixen en lowercased whitespace, zodat een threaded reply-mail dedup-matcht met de originele.

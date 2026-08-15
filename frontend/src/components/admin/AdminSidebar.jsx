@@ -7,6 +7,7 @@ import { useLang } from "../../i18n/LanguageContext";
 import { useTheme } from "../../theme/ThemeContext";
 import { Avatar } from "../Avatar";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
+import { useSilentPolling } from "../../hooks/useSilentPolling";
 import { API, PEARBLUE_LOGO, authHeaderFromStorage } from "./_shared";
 
 export const AdminSidebar = () => {
@@ -19,13 +20,17 @@ export const AdminSidebar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   useBodyScrollLock(mobileOpen);
   useEffect(() => {
-    const load = () => axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => setCounters(r.data || {})).catch(() => {});
-    load();
-    const t = setInterval(load, 30000);
+    axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => setCounters(r.data || {})).catch(() => {});
     axios.get(`${API}/site/version`).then((r) => setVersion(r.data?.version || "")).catch(() => {});
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Refresh sidebar badge counters silently every 30s — does NOT force a
+  // loading state or clobber user interactions elsewhere in the CMS.
+  useSilentPolling(
+    () => axios.get(`${API}/admin/counters`, { headers: authHeaderFromStorage() }).then((r) => r.data || {}).catch(() => null),
+    (data) => { if (data) setCounters(data); },
+    30000,
+    [],
+  );
   useEffect(() => {
     if (!user?.email) return;
     axios.get(`${API}/admin/users/${encodeURIComponent(user.email)}/details`, { headers: authHeaderFromStorage() })

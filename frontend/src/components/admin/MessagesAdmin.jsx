@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../auth/AuthContext";
 import { Avatar } from "../Avatar";
+import { useSilentPolling } from "../../hooks/useSilentPolling";
 import { API, MSG_STATUS, MSG_PRIORITY, priorityRank, AssigneeChip, assigneeLabel, prettyRole } from "./_shared";
 
 export const MessagesAdmin = () => {
@@ -26,7 +27,27 @@ export const MessagesAdmin = () => {
       setAssignees(a.data || []);
     } catch { /* ignore */ } finally { setLoading(false); }
   };
-  useEffect(() => { load(); const id = setInterval(load, 15000); return () => clearInterval(id); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); }, []);
+
+  // Silent background refresh every 15s — does NOT toggle loading, skips ticks
+  // while the user is interacting with a field, only updates state when the
+  // payload actually changed (JSON-diff). This preserves open dropdowns and
+  // half-filled note inputs across polls.
+  useSilentPolling(
+    async () => {
+      const [r, a] = await Promise.all([
+        axios.get(`${API}/contact`, { headers: authHeader() }),
+        axios.get(`${API}/admin/assignees`, { headers: authHeader() }),
+      ]);
+      return { items: r.data || [], assignees: a.data || [] };
+    },
+    ({ items: newItems, assignees: newAssignees }) => {
+      setItems(newItems);
+      setAssignees(newAssignees);
+    },
+    15000,
+    [],
+  );
 
   const patch = async (id, upd) => {
     try { await axios.patch(`${API}/admin/contact/${id}`, upd, { headers: authHeader() }); load(); }

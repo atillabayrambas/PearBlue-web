@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { MessageCircle, Users, Gauge, Sparkles, Smile } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../i18n/LanguageContext";
+import { useSilentPolling } from "../hooks/useSilentPolling";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -44,13 +45,19 @@ export const AnalyticsAdmin = () => {
       axios.get(`${API}/chat/stats?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
       axios.get(`${API}/admin/chat/ratings?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
     ]).then(([s, r]) => { setStats(s); setRatings(r); }).finally(() => setLoading(false));
-    // Poll every 15s so admins see live figures
-    const id = setInterval(() => {
-      axios.get(`${API}/chat/stats?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => setStats(r.data)).catch(() => {});
-    }, 15000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, customFrom, customTo]);
+
+  // Silent 15s refresh of the chat stats — never touches `loading`, skips
+  // ticks while the admin is interacting with a form field or when the tab
+  // is hidden, and only re-renders when the payload actually changed.
+  const _daysParam = days === "custom" && customFrom && customTo ? 30 : days;
+  const _extra = days === "custom" && customFrom && customTo ? `&from=${customFrom}&to=${customTo}` : "";
+  useSilentPolling(
+    () => axios.get(`${API}/chat/stats?days=${_daysParam}${_extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
+    (data) => { if (data) setStats(data); },
+    15000,
+    [days, customFrom, customTo],
+  );
 
   const max = Math.max(1, ...(stats?.per_day || []).map((d) => d.count));
 

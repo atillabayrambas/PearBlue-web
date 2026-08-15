@@ -3,6 +3,7 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { ShieldAlert, XCircle, Sparkles } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
+import { useSilentPolling } from "../../hooks/useSilentPolling";
 import { API } from "./_shared";
 
 // Priority alert balloons stack (above the version bar). Uses localStorage for dismiss + hourly-reappear for P1.
@@ -11,13 +12,18 @@ export const PriorityAlerts = () => {
   const [alerts, setAlerts] = useState({ counts: { Major: 0, P1: 0, P2: 0 }, latest: {} });
   const [, setTick] = useState(0);
   useEffect(() => {
-    const load = () => axios.get(`${API}/admin/priority-alerts`, { headers: authHeader() }).then((r) => setAlerts(r.data || {})).catch(() => {});
-    load();
-    const iv = setInterval(load, 60000);
+    axios.get(`${API}/admin/priority-alerts`, { headers: authHeader() }).then((r) => setAlerts(r.data || {})).catch(() => {});
+    // Ticker keeps the hourly-reappear logic recalculating without hammering the API.
     const t = setInterval(() => setTick((x) => x + 1), 60000);
-    return () => { clearInterval(iv); clearInterval(t); };
-    // eslint-disable-next-line
+    return () => clearInterval(t);
   }, []);
+  // Silent 60s refresh so open selects / typed text upstream never get reset.
+  useSilentPolling(
+    () => axios.get(`${API}/admin/priority-alerts`, { headers: authHeader() }).then((r) => r.data || null).catch(() => null),
+    (data) => { if (data) setAlerts(data); },
+    60000,
+    [],
+  );
 
   const rules = [
     { key: "Major", label: "Major", color: "bg-red-800 text-white", persist: true, hourly: false },
