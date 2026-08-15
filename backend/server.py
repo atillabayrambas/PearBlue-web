@@ -36,7 +36,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 # Single source of truth for the running app version. Displayed in footer, CMS
 # sidebar, changelog and the maintenance/coming-soon page. Bump on release.
-APP_VERSION = os.environ.get("APP_VERSION", "0.6.5-Beta")
+APP_VERSION = os.environ.get("APP_VERSION", "0.7.5-Beta")
 
 # Fernet cipher for encrypting integration secrets (Brevo API key, IMAP passwords)
 # Uses TOKEN_ENCRYPTION_KEY from env (already used by zoho_portal/stripe_payments)
@@ -1795,6 +1795,120 @@ async def public_changelog():
     v1.0 will be the official launch, dropping the -Beta suffix.
     """
     entries = [
+        {
+            "version": "0.7.5-Beta",
+            "date": "2026-02-15",
+            "type": "feature",
+            "highlights": [
+                "🔎 **Globale CMS-zoekbalk** in de zijbalk — zoek berichten, tickets, portaal-aanvragen, reviews en feedback in één debounce-dropdown. Ticket-referentie shortcut (bv. `TKT-D4YJ1L`) + kind-chips + click-to-navigate naar de juiste detailpagina",
+                "🔔 **Live toast-notificaties** — zodra er tijdens de silent-poll nieuwe berichten/portaal-aanvragen/reviews/feedback of cybersecurity-events binnenkomen, verschijnt een subtiele Sonner-toast met delta-aantal + 'Open'-actie (NL/EN)",
+                "📊 **Books-autopilot weekrapport** — nieuwe kaart op /admin/reviews met totalen (verstuurd/overgeslagen/fouten), aflever-ratio, per-dag sparkline en de laatste 5 fouten. Endpoint `GET /api/admin/reviews/books-autopilot-weekly?days=7` (clamp 1..90)",
+                "🧩 **Server modularisatie Fase 1** — 18 Pydantic-modellen en `new_ticket_ref()` verhuisd naar `/app/backend/models.py`. `server.py` van 3753 → 3664 regels; backwards-compatible import in de bestaande routes",
+                "🧪 Tests: `tests/test_iteration43.py` — 8/8 pass (search shape+auth, weekly clamp, models round-trip)",
+            ],
+        },
+        {
+            "version": "0.7.4-Beta",
+            "date": "2026-02-15",
+            "type": "fix",
+            "highlights": [
+                "🎯 **CMS Silent Polling** — geen state-reset meer! Alle achtergrond-polls (berichten 15s, analytics 15s, sidebar 30s, priority-alerts 60s) gebruiken nu de nieuwe `useSilentPolling` hook",
+                "Hook garandeert: (1) nooit `loading=true` tijdens polls, (2) skipt de tick als de gebruiker in een input/select/textarea zit, (3) skipt bij verborgen tab, (4) re-rendert alleen als de JSON payload daadwerkelijk verandert (hash-diff)",
+                "Getest via Playwright: bericht-accordion open, dropdown gefocust en notitie getypt → 18s wachten → tekst blijft staan, dropdowns blijven geselecteerd, accordion blijft open",
+                "Geen meer verlies van typing / dropdowns / checkboxes elke 15s tijdens beheerwerk",
+            ],
+        },
+        {
+            "version": "0.7.3-Beta",
+            "date": "2026-02-14",
+            "type": "feature",
+            "highlights": [
+                "📩 **IMAP notification discovery log** — parser logt elk nieuw subject-prefix één keer (WARNING) zodat we automatisch zien welke notificatietypes nog een specifieke regex verdienen, zonder logspam",
+                "🎫 **Auto-ticket deduplicatie window** — inkomende klantmails van hetzelfde adres met eenzelfde (genormaliseerde) subject binnen `AUTO_TICKET_DEDUP_HOURS` (default 24u) worden nu als reply gekoppeld i.p.v. een nieuw ticket te maken",
+                "✏️ **Subject normalization** — `Re:/Fwd:/Fw:/Antw:/AW:/VS:` prefixen en `[TAG]` markers worden repeatable gestript, zodat threaded replies matchen met het origineel",
+                "Bevestigd: 3 mails van `dedup-test@example.com` → 2 tickets + 1 reply (Re: prefix dedup'ed, ander onderwerp nieuw ticket)",
+            ],
+        },
+        {
+            "version": "0.7.2-Beta",
+            "date": "2026-02-13",
+            "type": "feature",
+            "highlights": [
+                "🧠 **IMAP fuzzy classifier** — herkent nu 5 uitgaande notificatiepatronen (contact/review/portaal/chat handoff/offerte-aanvraag) + generieke `[PearBlue]` fallback. Case-insensitive fuzzy name-match hangt notificatie-mails automatisch aan het originele record met bestaande `ticket_ref`",
+                "🎫 **Auto-ticket vanaf externe klantmails** — inkomende mails van domeinen buiten `OWN_NOTIFICATION_DOMAINS` worden automatisch omgezet in een nieuw `contact_messages`-doc met eigen `ticket_ref`. Werkt in zowel de live-poll als de rebuild-batch",
+                "🔄 **Retro-match endpoint** — `POST /api/admin/mailboxes/rebuild-matches` re-classificeert alle bestaande unmatched IMAP-ingest-rijen. Idempotent (dubbele calls doen niks). Live geverifieerd: 145 rows → 97 matched, 37 auto-tickets aangemaakt",
+                "🏷️ **Frontend chips upgrade** — Mailbox-CMS toont naast de pear `#TKT-XXXXXX` chip nu een emerald chip met matched kind (contact/review/portaal/chat/nieuw ticket) + naam. Nieuwe knop 'Match bestaande opnieuw'",
+                "🧪 Tests: `iteration_40.json` → backend 18/18 pytest + 100% Playwright, geen action items",
+            ],
+        },
+        {
+            "version": "0.7.1-Beta",
+            "date": "2026-02-12",
+            "type": "feature",
+            "highlights": [
+                "🔒 **MongoDB advisory-lock voor Books-autopilot** — meerdere backend-replicas hameren niet meer gelijktijdig op Zoho. TTL index op `advisory_locks.expires_at` (expireAfterSeconds=0). Manual scan bypasst de lock bewust",
+                "📊 **Autopilot last-run status endpoint** — `GET /api/admin/reviews/books-autopilot-status` geeft `{at, trigger, triggered_by, scanned, invited, skipped, errors}`. Reviews-CMS toont het als groene/rode chip met timestamp, tellers en inline eerste error",
+                "🇳🇱 **Zoho ACCESS_DENIED → Nederlandse hint** — foutmelding verwijst nu direct naar de refresh-token wizard met `ZohoBooks.fullaccess.all` scope",
+                "⏳ **BulkTranslate countdown** — `progress.waitingSecs` telt af tijdens 429-wait, oranje progressbar en amber pill met resterende seconden",
+                "👁️ **Portfolio EN-Preview toggle** — swap de lijst live naar `title_en`/`description_en`, per rij `✓ EN` of `⚠ NL fallback` badge zodat je vertalingen kunt reviewen zonder de sidebar-taal te wisselen",
+            ],
+        },
+        {
+            "version": "0.7.0-Beta",
+            "date": "2026-02-11",
+            "type": "major",
+            "highlights": [
+                "🤖 **Zoho Books Paid-Invoice Review Autopilot** — background-loop scant elke 15 min alle facturen met status `paid` uit de laatste 90 dagen. Dedupe via `review_invites.project_id` prefix `zohobooks:{invoice_id}`. Manual trigger: 'Scan Books nu'-knop in Reviews CMS",
+                "🌐 **Bulk AI Translate** — nieuwe `BulkTranslateButton` met modal + live progressbar + auto-backoff bij 429. Vertaalt Portfolio (`title`→`title_en`, `description`→`description_en`) en Reviews (`quote`→`quote_en`) in één klik",
+                "🎨 Publieke site (Home, Projects, FeaturedReviews, FloatingReviewTicker) toont automatisch de `_en`-versie zodra taal=EN, met NL-fallback",
+                "⏱️ **429 Countdown Chip** — `AiTranslateButton` toont bij een 429 een rode chip met de resterende seconden (leest `retry_after_seconds` uit de response)",
+                "✅ **Zoho Books LIVE-banner** in `/admin/financials` zodra `mocked=false`",
+                "🗃️ MongoDB TTL Index op `ai_translate_hits.created_at` (120s expiry) — geen handmatige purge nodig",
+            ],
+        },
+        {
+            "version": "0.6.9-Beta",
+            "date": "2026-02-11",
+            "type": "feature",
+            "highlights": [
+                "🎉 **Zoho Books integratie LIVE bevestigd** — `org_matched: true`, `org_name: PearBlue`, `mocked: false`. Live financials-endpoint pullt nu echte facturen uit de PearBlue Zoho Books organisatie (DC EU)",
+                "🧙 Wizard slaat na code→refresh_token exchange alle 4 velden (client_id + client_secret + refresh_token + org_id) in één PUT op zodat de credentials nooit uit sync raken",
+                "🔍 Backend surfacet nu de echte Zoho-error string (invalid_code / invalid_grant / invalid_client) i.p.v. generieke 'no access_token'-melding",
+                "📚 Belangrijk: Zoho Server-based/Client-based clients hebben géén 'Generate Code' tab — alleen **Self Client** heeft die. Wizard-instructies bijgewerkt",
+            ],
+        },
+        {
+            "version": "0.6.8-Beta",
+            "date": "2026-02-10",
+            "type": "feature",
+            "highlights": [
+                "💾 **AI Vertaal rate-limit persistent** — `ai_translate_hits` collectie vervangt in-memory dict; rate-limits overleven backend-restart en horizontal scaling",
+                "🪄 **Zoho Books refresh-token wizard** — 100% self-service in de CMS: geef een fresh Self-Client `code` + `client_id/secret/dc`, backend doet de OAuth code→refresh_token exchange en haalt meteen `/organizations` op zodat je org kunt kiezen",
+                "🇳🇱 Foutmeldingen zijn NL en helder ('Kon geen refresh_token krijgen: invalid_client. Genereer een nieuwe code (deze is maar 10 min geldig).')",
+                "🧪 Bewezen persistent: limit=3 → 3× 200, 4× 429 → `supervisorctl restart backend` → 5e call retourneert nog steeds 429",
+            ],
+        },
+        {
+            "version": "0.6.7-Beta",
+            "date": "2026-02-09",
+            "type": "fix",
+            "highlights": [
+                "🏠 **House # label EN-fix** — Portal registration form: `House no.` i.p.v. `House #`; alle drie labels op de postcode-rij (`Postal code`, `House no.`, `Address`) hebben `whitespace-nowrap`",
+                "👩 **Female avatar tab — no more beards** — DiceBear enum `facialHair=blank` bestaat niet, juiste key is `&facialHairProbability=0`. Alle 19 tegels in de Vrouwelijk-tab renderen nu gegarandeerd zonder baard/snor",
+                "🛑 **AI Translate rate limit + CMS instelling** — `SiteSettings.ai_translate_limit_per_minute` (default 30, range 1..500). Nieuwe kaart in Site instellingen → Engineering met number-input. Rolling 60s window per admin-email, response bevat `remaining` en `limit`",
+                "🧪 Curl-verificatie: limit=3 → 3× 200 → 4× 429",
+            ],
+        },
+        {
+            "version": "0.6.6-Beta",
+            "date": "2026-02-09",
+            "type": "feature",
+            "highlights": [
+                "🧱 **AdminDashboard modulair refactored** — het monolithische bestand van 3160 regels is opgesplitst in 13 zelfstandige componenten onder `/app/frontend/src/components/admin/`. `AdminDashboard.jsx` blijft nu ~85 regels (enkel router + layout)",
+                "✨ **AI Vertaal-Assist knop** — nieuwe `AiTranslateButton` (violet chip met Sparkles-icoon) naast Portfolio-formulier (title + description) en Feedback notities-modal. Backend endpoint `POST /api/admin/ai/translate` gebruikt Claude Sonnet 4.6 via Emergent LLM Key",
+                "🌐 **CMS EN-Sprint deel 2** — Cybersecurity + AdminMessageThread (Ticket Threads) UI-labels zijn nu volledig tweetalig. **Kritiek**: origineel klantbericht en reply-bodies worden NOOIT vertaald, alleen UI-labels",
+            ],
+        },
         {
             "version": "0.6.5-Beta",
             "date": "2026-02-12",
