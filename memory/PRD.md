@@ -21,7 +21,15 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 36 (this session, v0.6.8-Beta) — Persistent rate-limit + Zoho refresh-token wizard
+### Feb 2026 — Iteration 37 (this session, v0.6.9-Beta) — Zoho Books LIVE! 🎉
+- **Zoho Books integratie is LIVE bevestigd** — `org_matched: true`, `org_name: PearBlue`, `mocked: false`. Live financials-endpoint pullt nu echte facturen uit de PearBlue Zoho Books organisatie (org_id `20109165270`, DC EU).
+- **Wizard UX gehard**:
+  - `runWizard()` slaat na een succesvolle code→refresh_token exchange **automatisch alle 3 velden (client_id + client_secret + refresh_token + org_id)** in één PUT op, zodat de credentials nooit meer uit sync kunnen raken.
+  - Backend `_books_access_token()` surfaced nu de echte Zoho-error string (invalid_code / invalid_grant / invalid_client) i.p.v. generieke "no access_token" melding.
+  - `/test`-endpoint vertaalt Zoho-errors naar heldere NL-hints: "Refresh token past niet bij deze Client ID/Secret — voer de wizard opnieuw uit met de correcte credentials van je Self Client."
+- **Belangrijke docs voor toekomstige integraties**: Zoho Server-based/Client-based clients hebben géén "Generate Code" tab; alleen het type **Self Client** heeft die. Dit is in de wizard-instructies + finish-tool output opgenomen zodat volgende agents niet dezelfde vraag krijgen.
+
+### Feb 2026 — Iteration 36 (v0.6.8-Beta) — Persistent rate-limit + Zoho refresh-token wizard
 - **AI Vertaal rate-limit — MongoDB persistent**
   - `_ai_translate_hits` dict verwijderd; nieuwe collection `ai_translate_hits` slaat elke succesvolle call op als `{email, ts, created_at}`.
   - Rolling 60s window wordt geteld met `count_documents`, en oude entries (>5 min) worden op elk succes lazily geprund.
