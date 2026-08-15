@@ -2776,7 +2776,18 @@ async def test_zoho_books_conn(current=Depends(require_admin)):
     try:
         token = await _books_access_token(creds)
     except Exception as e:
-        raise HTTPException(400, f"Refresh token exchange faalde: {e}")
+        err = str(e)
+        # Zoho returns "invalid_code" (their term) or "invalid_grant" when the
+        # refresh_token doesn't match the client_id/secret pair, or when it has
+        # been revoked. Translate to something the admin can act on.
+        if "invalid_code" in err.lower() or "invalid_grant" in err.lower():
+            raise HTTPException(400, (
+                "Refresh token past niet bij deze Client ID/Secret. "
+                "Voer de wizard opnieuw uit met de correcte Client ID + Client Secret van je Self Client — de token, ID en secret moeten van hetzelfde Zoho-client komen."
+            ))
+        if "invalid_client" in err.lower():
+            raise HTTPException(400, "Client ID of Client Secret is onjuist voor dit datacenter.")
+        raise HTTPException(400, f"Refresh token exchange faalde: {err}")
     accounts, base = _books_endpoints(creds["dc"])
     try:
         async with httpx.AsyncClient(timeout=15) as c:
@@ -2879,10 +2890,15 @@ async def _books_access_token(creds: dict) -> str:
                 "grant_type": "refresh_token",
             },
         )
-    r.raise_for_status()
-    tok = r.json().get("access_token")
+    try:
+        data = r.json()
+    except Exception:
+        data = {"error": f"non-json response (HTTP {r.status_code}): {r.text[:180]}"}
+    tok = data.get("access_token") if isinstance(data, dict) else None
     if not tok:
-        raise RuntimeError("Zoho responded without access_token")
+        # Surface the actual Zoho error so the CMS can guide the admin.
+        err = (data or {}).get("error") or (data or {}).get("message") or f"HTTP {r.status_code}"
+        raise RuntimeError(str(err))
     return tok
 
 

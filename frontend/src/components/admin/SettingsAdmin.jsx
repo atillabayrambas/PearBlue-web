@@ -359,15 +359,34 @@ const ZohoBooksCard = ({ en }) => {
         dc: form.dc,
       }, { headers: authHeader() });
       const { refresh_token, organizations } = r.data || {};
+      const singleOrg = organizations && organizations.length === 1 ? organizations[0].organization_id : "";
+      // Immediately persist all 3 credentials + org (if unique) so client_id,
+      // client_secret and refresh_token stay in sync. This prevents the
+      // "invalid_code" error that happens when Save is clicked separately
+      // and one of the three fields drifts.
+      const bodyToSave = {
+        client_id: form.client_id.trim(),
+        client_secret: form.client_secret.trim(),
+        refresh_token: refresh_token,
+        dc: form.dc,
+      };
+      if (singleOrg) bodyToSave.org_id = singleOrg;
+      try {
+        await axios.put(`${API}/admin/integrations/zoho-books`, bodyToSave, { headers: authHeader() });
+      } catch (saveErr) {
+        toast.error(en ? "Exchange OK, but save failed — click Save manually." : "Exchange gelukt, opslaan mislukt — klik handmatig op Opslaan.");
+      }
       setForm((f) => ({
         ...f,
         refresh_token: refresh_token || "",
-        // Auto-select the org_id if there's exactly one — otherwise let the admin pick.
-        org_id: organizations && organizations.length === 1 ? organizations[0].organization_id : f.org_id,
+        org_id: singleOrg || f.org_id,
       }));
       setWizardOrgs(organizations || []);
       setWizardCode("");
-      toast.success(en ? "Refresh token generated ✓" : "Refresh token gegenereerd ✓");
+      await loadStatus();
+      toast.success(en
+        ? (singleOrg ? "✓ Refresh token + org saved. Try Test connection." : "Refresh token generated ✓")
+        : (singleOrg ? "✓ Refresh token + organisatie opgeslagen. Klik nu Test verbinding." : "Refresh token gegenereerd ✓"));
     } catch (e) {
       toast.error(e?.response?.data?.detail || (en ? "Exchange failed — code expired?" : "Exchange mislukt — code verlopen?"));
     } finally { setWizardBusy(false); }
