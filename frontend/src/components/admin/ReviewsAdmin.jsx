@@ -54,6 +54,7 @@ export const ReviewsAdmin = () => {
   const [busy, setBusy] = useState(null);
   const [invLog, setInvLog] = useState([]);
   const [scanBusy, setScanBusy] = useState(false);
+  const [autopilotStatus, setAutopilotStatus] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -67,6 +68,9 @@ export const ReviewsAdmin = () => {
     axios.get(`${API}/admin/assignees`, { headers: authHeader() })
       .then((r) => setAssignees(r.data || []))
       .catch(() => setAssignees([]));
+    axios.get(`${API}/admin/reviews/books-autopilot-status`, { headers: authHeader() })
+      .then((r) => setAutopilotStatus(r.data || null))
+      .catch(() => setAutopilotStatus(null));
   };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -149,12 +153,27 @@ export const ReviewsAdmin = () => {
           <div>
             <h2 className="font-heading font-semibold text-strong flex items-center gap-2"><Send className="h-4 w-4 text-pear-500" /> Automatische review-uitnodigingen</h2>
             <p className="text-xs text-muted-fg mt-1">Twee scanners draaien elke 15 min: (1) Zoho <em>Projects</em> → status <em>closed</em>, (2) Zoho <em>Books</em> → factuur op <em>paid</em>. Beide sturen automatisch een tweetalige review-uitnodiging (met dedupe).</p>
+            {autopilotStatus?.at && (
+              <div className="mt-2 flex items-center gap-2 text-[11px]" data-testid="cms-books-autopilot-status">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${autopilotStatus.errors?.length ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"}`}>
+                  {autopilotStatus.errors?.length ? "✗" : "✓"} Books-autopilot · {autopilotStatus.trigger === "manual" ? "handmatig" : "auto"}
+                </span>
+                <span className="text-muted-fg">
+                  {new Date(autopilotStatus.at).toLocaleString("nl-NL")} · gescand {autopilotStatus.scanned}, verstuurd {autopilotStatus.invited}, overgeslagen {autopilotStatus.skipped}
+                </span>
+                {autopilotStatus.errors?.length > 0 && (
+                  <span className="text-red-600 truncate max-w-md" title={autopilotStatus.errors.join(" · ")}>
+                    — {autopilotStatus.errors[0]}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex gap-2 shrink-0">
             <button onClick={scanInvites} disabled={scanBusy} className="btn-secondary text-xs" data-testid="cms-invite-scan-now">
               {scanBusy ? "…" : <><Send className="h-3.5 w-3.5" /> Scan Projects</>}
             </button>
-            <button onClick={async () => { try { const r = await axios.post(`${API}/admin/reviews/scan-books-invoices`, {}, { headers: authHeader() }); toast.success(`Books: ${r.data?.invited || 0} verzonden · ${r.data?.skipped || 0} overgeslagen`); axios.get(`${API}/admin/reviews/invite-log`, { headers: authHeader() }).then((r2) => setInvLog(r2.data || [])).catch(() => {}); } catch (e) { toast.error(e?.response?.data?.detail || "Scan mislukt"); } }} className="btn-primary text-xs" data-testid="cms-invite-scan-books">
+            <button onClick={async () => { try { const r = await axios.post(`${API}/admin/reviews/scan-books-invoices`, {}, { headers: authHeader() }); toast.success(`Books: ${r.data?.invited || 0} verzonden · ${r.data?.skipped || 0} overgeslagen`); if (r.data?.errors?.length) toast.warning(r.data.errors[0]); load(); } catch (e) { toast.error(e?.response?.data?.detail || "Scan mislukt"); } }} className="btn-primary text-xs" data-testid="cms-invite-scan-books">
               <Send className="h-3.5 w-3.5" /> Scan Books nu
             </button>
           </div>

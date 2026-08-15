@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Plus, Trash2, ExternalLink } from "lucide-react";
+import { Plus, Trash2, ExternalLink, Globe } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { API, CATEGORIES, emptyProjectForm as emptyForm } from "./_shared";
@@ -16,6 +16,10 @@ export const ProjectsAdmin = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("active");
+  // EN-preview toggle — when true, the list shows title_en/description_en
+  // instead of the NL fields so admins can spot-check translations without
+  // switching the global language toggle in the sidebar.
+  const [previewEn, setPreviewEn] = useState(false);
 
   const load = async () => {
     // Include archived so admin sees everything
@@ -125,7 +129,7 @@ export const ProjectsAdmin = () => {
         <span className="ml-auto text-xs text-muted-fg">Totaal: {items.length} · Actief: {items.filter((p) => !p.archived).length}</span>
       </div>
 
-      <div className="flex items-center justify-end mb-3">
+      <div className="flex items-center justify-between gap-2 mb-3">
         <BulkTranslateButton
           items={shown.filter((p) => !p.archived)}
           itemLabel={(p) => p.title}
@@ -138,20 +142,45 @@ export const ProjectsAdmin = () => {
           onDone={load}
           testid="cms-projects-bulk-translate"
         />
+        <button
+          type="button"
+          onClick={() => setPreviewEn((v) => !v)}
+          data-testid="cms-projects-preview-en"
+          className={`inline-flex items-center gap-1.5 rounded-full border text-xs font-semibold uppercase tracking-widest px-3 py-1.5 transition-colors ${previewEn ? "bg-pear-500 text-white border-pear-500" : "border-app text-strong hover:border-pear-500"}`}
+          title="Toon de EN-vertaling in de lijst hieronder"
+        >
+          <Globe className="h-3.5 w-3.5" /> {previewEn ? "🌐 EN preview aan" : "🌐 Preview in EN"}
+        </button>
       </div>
 
       <div className="surface border border-app rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-app font-heading font-semibold text-strong">Projecten ({shown.length})</div>
+        <div className="px-6 py-4 border-b border-app font-heading font-semibold text-strong flex items-center gap-2">
+          Projecten ({shown.length})
+          {previewEn && <span className="text-[10px] uppercase tracking-widest bg-pear-100 text-pear-700 rounded-full px-2 py-0.5 font-bold" data-testid="cms-projects-preview-en-badge">EN preview</span>}
+        </div>
         {shown.length === 0 ? (
           <div className="p-8 text-center text-muted-fg text-sm">Geen projecten in deze weergave.</div>
         ) : (
           <ul className="divide-y divide-app">
-            {shown.map((p) => (
+            {shown.map((p) => {
+              const displayTitle = previewEn ? (p.title_en || p.title) : p.title;
+              const showEnFallback = previewEn && !p.title_en;
+              return (
               <li key={p.id} className={`p-4 flex items-center gap-4 ${p.archived ? "opacity-60" : ""}`} data-testid={`cms-project-row-${p.id}`}>
                 <img src={p.image_url} alt={p.title} className="w-16 h-16 object-cover rounded-lg" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-strong truncate">{p.title} {p.archived && <span className="ml-2 text-[10px] uppercase tracking-widest text-amber-600">Gearchiveerd</span>}</p>
+                  <p className="font-semibold text-strong truncate flex items-center gap-2">
+                    {displayTitle}
+                    {p.archived && <span className="text-[10px] uppercase tracking-widest text-amber-600">Gearchiveerd</span>}
+                    {showEnFallback && <span className="text-[10px] uppercase tracking-widest bg-amber-100 text-amber-700 rounded-full px-2 py-0.5" title="Geen title_en — toont NL fallback">⚠ NL fallback</span>}
+                    {previewEn && p.title_en && <span className="text-[10px] uppercase tracking-widest bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">✓ EN</span>}
+                  </p>
                   <p className="text-xs text-muted-fg truncate">{p.tag || p.category}</p>
+                  {previewEn && (p.description_en || p.description) && (
+                    <p className="text-[11px] text-muted-fg mt-1 line-clamp-2 italic">
+                      {previewEn ? (p.description_en || p.description) : p.description}
+                    </p>
+                  )}
                 </div>
                 {p.external_url && <a href={p.external_url} target="_blank" rel="noreferrer" className="text-pear-500 text-sm"><ExternalLink className="h-4 w-4" /></a>}
                 <button
@@ -163,7 +192,8 @@ export const ProjectsAdmin = () => {
                   <Trash2 className="h-4 w-4" />
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

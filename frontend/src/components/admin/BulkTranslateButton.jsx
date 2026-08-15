@@ -16,7 +16,7 @@
 //     patchUrl={(p) => `/api/projects/${p.id}`}
 //     onDone={() => reload()}
 //   />
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Sparkles, Loader2, XCircle } from "lucide-react";
@@ -40,9 +40,12 @@ export const BulkTranslateButton = ({
   const en = lang === "en";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0, currentLabel: "" });
+  const [progress, setProgress] = useState({ done: 0, total: 0, currentLabel: "", waitingSecs: 0 });
   const [errors, setErrors] = useState([]);
   const cancelRef = useRef(false);
+  // Cancel any in-flight loops when the component unmounts so setState never
+  // fires after unmount (React warning).
+  useEffect(() => () => { cancelRef.current = true; }, []);
 
   const pending = (items || []).filter((i) => needsTranslation ? needsTranslation(i) : true);
 
@@ -50,21 +53,22 @@ export const BulkTranslateButton = ({
     cancelRef.current = false;
     setBusy(true);
     setErrors([]);
-    setProgress({ done: 0, total: pending.length, currentLabel: "" });
+    setProgress({ done: 0, total: pending.length, currentLabel: "", waitingSecs: 0 });
     let errs = [];
     for (let i = 0; i < pending.length; i++) {
       if (cancelRef.current) break;
       const item = pending[i];
       const label = itemLabel ? itemLabel(item) : `#${i + 1}`;
-      setProgress((p) => ({ ...p, currentLabel: label }));
+      setProgress((p) => ({ ...p, currentLabel: label, waitingSecs: 0 }));
       const patchBody = {};
       let itemErrored = false;
       for (const f of fields) {
         const src = item[f.srcKey];
         if (!src || !src.trim()) continue;
-        // Retry once on 429 respecting retry_after_seconds.
+        // Retry up to 3× on 429 respecting retry_after_seconds.
         let attempt = 0;
         while (attempt < 3) {
+          if (cancelRef.current) break;
           try {
             const r = await axios.post(
               `${API}/admin/ai/translate`,
@@ -72,14 +76,20 @@ export const BulkTranslateButton = ({
               { headers: authHeader() },
             );
             patchBody[f.dstKey] = r.data?.translated || "";
+            setProgress((p) => ({ ...p, waitingSecs: 0 }));
             break;
           } catch (e) {
             if (e?.response?.status === 429) {
               const detail = e.response?.data?.detail;
-              const wait = (detail && typeof detail === "object" && detail.retry_after_seconds) || 30;
-              // Update the label to show we're waiting.
-              setProgress((p) => ({ ...p, currentLabel: `${label} — ${en ? "waiting" : "wachten"} ${wait}s (rate limit)` }));
-              await sleep((wait + 1) * 1000);
+              const totalWait = (detail && typeof detail === "object" && detail.retry_after_seconds) || 30;
+              // Tick down the visible countdown every second while we wait.
+              for (let s = totalWait; s > 0; s -= 1) {
+                if (cancelRef.current) break;
+                setProgress((p) => ({ ...p, currentLabel: label, waitingSecs: s }));
+                // eslint-disable-next-line no-await-in-loop
+                await sleep(1000);
+              }
+              setProgress((p) => ({ ...p, waitingSecs: 0 }));
               attempt += 1;
               continue;
             }
@@ -89,7 +99,7 @@ export const BulkTranslateButton = ({
           }
         }
       }
-      if (!itemErrored && Object.keys(patchBody).length > 0) {
+      if (!itemErrored && Object.keys(patchBody).length > 0 && !cancelRef.current) {
         try {
           await axios.patch(patchUrl(item), patchBody, { headers: authHeader() });
         } catch (e) {
@@ -163,13 +173,19 @@ export const BulkTranslateButton = ({
               <div className="mb-3" data-testid={`${testid}-progress`}>
                 <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden mb-2">
                   <div
-                    className="h-full bg-violet-500 transition-all duration-300"
+                    className={`h-full transition-all duration-300 ${progress.waitingSecs > 0 ? "bg-amber-400" : "bg-violet-500"}`}
                     style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-fg">
-                  <Loader2 className="h-3 w-3 inline animate-spin mr-1 text-violet-500" />
-                  {progress.done}/{progress.total} · {progress.currentLabel}
+                <p className="text-xs text-muted-fg flex items-center gap-1.5">
+                  <Loader2 className={`h-3 w-3 animate-spin ${progress.waitingSecs > 0 ? "text-amber-500" : "text-violet-500"}`} />
+                  <span className="font-mono">{progress.done}/{progress.total}</span>
+                  <span className="truncate">· {progress.currentLabel}</span>
+                  {progress.waitingSecs > 0 && (
+                    <span className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-semibold px-2 py-0.5" data-testid={`${testid}-cooldown`}>
+                      ⏳ {en ? "rate limit" : "rate limit"} · {progress.waitingSecs}s
+                    </span>
+                  )}
                 </p>
               </div>
             )}

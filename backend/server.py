@@ -2990,7 +2990,17 @@ async def _books_autopilot_scan_once() -> dict:
     try:
         token = await _books_access_token(creds)
     except Exception as e:
-        result["errors"].append(f"token exchange failed: {e}")
+        err_str = str(e)
+        # Zoho returns "ACCESS_DENIED" or "Access Denied" when the OAuth
+        # scope doesn't include ZohoBooks.fullaccess.all — turn this into an
+        # actionable message the CMS can show verbatim.
+        if "access_denied" in err_str.lower() or "access denied" in err_str.lower():
+            err_str = (
+                "Access Denied — je Zoho Self-Client scope bevat geen "
+                "'ZohoBooks.fullaccess.all'. Herhaal de refresh-token wizard "
+                "met de juiste scope (api-console → Generate Code)."
+            )
+        result["errors"].append(f"token exchange failed: {err_str}")
         return result
     _, base = _books_endpoints(creds["dc"])
     # Pull the last 90 days of paid invoices — new-only dedupe handles the rest.
@@ -3070,16 +3080,67 @@ async def _books_autopilot_scan_once() -> dict:
     return result
 
 
+async def _try_acquire_lock(name: str, ttl_seconds: int = 600) -> bool:
+    """Simple MongoDB advisory lock — insert a doc keyed on `name` that
+    auto-expires after `ttl_seconds`. Returns True when this worker won the
+    race, False when another replica already holds it. TTL index on `expires_at`
+    ensures stuck locks vaporize automatically."""
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(seconds=ttl_seconds)
+    try:
+        await db.advisory_locks.insert_one({
+            "_id": name,
+            "acquired_at": now,
+            "expires_at": expires,
+        })
+        return True
+    except Exception:
+        # Duplicate key = someone already holds it. Check if it's stale.
+        existing = await db.advisory_locks.find_one({"_id": name})
+        if existing and existing.get("expires_at") and existing["expires_at"] < now:
+            # Stale — take it over.
+            await db.advisory_locks.replace_one(
+                {"_id": name},
+                {"_id": name, "acquired_at": now, "expires_at": expires},
+            )
+            return True
+        return False
+
+
+async def _release_lock(name: str):
+    try:
+        await db.advisory_locks.delete_one({"_id": name})
+    except Exception:
+        pass
+
+
 async def _books_autopilot_loop():
-    """Background task: run the scanner every 15 min forever."""
+    """Background task: run the scanner every 15 min forever.
+    Uses a MongoDB advisory lock so multiple backend replicas don't hammer
+    Zoho concurrently. Also persists the last run summary to
+    `books_autopilot_status` so the CMS can surface it."""
     logger.info(f"Zoho Books review-autopilot started (interval={BOOKS_AUTOPILOT_INTERVAL_SECONDS}s)")
     # Small delay so the app fully boots (esp. IMAP) before we hammer Zoho.
     await asyncio.sleep(60)
     while True:
         try:
-            r = await _books_autopilot_scan_once()
-            if r.get("invited") or r.get("errors"):
-                logger.info(f"Books review-autopilot: {r}")
+            got_lock = await _try_acquire_lock("books_autopilot", ttl_seconds=BOOKS_AUTOPILOT_INTERVAL_SECONDS - 30)
+            if got_lock:
+                r = await _books_autopilot_scan_once()
+                await db.books_autopilot_status.replace_one(
+                    {"_id": "last_run"},
+                    {
+                        "_id": "last_run",
+                        "at": datetime.now(timezone.utc).isoformat(),
+                        "trigger": "auto",
+                        **r,
+                    },
+                    upsert=True,
+                )
+                if r.get("invited") or r.get("errors"):
+                    logger.info(f"Books review-autopilot: {r}")
+                # Do NOT release the lock — its TTL will expire naturally, which
+                # prevents an eager loop from re-triggering scans back-to-back.
         except Exception as e:
             logger.error(f"Books review-autopilot crashed: {e}")
         await asyncio.sleep(BOOKS_AUTOPILOT_INTERVAL_SECONDS)
@@ -3088,9 +3149,30 @@ async def _books_autopilot_loop():
 @api_router.post("/admin/reviews/scan-books-invoices")
 async def admin_scan_books_invoices(current=Depends(require_admin)):
     """Manual trigger — force one scan of Zoho Books paid invoices and return
-    the summary immediately (does not wait for the background timer)."""
+    the summary immediately (does not wait for the background timer). Persists
+    the run so the CMS can display it as the 'last run' status."""
     r = await _books_autopilot_scan_once()
+    await db.books_autopilot_status.replace_one(
+        {"_id": "last_run"},
+        {
+            "_id": "last_run",
+            "at": datetime.now(timezone.utc).isoformat(),
+            "trigger": "manual",
+            "triggered_by": current.get("email"),
+            **r,
+        },
+        upsert=True,
+    )
     return r
+
+
+@api_router.get("/admin/reviews/books-autopilot-status")
+async def admin_books_autopilot_status(current=Depends(require_admin)):
+    """Return the last run summary of the Books-invoice review autopilot so
+    the CMS can show a green/red status chip + last-error tooltip."""
+    doc = await db.books_autopilot_status.find_one({"_id": "last_run"}) or {}
+    doc.pop("_id", None)
+    return doc
 
 
 @api_router.get("/admin/financials")
@@ -3479,6 +3561,12 @@ async def on_startup():
         await db.ai_translate_hits.create_index("created_at", expireAfterSeconds=120)
     except Exception as e:
         logger.warning(f"Could not create ai_translate_hits TTL index: {e}")
+    # TTL index on advisory_locks — locks self-heal via `expires_at`, so a
+    # crashed worker never leaves a stuck lock in the DB.
+    try:
+        await db.advisory_locks.create_index("expires_at", expireAfterSeconds=0)
+    except Exception as e:
+        logger.warning(f"Could not create advisory_locks TTL index: {e}")
     # Background poller for review invites (runs every ~15 min)
     asyncio.create_task(review_poller(db, _send_email))
     # Background poller for IMAP inbound tickets (runs every ~60s)

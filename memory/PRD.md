@@ -21,7 +21,15 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 38 (this session, v0.7.0-Beta) — Autopilot + Bulk Translate + Rate-Limit UX
+### Feb 2026 — Iteration 39 (this session, v0.7.1-Beta) — Autopilot Lock + Countdown Detail + EN Preview
+- **MongoDB advisory lock voor Books-autopilot** — `_try_acquire_lock("books_autopilot")` in `_books_autopilot_loop()`; TTL index op `advisory_locks.expires_at` (expireAfterSeconds=0). Meerdere backend-replicas hameren niet meer gelijktijdig op Zoho. Manual scan endpoint blijft de lock bewust bypassen.
+- **Autopilot last-run status endpoint** — `GET /api/admin/reviews/books-autopilot-status` levert `{at, trigger, triggered_by, scanned, invited, skipped, errors}`. Reviews-CMS toont dit als groene/rode chip (`cms-books-autopilot-status`) met timestamp + tellers + eerste error inline.
+- **Zoho Access-Denied → NL hint** — `_books_autopilot_scan_once()` mapt Zoho's `ACCESS_DENIED` naar een actionable Dutch string die naar de refresh-token wizard verwijst (`ZohoBooks.fullaccess.all` scope).
+- **BulkTranslateButton countdown** — `progress.waitingSecs` tikt elke seconde af tijdens een 429-wait; amber pill (`⏳ rate limit · Xs`, `cms-projects-bulk-translate-cooldown`) toont de resterende seconden en de progressbar wordt oranje. Cancel-ref op unmount voorkomt React warnings.
+- **Portfolio EN-Preview knop** — `cms-projects-preview-en` toggle in ProjectsAdmin swapt de lijst live naar `title_en`/`description_en`. Per rij: `✓ EN` badge (translated) of `⚠ NL fallback` (still Dutch). Ideaal om vertalingen te reviewen zonder de sidebar-taal te wisselen.
+- **Testing**: iteration_39.json → **6/6 pytest + 100% Playwright**, geen action items.
+
+### Feb 2026 — Iteration 38 (v0.7.0-Beta) — Autopilot + Bulk Translate + Rate-Limit UX
 - **Zoho Books Paid-Invoice Review Autopilot** — nieuwe `_books_autopilot_loop()` scant elke 15 min in de achtergrond alle facturen met status `paid` uit de laatste 90 dagen. Dedupe via `review_invites.project_id` prefix `zohobooks:{invoice_id}`. Manual trigger endpoint `POST /api/admin/reviews/scan-books-invoices` + nieuwe **Scan Books nu**-knop in de Reviews CMS.
 - **Bulk AI Translate** — nieuwe herbruikbare `BulkTranslateButton.jsx` component met modal + live progressbar + auto-backoff bij 429 (respecteert `retry_after_seconds`). Ingebouwd in:
   - **Portfolio CMS**: vertaalt `title` → `title_en` en `description` → `description_en` in bulk.
