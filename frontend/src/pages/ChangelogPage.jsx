@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Sparkles, ArrowLeft } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
+import { RichText } from "../components/RichText";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -53,7 +54,7 @@ export default function ChangelogPage() {
                 )}
               </div>
               <ul className="space-y-1.5 text-sm text-strong/90 list-disc pl-5">
-                {e.highlights.map((h, idx) => <li key={idx}>{h}</li>)}
+                {e.highlights.map((h, idx) => <li key={idx}><RichText text={h} /></li>)}
               </ul>
             </div>
           ))}

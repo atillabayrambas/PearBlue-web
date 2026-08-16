@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Sparkles } from "lucide-react";
 import { API } from "./_shared";
+import { RichText } from "../RichText";
 
 export const ChangelogAdmin = () => {
   const [data, setData] = useState({ entries: [], current: null });
@@ -22,7 +23,7 @@ export const ChangelogAdmin = () => {
               <span className="text-xs text-muted-fg">{new Date(e.date).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}</span>
             </div>
             <ul className="mt-2 space-y-1 text-sm text-strong/90 list-disc pl-5">
-              {e.highlights.map((h, idx) => <li key={idx}>{h}</li>)}
+              {e.highlights.map((h, idx) => <li key={idx}><RichText text={h} /></li>)}
             </ul>
           </div>
         ))}
