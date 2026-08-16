@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Calculator, Globe, Server, ShieldCheck, ArrowRight, Info, Save, Share2, X, Check } from "lucide-react";
@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
 import { usePageSeo } from "../hooks/usePageSeo";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { CATEGORIES, PRICING, itemsByCat, priceLabel, smartAverage, SERVICES, SERVICE_OF_CAT } from "../data/pricing";
+import { FALLBACK_CATEGORIES, loadPricingCatalog, priceLabel, smartAverage, effectiveUnitPrice, volumeDiscountFor, SERVICES } from "../data/pricing";
 import { FeedbackWidget } from "../components/FeedbackWidget";
 
 const SERVICE_ICON = { web: Globe, ict: Server, cyber: ShieldCheck };
@@ -17,9 +17,9 @@ const H2 = ({ children }) => <h2 className="font-heading text-2xl sm:text-3xl fo
 const PriceRow = ({ item, lang }) => (
   <tr className="border-b border-app/40 last:border-0" data-testid={`price-row-${item.id}`}>
     <td className="py-3 px-5 align-top text-strong">
-      <div className="font-medium">{lang === "en" ? item.en : item.nl}</div>
+      <div className="font-medium">{lang === "en" ? (item.en || item.nl) : item.nl}</div>
       {(item.note_nl || item.note_en) && (
-        <div className="text-xs text-muted-fg mt-1">{lang === "en" ? item.note_en : item.note_nl}</div>
+        <div className="text-xs text-muted-fg mt-1">{lang === "en" ? (item.note_en || item.note_nl) : item.note_nl}</div>
       )}
     </td>
     <td className="py-3 px-5 text-right whitespace-nowrap text-pear-600 dark:text-pear-400 font-heading font-medium">
@@ -37,6 +37,7 @@ export default function PricingListPage() {
   })();
   const [activeService, setActiveService] = useState(initialTab);
   const [openCalc, setOpenCalc] = useState(false);
+  const [catalog, setCatalog] = useState({ categories: FALLBACK_CATEGORIES, items: [] });
   usePageSeo({
     title: lang === "en" ? "Full pricelist — PearBlue" : "Volledige prijslijst — PearBlue",
     description: lang === "en"
@@ -44,8 +45,16 @@ export default function PricingListPage() {
       : "Volledige prijslijst voor websites, ICT-diensten en cybersecurity.",
     path: "/prijslijst",
   });
+  useEffect(() => {
+    loadPricingCatalog().then(setCatalog);
+  }, []);
 
-  const categoriesForActive = CATEGORIES.filter((c) => SERVICE_OF_CAT[c.key] === activeService);
+  const serviceOfCat = useMemo(
+    () => catalog.categories.reduce((m, c) => { m[c.key] = c.service; return m; }, {}),
+    [catalog.categories]
+  );
+  const categoriesForActive = catalog.categories.filter((c) => c.service === activeService);
+  const itemsByCat = (catKey) => catalog.items.filter((it) => it.cat === catKey);
 
   return (
     <div className="max-w-5xl mx-auto px-6 lg:px-10 py-16" data-testid="page-pricing-list">
@@ -118,10 +127,13 @@ export default function PricingListPage() {
         })}
 
         {activeService === "ict" && (
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/40 dark:bg-amber-500/5 p-4 text-sm text-strong/90">
-            {lang === "en"
-              ? "ICT service prices are being finalized and will be published shortly. Contact us for a custom quote."
-              : "De ICT-prijzen worden binnenkort gepubliceerd. Neem contact op voor een offerte op maat."}
+          <div className="mt-6 rounded-2xl border border-pear-200 bg-pear-50/40 dark:bg-pear-500/5 p-4 flex gap-3 items-start" data-testid="pricing-ict-callout">
+            <Info className="h-5 w-5 text-pear-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-strong/90">
+              {lang === "en"
+                ? "All ICT prices below exclude hardware unless noted. Complex projects may adjust after intake."
+                : "Alle ICT-prijzen hieronder zijn excl. hardware tenzij aangegeven. Complexe projecten kunnen na intake worden bijgesteld."}
+            </div>
           </div>
         )}
 
@@ -134,7 +146,7 @@ export default function PricingListPage() {
 
       <FeedbackWidget page="prijslijst" />
 
-      {openCalc && <CalculatorModal onClose={() => setOpenCalc(false)} />}
+      {openCalc && <CalculatorModal catalog={catalog} onClose={() => setOpenCalc(false)} />}
     </div>
   );
 }
@@ -150,7 +162,7 @@ const CALC_STORAGE = "pb_calc_wishlist";
 
 const money = (n) => `€${(Math.round(n * 100) / 100).toLocaleString("nl-NL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-function CalculatorModal({ onClose }) {
+function CalculatorModal({ catalog, onClose }) {
   const { lang } = useLang();
   const [tab, setTab] = useState("web");
   const [qty, setQty] = useState(() => {
@@ -161,6 +173,13 @@ function CalculatorModal({ onClose }) {
   });
   const setQ = (id, v) => setQty((p) => ({ ...p, [id]: v }));
 
+  const { categories, items: PRICING } = catalog;
+  const SERVICE_OF_CAT = useMemo(
+    () => categories.reduce((m, c) => { m[c.key] = c.service; return m; }, {}),
+    [categories]
+  );
+  const itemsByCat = (catKey) => PRICING.filter((it) => it.cat === catKey);
+
   const totals = useMemo(() => {
     const buckets = { web: { oneOff: 0, monthly: 0, hourly: 0 }, ict: { oneOff: 0, monthly: 0, hourly: 0 }, cyber: { oneOff: 0, monthly: 0, hourly: 0 } };
     const byCat = {}; // { catKey: { oneOff, monthly, hourly } }
@@ -169,14 +188,15 @@ function CalculatorModal({ onClose }) {
       if (item.tbd) continue;
       const q = qty[item.id] || 0;
       if (!q) continue;
-      const base = item.included ? 0 : smartAverage(item.min, item.max);
+      // Volume-discounted per-unit price (only cyber endpoint agent uses this today)
+      const base = item.included ? 0 : effectiveUnitPrice(item, q);
       const line = base * q;
       const svc = SERVICE_OF_CAT[item.cat] || "web";
       if (!byCat[item.cat]) byCat[item.cat] = { oneOff: 0, monthly: 0, hourly: 0 };
       if (isRecurring(item.unit)) { buckets[svc].monthly += line; byCat[item.cat].monthly += line; }
       else if (isHourly(item.unit)) { buckets[svc].hourly += line; byCat[item.cat].hourly += line; }
       else { buckets[svc].oneOff += line; byCat[item.cat].oneOff += line; }
-      chosen.push({ id: item.id, label: item.nl, qty: q, unit: item.unit, price: base, cat: item.cat });
+      chosen.push({ id: item.id, label: item.nl, qty: q, unit: item.unit, price: base, cat: item.cat, service: svc });
     }
     const activeSvcs = Object.entries(buckets).filter(([, b]) => b.oneOff || b.monthly || b.hourly);
     const combined = {
@@ -190,7 +210,7 @@ function CalculatorModal({ onClose }) {
     combined.monthlyBtw = combined.monthly * VAT_RATE;
     combined.monthlyTotal = combined.monthly + combined.monthlyBtw;
     return { buckets, byCat, chosen, activeSvcs: activeSvcs.map(([k]) => k), combined };
-  }, [qty]);
+  }, [qty, PRICING, SERVICE_OF_CAT]);
 
   const saveWishlist = () => {
     localStorage.setItem(CALC_STORAGE, JSON.stringify(qty));
@@ -226,7 +246,7 @@ function CalculatorModal({ onClose }) {
 
   const [openQuote, setOpenQuote] = useState(false);
 
-  const tabCategories = CATEGORIES.filter((c) => SERVICE_OF_CAT[c.key] === tab);
+  const tabCategories = categories.filter((c) => c.service === tab);
 
   // Lock body scroll while modal is open (also hides the floating chatbot on mobile)
   useBodyScrollLock(true);
@@ -320,20 +340,31 @@ function CalculatorModal({ onClose }) {
                   {items.map((it) => {
                     const supportsCount = ["per_stuk", "per_maand", "per_uur", "per_taal", "per_module", "per_20_items", "per_machine_maand"].includes(it.unit);
                     const cur = qty[it.id] || 0;
+                    // Volume-discount preview for cyber endpoint agent
+                    const hasVolume = Array.isArray(it.volume_tiers) && it.volume_tiers.length > 0;
+                    const effPrice = hasVolume && cur > 0 ? effectiveUnitPrice(it, cur) : null;
+                    const discount = hasVolume && cur > 0 ? volumeDiscountFor(it, cur) : 0;
                     return (
                       <li key={it.id} className="flex items-center justify-between gap-3 py-1.5">
                         <div className="min-w-0">
-                          <div className="text-sm text-strong">{lang === "en" ? it.en : it.nl}</div>
+                          <div className="text-sm text-strong">{lang === "en" ? (it.en || it.nl) : it.nl}</div>
                           <div className="text-[11px] text-muted-fg">{priceLabel(it, lang)}</div>
+                          {hasVolume && cur > 0 && discount > 0 && (
+                            <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5" data-testid={`pricing-calc-volume-${it.id}`}>
+                              {lang === "en"
+                                ? `Volume discount: −€${discount.toFixed(2)}/machine → €${effPrice.toFixed(2)}/mo × ${cur}`
+                                : `Volumekorting: −€${discount.toFixed(2)}/machine → €${effPrice.toFixed(2)}/mnd × ${cur}`}
+                            </div>
+                          )}
                         </div>
                         {supportsCount ? (
                           <input
                             type="number"
                             min={0}
-                            max={999}
+                            max={9999}
                             value={cur}
                             onChange={(e) => setQ(it.id, Math.max(0, parseInt(e.target.value || "0", 10)))}
-                            className="w-20 rounded-lg border border-app bg-white dark:bg-slate-800 text-strong px-3 py-1.5 text-sm text-right"
+                            className="w-24 rounded-lg border border-app bg-white dark:bg-slate-800 text-strong px-3 py-1.5 text-sm text-right"
                             data-testid={`pricing-calc-qty-${it.id}`}
                           />
                         ) : (
@@ -496,7 +527,7 @@ function QuoteFromCalculator({ onClose, totals, lang, customText }) {
         email,
         company: company || undefined,
         language: lang,
-        services: Array.from(new Set(totals.chosen.map((c) => SERVICE_OF_CAT[c.cat] || "web"))),
+        services: Array.from(new Set(totals.chosen.map((c) => c.service || "web"))),
         description: story || (lang === "en" ? "Quote request from calculator" : "Offerte-aanvraag via calculator"),
         story,
         custom_request: customText || undefined,

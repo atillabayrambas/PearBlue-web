@@ -291,3 +291,68 @@ class RoadmapItemUpdate(BaseModel):
     status: Optional[str] = Field(None, pattern="^(achieved|planned)$")
     order: Optional[int] = None
     date_label: Optional[str] = Field(None, max_length=40)
+
+
+# ---------- Pricing catalog (CMS-editable, powers /prijslijst + calculator) ----------
+class PricingVolumeTier(BaseModel):
+    """One row in a volume-discount table (used by cyber endpoint agents)."""
+    from_qty: int = Field(..., ge=1, description="Inclusive lower bound of the machine count")
+    to_qty: Optional[int] = Field(None, description="Inclusive upper bound; None = unbounded")
+    discount_per_unit: float = Field(..., ge=0, description="EUR discount per unit (deducted from base price)")
+
+
+class PricingItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service: str = Field(..., pattern="^(web|ict|cyber)$")
+    cat: str = Field(..., min_length=1, max_length=40)
+    nl: str
+    en: Optional[str] = None
+    unit: str = Field(default="eenmalig")  # eenmalig | per_maand | per_uur | per_stuk | per_taal | per_machine_maand | per_module | per_20_items | vanaf
+    min_price: float = 0.0
+    max_price: float = 0.0
+    note_nl: Optional[str] = None
+    note_en: Optional[str] = None
+    tbd: Optional[bool] = False
+    included: Optional[bool] = False
+    order: int = 100
+    # Special marker: e.g. "cyber_endpoint_agent" tells the frontend calculator
+    # to show a machine-count input and apply the volume_tiers.
+    special: Optional[str] = None
+    volume_tiers: Optional[List[PricingVolumeTier]] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PricingItemCreate(BaseModel):
+    service: str = Field(..., pattern="^(web|ict|cyber)$")
+    cat: str = Field(..., min_length=1, max_length=40)
+    nl: str = Field(..., min_length=1, max_length=240)
+    en: Optional[str] = Field(None, max_length=240)
+    unit: str = Field(default="eenmalig", max_length=32)
+    min_price: float = Field(0.0, ge=0)
+    max_price: float = Field(0.0, ge=0)
+    note_nl: Optional[str] = Field(None, max_length=400)
+    note_en: Optional[str] = Field(None, max_length=400)
+    tbd: Optional[bool] = False
+    included: Optional[bool] = False
+    order: int = 100
+    special: Optional[str] = Field(None, max_length=60)
+    volume_tiers: Optional[List[PricingVolumeTier]] = None
+
+
+class PricingItemUpdate(BaseModel):
+    service: Optional[str] = Field(None, pattern="^(web|ict|cyber)$")
+    cat: Optional[str] = Field(None, min_length=1, max_length=40)
+    nl: Optional[str] = Field(None, min_length=1, max_length=240)
+    en: Optional[str] = Field(None, max_length=240)
+    unit: Optional[str] = Field(None, max_length=32)
+    min_price: Optional[float] = Field(None, ge=0)
+    max_price: Optional[float] = Field(None, ge=0)
+    note_nl: Optional[str] = Field(None, max_length=400)
+    note_en: Optional[str] = Field(None, max_length=400)
+    tbd: Optional[bool] = None
+    included: Optional[bool] = None
+    order: Optional[int] = None
+    special: Optional[str] = Field(None, max_length=60)
+    volume_tiers: Optional[List[PricingVolumeTier]] = None

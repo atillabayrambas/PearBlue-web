@@ -1,0 +1,23 @@
+{
+  "iteration": 45,
+  "version": "0.7.7-Beta",
+  "date": "2026-02-16",
+  "status": "pass",
+  "backend": {"pytest_file": "/app/backend/tests/test_iteration45.py", "passed": 8, "failed": 0},
+  "regression": {"iter43_iter44": "15/15 pass"},
+  "frontend": {
+    "smoke_test": "playwright",
+    "notes": [
+      "/prijslijst?tab=cyber renders 14 rows sourced from cybersecurity_prijslijst_definitief.xlsx",
+      "Calculator cyber tab: entering 15 machines shows 'Volumekorting: -€0.10/machine -> €4.90/mo x 15' with €73.50 subtotal. 100 machines gives €400/mo (max discount)",
+      "CMS -> Site settings -> Pricing: service picker (Website 30 / ICT 17 / Cyber 14), Cyber view shows 3 categories with `10 volume tiers` badge on the Bitdefender endpoint agent; ICT view shows Infrastructure/Netwerk/etc. correctly grouped"
+    ]
+  },
+  "features_shipped": [
+    "CMS-editable pricing catalog with service+category CRUD and inline volume-discount editor",
+    "ICT catalog imported from ict_diensten_prijzen_v8.xlsx (17 items across Backup/Netwerk/Infrastructure/Cloud/Boekhouding/Nazorg)",
+    "Cyber catalog imported from cybersecurity_prijslijst_definitief.xlsx (14 items incl. 10-tier EUR volume discount ladder on Bitdefender endpoint agent)",
+    "Calculator honours volume tiers automatically via effectiveUnitPrice() + shows per-item hint",
+    "PricingListPage + Calculator hydrate from GET /api/site/pricing with invalidation on CMS mutation"
+  ]
+}

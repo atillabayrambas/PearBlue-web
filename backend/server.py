@@ -36,7 +36,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 # Single source of truth for the running app version. Displayed in footer, CMS
 # sidebar, changelog and the maintenance/coming-soon page. Bump on release.
-APP_VERSION = os.environ.get("APP_VERSION", "0.7.6-Beta")
+APP_VERSION = os.environ.get("APP_VERSION", "0.7.7-Beta")
 
 # Fernet cipher for encrypting integration secrets (Brevo API key, IMAP passwords)
 # Uses TOKEN_ENCRYPTION_KEY from env (already used by zoho_portal/stripe_payments)
@@ -125,6 +125,10 @@ from models import (  # noqa: E402
     RoadmapItem,
     RoadmapItemCreate,
     RoadmapItemUpdate,
+    PricingItem,
+    PricingItemCreate,
+    PricingItemUpdate,
+    PricingVolumeTier,
 )
 
 
@@ -1798,6 +1802,19 @@ async def public_changelog():
     v1.0 will be the official launch, dropping the -Beta suffix.
     """
     entries = [
+        {
+            "version": "0.7.7-Beta",
+            "date": "2026-02-16",
+            "type": "feature",
+            "highlights": [
+                "💶 **CMS-driven prijslijst** — alle 61 prijs-items (Website 30, ICT 17, Cybersecurity 14) staan nu in MongoDB en zijn bewerkbaar via CMS → Site instellingen → Prijslijst-tab. Toevoegen, bewerken en verwijderen werkt direct door in de publieke `/prijslijst` én de calculator",
+                "📥 **ICT-prijzen uit `ict_diensten_prijzen_v8.xlsx`** geïmporteerd — 17 nieuwe items over Infrastructure, Netwerk, Cloud, Backup, Boekhouding en Nazorg/SLA (Veeam €1500, Rubrik €1200/mnd, Server-installatie €3500, Netwerk-audit €300, Monitoring €5/machine/mnd, IT-strategie €200, PM €90/u, …)",
+                "🛡️ **Cybersecurity-prijzen uit `cybersecurity_prijslijst_definitief.xlsx`** — 14 items incl. de Bitdefender GravityZone endpoint agent (€5/machine/mnd) met een **10-staps volumekorting-ladder** (10-19 → −€0,10, 20-29 → −€0,20 … 100+ → −€1,00) en optionele Nazorg SLA +€3/machine/mnd",
+                "🧮 **Calculator machine-input met live volumekorting** — vul aantal machines in, calculator toont automatisch de effectieve prijs (bv. 15 machines → €4,90/mnd × 15 = €73,50/mnd, 100 machines → €4,00/mnd × 100 = €400/mnd). Werkt zowel maandtotalen als combi-totalen door",
+                "🎛️ **CMS UI**: 3-way service picker (Website/ICT Services/Cybersecurity) met totaal-badges, per-categorie inklap met `+ add`, inline volumekorting-tabel-editor, live cache-invalidatie zodat publieke site zonder refresh de nieuwe prijzen ziet",
+                "🧪 Tests: `tests/test_iteration45.py` — 8/8 pass (seed shape, ICT Excel import, cyber volume tiers, CRUD, unit whitelist, min>max validatie, volume-tiers create)",
+            ],
+        },
         {
             "version": "0.7.6-Beta",
             "date": "2026-02-15",
@@ -3810,6 +3827,96 @@ async def admin_reorder_roadmap(payload: Dict[str, Any], current=Depends(require
     return {"ok": True, "updated": len(order)}
 
 
+# ---------- Pricing catalog (CMS-editable, powers /prijslijst + calculator) ----------
+from pricing_seed import PRICING_SEED, PRICING_CATEGORIES  # noqa: E402
+
+# Whitelisted unit strings — must stay in sync with the frontend UNIT_LABEL map.
+PRICING_UNIT_WHITELIST = {
+    "eenmalig", "per_maand", "per_uur", "per_stuk", "per_taal",
+    "per_machine_maand", "per_module", "per_20_items", "vanaf",
+}
+
+
+async def seed_pricing():
+    """One-shot: seed the pricing catalog if the collection is empty.
+    Idempotent — subsequent boots leave admin edits/deletes untouched."""
+    try:
+        existing = await db.pricing_items.count_documents({})
+        if existing > 0:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        for item in PRICING_SEED:
+            doc = {
+                "id": str(uuid.uuid4()),
+                "created_at": now,
+                **item,
+            }
+            await db.pricing_items.insert_one(doc)
+        logger.info(f"Pricing catalog seeded ({len(PRICING_SEED)} items).")
+    except Exception as e:
+        logger.warning(f"Pricing seed failed: {e}")
+
+
+@api_router.get("/site/pricing")
+async def public_pricing():
+    """Public pricing catalog + category labels used by /prijslijst and the
+    calculator. Returned shape is stable — the frontend hydrates its
+    `PRICING` array from this endpoint (falls back to bundled static data)."""
+    items = await db.pricing_items.find({}, {"_id": 0}).to_list(1000)
+    items.sort(key=lambda x: (x.get("service", ""), x.get("cat", ""), x.get("order", 100)))
+    return {
+        "categories": PRICING_CATEGORIES,
+        "items": items,
+    }
+
+
+@api_router.get("/admin/pricing")
+async def admin_list_pricing(current=Depends(require_admin)):
+    items = await db.pricing_items.find({}, {"_id": 0}).to_list(1000)
+    items.sort(key=lambda x: (x.get("service", ""), x.get("cat", ""), x.get("order", 100)))
+    return items
+
+
+@api_router.post("/admin/pricing", response_model=PricingItem)
+async def admin_create_pricing(payload: PricingItemCreate, current=Depends(require_admin)):
+    if payload.unit not in PRICING_UNIT_WHITELIST:
+        raise HTTPException(status_code=400, detail=f"Unit '{payload.unit}' niet toegestaan.")
+    if payload.max_price < payload.min_price:
+        raise HTTPException(status_code=400, detail="max_price mag niet lager zijn dan min_price.")
+    item = PricingItem(**payload.model_dump())
+    doc = item.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.pricing_items.insert_one(doc)
+    await _log_activity(current.get("email"), "pricing.create", item.id, {"nl": item.nl})
+    return item
+
+
+@api_router.patch("/admin/pricing/{item_id}")
+async def admin_update_pricing(item_id: str, patch: PricingItemUpdate, current=Depends(require_admin)):
+    updates = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if v is not None}
+    if "unit" in updates and updates["unit"] not in PRICING_UNIT_WHITELIST:
+        raise HTTPException(status_code=400, detail=f"Unit '{updates['unit']}' niet toegestaan.")
+    if not updates:
+        raise HTTPException(status_code=400, detail="Geen wijzigingen aangeleverd.")
+    if "min_price" in updates and "max_price" in updates and updates["max_price"] < updates["min_price"]:
+        raise HTTPException(status_code=400, detail="max_price mag niet lager zijn dan min_price.")
+    res = await db.pricing_items.update_one({"id": item_id}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Prijs-item niet gevonden.")
+    doc = await db.pricing_items.find_one({"id": item_id}, {"_id": 0})
+    await _log_activity(current.get("email"), "pricing.update", item_id, {"fields": list(updates.keys())})
+    return doc
+
+
+@api_router.delete("/admin/pricing/{item_id}")
+async def admin_delete_pricing(item_id: str, current=Depends(require_admin)):
+    res = await db.pricing_items.delete_one({"id": item_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Prijs-item niet gevonden.")
+    await _log_activity(current.get("email"), "pricing.delete", item_id)
+    return {"ok": True}
+
+
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
 app.include_router(make_stripe_router(db))
@@ -3846,6 +3953,7 @@ async def on_startup():
     await seed_portfolio()
     await seed_virus_scans()
     await seed_roadmap()
+    await seed_pricing()
     # TTL index on ai_translate_hits — auto-expire rate-limit rows after 120s
     # (2× the 60s rolling window), keeps the collection bounded forever.
     try:

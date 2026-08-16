@@ -1,23 +1,61 @@
-// Central pricing catalog — sourced from Website_Offerte_Intelligent_vFinal3.xlsx
-// Unit types: "eenmalig" (one-off), "per_maand" (monthly), "per_uur" (hourly),
-// "per_stuk" (per item), "per_taal" (per language), "per_machine_maand" (per machine/month),
-// "per_module" (per module), "per_20_items" (per batch of 20).
+// Central pricing catalog — fetched from GET /api/site/pricing (which the CMS
+// edits via /api/admin/pricing). The static arrays below act as bundled
+// fallback for the first paint before the API responds and for offline dev.
 //
-// Calculator note: for wide ranges (e.g. €300–2000) we return a "smart average" that
-// biases toward realistic sub-average projects so totals aren't inflated.
+// Unit types: "eenmalig" (one-off), "per_maand" (monthly), "per_uur" (hourly),
+// "per_stuk" (per item), "per_taal" (per language), "per_machine_maand"
+// (per machine/month), "per_module" (per module), "per_20_items", "vanaf".
+//
+// Calculator note: for wide ranges (e.g. €300–2000) we return a "smart
+// average" that biases toward realistic sub-average projects so totals aren't
+// inflated. Cyber-endpoint items with `special === "cyber_endpoint_agent"`
+// pull an extra machine-count input and apply their `volume_tiers` in the
+// calculator via `applyVolumeDiscount()`.
 
-export const CATEGORIES = [
-  { key: "project", nl: "Projectoverzicht", en: "Project overview" },
-  { key: "website", nl: "Pakket & Pagina's", en: "Package & Pages" },
-  { key: "advanced", nl: "Geavanceerde functies", en: "Advanced features" },
-  { key: "upload", nl: "Upload & CMS", en: "Upload & CMS" },
-  { key: "ecom", nl: "E-commerce modules", en: "E-commerce modules" },
-  { key: "integrations", nl: "Integraties & Training", en: "Integrations & Training" },
-  { key: "ict", nl: "ICT-diensten", en: "ICT services" },
-  { key: "cybersecurity", nl: "Cybersecurity", en: "Cybersecurity" },
+import axios from "axios";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// ---------- Static fallback (matches the seed order used by the backend) ----
+// Keeping this in the bundle lets the /prijslijst page render instantly on
+// first paint even if the /site/pricing call is slow. Once the API resolves
+// `usePricingCatalog()` swaps to the live data.
+export const FALLBACK_CATEGORIES = [
+  { key: "project", service: "web", nl: "Projectoverzicht", en: "Project overview", order: 10 },
+  { key: "website", service: "web", nl: "Pakket & Pagina's", en: "Package & Pages", order: 20 },
+  { key: "advanced", service: "web", nl: "Geavanceerde functies", en: "Advanced features", order: 30 },
+  { key: "upload", service: "web", nl: "Upload & CMS", en: "Upload & CMS", order: 40 },
+  { key: "ecom", service: "web", nl: "E-commerce modules", en: "E-commerce modules", order: 50 },
+  { key: "integrations", service: "web", nl: "Integraties & Training", en: "Integrations & Training", order: 60 },
+  { key: "ict_infra", service: "ict", nl: "Infrastructuur & Server", en: "Infrastructure & Server", order: 10 },
+  { key: "ict_network", service: "ict", nl: "Netwerk", en: "Network", order: 20 },
+  { key: "ict_cloud", service: "ict", nl: "Cloud & Storage", en: "Cloud & Storage", order: 30 },
+  { key: "ict_backup", service: "ict", nl: "Backup", en: "Backup", order: 40 },
+  { key: "ict_finance", service: "ict", nl: "Boekhouding & Kassa", en: "Finance & POS", order: 50 },
+  { key: "ict_support", service: "ict", nl: "Nazorg, SLA & Consultancy", en: "Support, SLA & Consultancy", order: 60 },
+  { key: "cybersecurity", service: "cyber", nl: "Website-bescherming", en: "Website protection", order: 10 },
+  { key: "cyber_endpoint", service: "cyber", nl: "Endpoint bescherming (Bitdefender GravityZone)", en: "Endpoint protection (Bitdefender GravityZone)", order: 20 },
+  { key: "cyber_services", service: "cyber", nl: "Cybersecurity — services & onboarding", en: "Cybersecurity — services & onboarding", order: 30 },
 ];
 
-// Human-readable unit label (used in tables + calculator)
+// Empty fallback — the API is the source of truth. Keeps the tables blank
+// (with a spinner) if the API is unreachable rather than showing stale data.
+export const FALLBACK_ITEMS = [];
+
+// ---------- Public API used by pages ------------------------------------------------
+export const CATEGORIES = FALLBACK_CATEGORIES; // legacy re-export (kept for compat)
+export const PRICING = FALLBACK_ITEMS;         // legacy re-export
+
+// Category → service group
+export const SERVICE_OF_CAT = FALLBACK_CATEGORIES.reduce((m, c) => { m[c.key] = c.service; return m; }, {});
+
+export const SERVICES = [
+  { key: "web", nl: "Website & Media", en: "Website & Media" },
+  { key: "ict", nl: "ICT-diensten", en: "ICT services" },
+  { key: "cyber", nl: "Cybersecurity", en: "Cybersecurity" },
+];
+
+// Human-readable unit label used everywhere.
 export const UNIT_LABEL = {
   eenmalig: { nl: "eenmalig", en: "one-off" },
   per_maand: { nl: "per maand", en: "per month" },
@@ -30,100 +68,71 @@ export const UNIT_LABEL = {
   vanaf: { nl: "vanaf", en: "from" },
 };
 
-// Smart average helper — used by calculator.
-// Rule per user brief:
-//  • range < €100 gap  → arithmetic mean
-//  • range ≥ €500 gap  → biased toward the lower quarter (e.g. 250–2500 → ~400)
-//  • otherwise         → arithmetic mean
+// Smart-average biased toward sub-average projects so wide ranges don't scare users.
 export const smartAverage = (min, max) => {
+  min = Number(min) || 0;
+  max = Number(max) || 0;
   if (min === max) return min;
   const gap = max - min;
-  if (gap >= 500) {
-    // low-side biased so wide ranges don't scare users
-    return Math.round(min + gap * 0.22);
-  }
+  if (gap >= 500) return Math.round(min + gap * 0.22);
   return Math.round((min + max) / 2);
 };
 
-// Full item catalog. tbd:true means "prices to be provided by client".
-export const PRICING = [
-  // ---------- Projectoverzicht ----------
-  { cat: "project", id: "goals", nl: "Verkopen, leads, afspraken", en: "Sales, leads, appointments", unit: "eenmalig", min: 50, max: 50, note_nl: "Doel-instelling & KPI-tracking", note_en: "Goal setup & KPI tracking" },
-  { cat: "project", id: "revisies", nl: "5 revisies totaal (1e 2 voor testfase, laatste 3 voor verbeteringen)", en: "5 revisions total (first 2 test, last 3 refinements)", unit: "eenmalig", min: 0, max: 0, included: true, note_nl: "Inbegrepen bij elk pakket", note_en: "Included with every package" },
-
-  // ---------- Website / pakket & pagina's ----------
-  { cat: "website", id: "basis-5p", nl: "Basis Pakket — 5 pagina's (Home, Over ons, Diensten, Portfolio, Contact)", en: "Basic Package — 5 pages (Home, About, Services, Portfolio, Contact)", unit: "eenmalig", min: 200, max: 200, note_nl: "Vanaf-prijs", note_en: "Starting price" },
-  { cat: "website", id: "wettelijk", nl: "Wettelijke pagina's (Algemene voorwaarden, Privacy, Cookies)", en: "Legal pages (T&C, Privacy, Cookies)", unit: "eenmalig", min: 0, max: 0, included: true, note_nl: "Verplicht — inbegrepen", note_en: "Mandatory — included" },
-  { cat: "website", id: "extra-pagina", nl: "Elke extra pagina (na de eerste 5)", en: "Each extra page (after the first 5)", unit: "per_stuk", min: 50, max: 50 },
-  { cat: "website", id: "theme-manual", nl: "Handmatige thema-switcher (donker/licht)", en: "Manual dark/light theme switcher", unit: "eenmalig", min: 50, max: 50 },
-  { cat: "website", id: "theme-auto", nl: "Automatisch systeemthema volgen", en: "Auto system-theme follow", unit: "eenmalig", min: 10, max: 10 },
-  { cat: "website", id: "taal", nl: "Extra taal (meertaligheid)", en: "Extra language", unit: "per_taal", min: 50, max: 50 },
-
-  // ---------- Geavanceerde functies ----------
-  { cat: "advanced", id: "ai-chat", nl: "AI Chat + Agent-overname (Claude API)", en: "AI Chat + Agent takeover (Claude API)", unit: "eenmalig", min: 100, max: 100 },
-  { cat: "advanced", id: "ai-mail-sync", nl: "AI Mail & Support-ticket sync via nummer", en: "AI Mail & Support-ticket sync via number", unit: "eenmalig", min: 150, max: 150 },
-  { cat: "advanced", id: "ai-dashboard", nl: "AI Dashboard modules (analytics per module)", en: "AI Dashboard modules (analytics per module)", unit: "per_module", min: 20, max: 20 },
-  { cat: "advanced", id: "feedback-sys", nl: "Klant-feedbacksysteem", en: "Client feedback system", unit: "eenmalig", min: 30, max: 30 },
-  { cat: "advanced", id: "mailbox-imap", nl: "Mailbox-integratie (IMAP) — beheer meerdere mailboxen vanuit CMS", en: "Mailbox integration (IMAP) — manage multiple inboxes from CMS", unit: "eenmalig", min: 50, max: 50, note_nl: "Beheerders kunnen mailboxen toevoegen/verwijderen", note_en: "Admins can add/remove mailboxes" },
-
-  // ---------- Upload & CMS ----------
-  { cat: "upload", id: "cms-products", nl: "Zelf producten toevoegen via CMS", en: "Add products yourself via CMS", unit: "eenmalig", min: 20, max: 20 },
-  { cat: "upload", id: "cms-portfolio", nl: "Zelf portfolio-werk uploaden via CMS", en: "Upload portfolio work via CMS", unit: "eenmalig", min: 20, max: 20 },
-  { cat: "upload", id: "cms-blog", nl: "Zelf artikelen plaatsen via CMS", en: "Post articles via CMS", unit: "eenmalig", min: 20, max: 20 },
-  { cat: "upload", id: "manual-upload", nl: "Invoer door ons (per 20 items)", en: "Data entry by us (per 20 items)", unit: "per_20_items", min: 100, max: 200 },
-
-  // ---------- E-commerce modules ----------
-  { cat: "ecom", id: "shop", nl: "Winkel-setup (mandje & checkout)", en: "Shop setup (cart & checkout)", unit: "eenmalig", min: 300, max: 2000, note_nl: "Afhankelijk van complexiteit", note_en: "Depends on complexity" },
-  { cat: "ecom", id: "shipping", nl: "Adressen & verzending (Standaard incl. — uitgebreid +€10)", en: "Addresses & shipping (Standard incl. — extended +€10)", unit: "eenmalig", min: 10, max: 10, note_nl: "+€10 extra bij uitgebreide verzendopties", note_en: "+€10 for extended shipping options" },
-  { cat: "ecom", id: "pay-int", nl: "Betaalintegratie (iDEAL, Stripe)", en: "Payment integration (iDEAL, Stripe)", unit: "eenmalig", min: 30, max: 30 },
-  { cat: "ecom", id: "colors", nl: "Product-kleurvariaties", en: "Product color variations", unit: "eenmalig", min: 20, max: 20 },
-  { cat: "ecom", id: "sizes", nl: "Product-maatvariaties", en: "Product size variations", unit: "eenmalig", min: 20, max: 20 },
-  { cat: "ecom", id: "photo-sync", nl: "Gekoppelde productfoto's (sync kleur/maat)", en: "Linked product photos (sync color/size)", unit: "eenmalig", min: 60, max: 60 },
-  { cat: "ecom", id: "product-calc", nl: "Product-calculator (configurator)", en: "Product calculator (configurator)", unit: "eenmalig", min: 50, max: 50 },
-
-  // ---------- Integraties & Training ----------
-  { cat: "integrations", id: "reviews-int", nl: "Reviews-koppeling (Google, Trustpilot, …)", en: "Reviews integration (Google, Trustpilot, …)", unit: "per_stuk", min: 30, max: 30 },
-  { cat: "integrations", id: "custom-scripts", nl: "Custom scripts (header/footer)", en: "Custom scripts (header/footer)", unit: "eenmalig", min: 20, max: 20 },
-  { cat: "integrations", id: "analytics-mod", nl: "Analytics-koppeling per module", en: "Analytics integration per module", unit: "per_stuk", min: 5, max: 5 },
-  { cat: "integrations", id: "crm-pro", nl: "CRM-koppeling Pro (Zoho, HubSpot, …)", en: "CRM integration Pro (Zoho, HubSpot, …)", unit: "vanaf", min: 75, max: 75 },
-  { cat: "integrations", id: "training-cms", nl: "Gebruikerstraining CMS", en: "User training CMS", unit: "per_uur", min: 80, max: 80 },
-  { cat: "integrations", id: "training-crm", nl: "Training Zoho/CRM", en: "Training Zoho/CRM", unit: "per_uur", min: 80, max: 80 },
-
-  // ---------- ICT services (prices TBD by user) ----------
-  { cat: "ict", id: "ict-tbd", nl: "ICT-diensten (netwerk, cloud, beheer, MFA, devices)", en: "ICT services (network, cloud, mgmt, MFA, devices)", unit: "eenmalig", tbd: true, note_nl: "Prijzen worden binnenkort gepubliceerd", note_en: "Prices to be published soon" },
-
-  // ---------- Cybersecurity ----------
-  { cat: "cybersecurity", id: "cyber-block", nl: "Website IP-block & DDOS-protectie op formulieren/chat", en: "Website IP-block & DDOS protection on forms/chat", unit: "eenmalig", min: 50, max: 50 },
-  { cat: "cybersecurity", id: "cyber-endpoint", nl: "Bitdefender GravityZone endpoint bescherming", en: "Bitdefender GravityZone endpoint protection", unit: "per_machine_maand", min: 5, max: 5, note_nl: "Per machine per maand", note_en: "Per machine per month" },
-  { cat: "cybersecurity", id: "cyber-mgmt-tbd", nl: "Managed cybersecurity (SOC, EDR-response)", en: "Managed cybersecurity (SOC, EDR response)", unit: "per_maand", tbd: true, note_nl: "Prijzen worden binnenkort gepubliceerd", note_en: "Prices to be published soon" },
-];
-
-// Category → service group
-export const SERVICE_OF_CAT = {
-  project: "web",
-  website: "web",
-  advanced: "web",
-  upload: "web",
-  ecom: "web",
-  integrations: "web",
-  ict: "ict",
-  cybersecurity: "cyber",
+// Volume discount lookup for `special === "cyber_endpoint_agent"`.
+// Returns the per-unit EUR discount to subtract from base for a given qty.
+export const volumeDiscountFor = (item, qty) => {
+  const tiers = item?.volume_tiers || [];
+  if (!qty || tiers.length === 0) return 0;
+  let bestDiscount = 0;
+  for (const t of tiers) {
+    const from = Number(t.from_qty || 0);
+    const to = t.to_qty == null ? Number.POSITIVE_INFINITY : Number(t.to_qty);
+    if (qty >= from && qty <= to && (t.discount_per_unit || 0) > bestDiscount) {
+      bestDiscount = t.discount_per_unit;
+    }
+  }
+  return bestDiscount;
 };
 
-export const SERVICES = [
-  { key: "web", nl: "Website & Media", en: "Website & Media" },
-  { key: "ict", nl: "ICT-diensten", en: "ICT services" },
-  { key: "cyber", nl: "Cybersecurity", en: "Cybersecurity" },
-];
+// Given `qty` and a pricing item, return the effective per-unit price
+// (base − volume-discount, floored at 0). Only meaningful for the machine
+// item; other items just return `base`.
+export const effectiveUnitPrice = (item, qty) => {
+  const base = item?.included ? 0 : smartAverage(item?.min_price ?? item?.min, item?.max_price ?? item?.max);
+  const discount = volumeDiscountFor(item, qty);
+  return Math.max(0, base - discount);
+};
 
-// Convenience selector
-export const itemsByCat = (catKey) => PRICING.filter((p) => p.cat === catKey);
-
-// Format helper
+// Format helper for tables. `item` shape may include either min/max (legacy)
+// or min_price/max_price (API); we normalise here.
 export const priceLabel = (item, lang = "nl") => {
+  const mn = item.min_price ?? item.min ?? 0;
+  const mx = item.max_price ?? item.max ?? 0;
   if (item.tbd) return lang === "en" ? "TBD" : "n.n.b.";
   if (item.included) return lang === "en" ? "included" : "inbegrepen";
   const unit = UNIT_LABEL[item.unit]?.[lang] || item.unit;
-  if (item.min === item.max) return `€${item.min} ${unit}`;
-  return `€${item.min} – €${item.max} ${unit}`;
+  if (mn === mx) return `€${mn} ${unit}`;
+  return `€${mn} – €${mx} ${unit}`;
 };
+
+// ---------- Live catalog (fetched once, cached) --------------------------------------
+let _cache = null;
+
+/** Fetches the pricing catalog from the API. Returns {categories, items}. */
+export const loadPricingCatalog = async () => {
+  if (_cache) return _cache;
+  try {
+    const r = await axios.get(`${API}/site/pricing`);
+    _cache = {
+      categories: r.data?.categories || FALLBACK_CATEGORIES,
+      items: r.data?.items || FALLBACK_ITEMS,
+    };
+  } catch {
+    _cache = { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS };
+  }
+  return _cache;
+};
+
+/** Bust the cache — used by the CMS after edits so the public site picks up
+ *  changes without a full page reload. */
+export const invalidatePricingCache = () => { _cache = null; };

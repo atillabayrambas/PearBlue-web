@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { API } from "./_shared";
 import { ROADMAP_ICON_NAMES, iconFromName } from "../../data/roadmapIcons";
+import { PricingAdminTab } from "./PricingAdminTab";
 
 export const SettingsAdmin = () => {
   const { authHeader } = useAuth();
@@ -71,6 +72,7 @@ export const SettingsAdmin = () => {
       <div className="flex flex-wrap gap-1 border-b border-app mb-6" data-testid="cms-settings-tabs">
         {[
           { key: "general", label: en ? "General" : "Algemeen" },
+          { key: "pricing", label: en ? "Pricing" : "Prijslijst" },
           { key: "roadmap", label: en ? "Roadmap" : "Roadmap" },
           { key: "engineering", label: en ? "Engineering" : "Engineering" },
         ].map((t) => (
@@ -84,6 +86,7 @@ export const SettingsAdmin = () => {
         ))}
       </div>
 
+      {tab === "pricing" && <PricingAdminTab en={en} />}
       {tab === "roadmap" && <RoadmapAdminTab en={en} />}
 
       {tab === "general" && (
