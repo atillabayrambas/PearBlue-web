@@ -115,22 +115,26 @@ export const priceLabel = (item, lang = "nl") => {
   return `€${mn} – €${mx} ${unit}`;
 };
 
-// ---------- Live catalog (fetched once, cached) --------------------------------------
+// ---------- Live catalog (fetched once, cached — but only when non-empty) ------------
 let _cache = null;
 
-/** Fetches the pricing catalog from the API. Returns {categories, items}. */
+/** Fetches the pricing catalog from the API. Returns {categories, items}.
+ *  Never caches an empty items array — that way if the initial fetch fails or
+ *  the API is momentarily unreachable, the next call will retry instead of
+ *  serving a stale "empty" catalog for the rest of the SPA session. */
 export const loadPricingCatalog = async () => {
-  if (_cache) return _cache;
+  if (_cache && _cache.items && _cache.items.length > 0) return _cache;
   try {
     const r = await axios.get(`${API}/site/pricing`);
-    _cache = {
+    const next = {
       categories: r.data?.categories || FALLBACK_CATEGORIES,
       items: r.data?.items || FALLBACK_ITEMS,
     };
+    if (next.items.length > 0) _cache = next;
+    return next;
   } catch {
-    _cache = { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS };
+    return { categories: FALLBACK_CATEGORIES, items: FALLBACK_ITEMS };
   }
-  return _cache;
 };
 
 /** Bust the cache — used by the CMS after edits so the public site picks up
