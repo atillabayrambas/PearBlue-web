@@ -20,13 +20,24 @@ export default function Home() {
   const { t, lang } = useLang();
   usePageSeo({ title: "Home", description: "PearBlue — websites, ICT-diensten en cybersecurity. Fris, modern en betaalbaar voor de nieuwe generatie ondernemers.", path: "/" });
   const [preview, setPreview] = useState(PORTFOLIO_PROJECTS.slice(0, 4));
+  const [projectCount, setProjectCount] = useState(PORTFOLIO_PROJECTS.length);
 
   useEffect(() => {
     axios.get(`${API}/projects`).then((res) => {
-      const all = [...(res.data || []), ...PORTFOLIO_PROJECTS];
-      setPreview(all.slice(0, 4));
-    }).catch(() => setPreview(PORTFOLIO_PROJECTS.slice(0, 4)));
+      // Deduplicate: prefer live CMS projects, fall back to the seed bundle
+      const cmsIds = new Set((res.data || []).map((p) => p.id));
+      const combined = [...(res.data || []), ...PORTFOLIO_PROJECTS.filter((p) => !cmsIds.has(p.id))];
+      setPreview(combined.slice(0, 4));
+      setProjectCount(combined.length);
+    }).catch(() => {
+      setPreview(PORTFOLIO_PROJECTS.slice(0, 4));
+      setProjectCount(PORTFOLIO_PROJECTS.length);
+    });
   }, []);
+
+  // Round down to the nearest 10 so "80+", "90+", "100+" etc read as
+  // deliberate milestones rather than jittering by 1 on every new upload.
+  const projectMilestone = projectCount >= 10 ? `${Math.floor(projectCount / 10) * 10}+` : `${projectCount}`;
 
   return (
     <div data-testid="page-home">
@@ -91,14 +102,14 @@ export default function Home() {
             >
               <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "AVG-first · no lock-in" : "AVG-first · geen lock-in"}</span>
               <span className="hidden sm:inline text-app">·</span>
-              <span className="inline-flex items-center gap-1.5"><Award className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "80+ delivered projects" : "80+ opgeleverde projecten"}</span>
+              <span className="inline-flex items-center gap-1.5"><Award className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? `${projectMilestone} delivered projects` : `${projectMilestone} opgeleverde projecten`}</span>
               <span className="hidden sm:inline text-app">·</span>
               <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "Reply within 24h" : "Reactie binnen 24u"}</span>
             </motion.div>
 
             {/* Stats — centered, evenly spaced */}
             <motion.div variants={fadeUp} className="mt-14 grid grid-cols-3 gap-8 sm:gap-14 max-w-2xl" data-testid="hero-stats">
-              {[{ n: "80+", l: t("hero.stat_1") }, { n: "50+", l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
+              {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: "50+", l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
                 <div key={i} className="text-center">
                   <div className="font-heading text-4xl sm:text-5xl font-medium text-strong">{s.n}</div>
                   <div className="text-xs text-muted-fg mt-1 uppercase tracking-widest">{s.l}</div>
