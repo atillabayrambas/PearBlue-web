@@ -32,6 +32,7 @@ from zoho_portal import make_router as make_zoho_router
 from review_invites import scan_now as review_scan_now, start_background_poller as review_poller
 from imap_parser import sync_all as imap_sync_all, start_background_poller as imap_poller
 from stripe_payments import make_router as make_stripe_router
+from hero_uploads import make_router as make_hero_uploads_router
 from cryptography.fernet import Fernet, InvalidToken
 
 # Single source of truth for the running app version. Displayed in footer, CMS
@@ -3999,6 +4000,13 @@ async def admin_delete_pricing(item_id: str, current=Depends(require_admin)):
 app.include_router(api_router)
 app.include_router(make_zoho_router(db))
 app.include_router(make_stripe_router(db))
+# Hero video uploads → mounted under /api/hero-videos. Uses the same
+# require_admin JWT guard as the rest of the CMS. Public streaming route
+# is intentionally unprotected so the marketing hero can render anonymously.
+app.include_router(
+    make_hero_uploads_router(db, require_admin),
+    prefix="/api",
+)
 
 # Session middleware BEFORE CORS
 SESSION_SECRET = os.environ.get('SESSION_SECRET', 'change-me-in-production-32-bytes-min')

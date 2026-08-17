@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, Sparkles, Star, ChevronRight, ShieldCheck, Award, Clock } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
@@ -267,6 +267,13 @@ export default function Home() {
 // The whole thing is `aria-hidden` because it is decorative.
 // -----------------------------------------------------------------------------
 const HeroBackground = ({ mode = "animated", videoUrl = "", poster = "", dim = 35 }) => {
+  // Respect the OS-level accessibility setting. When a visitor has
+  // "reduce motion" enabled we skip the drifting orbs (huge blur updates
+  // per frame) and disable video autoplay — the hero degrades to a calm
+  // static gradient instead. framer-motion's `useReducedMotion()` reads
+  // `prefers-reduced-motion` and updates live if the user toggles it.
+  const reduceMotion = useReducedMotion();
+
   // Video mode — only kicks in when admin has both selected "video" and
   // supplied a URL. Missing URL falls back to the animated backdrop so the
   // hero never renders empty.
@@ -278,14 +285,44 @@ const HeroBackground = ({ mode = "animated", videoUrl = "", poster = "", dim = 3
           className="absolute inset-0 w-full h-full object-cover"
           src={videoUrl}
           poster={poster || undefined}
-          autoPlay
+          autoPlay={!reduceMotion}
           muted
           loop
           playsInline
           preload="metadata"
+          data-reduced-motion={reduceMotion ? "true" : "false"}
         />
         {/* Readability overlay — solid dark tint scaled by CMS `hero_bg_video_dim` */}
         <div className="absolute inset-0 bg-slate-950" style={{ opacity: overlayOpacity }} />
+      </div>
+    );
+  }
+
+  // Static (reduced-motion) variant of the animated mode — same layout, no
+  // orb drift. Renders as a peaceful gradient so users who opted out of
+  // motion still get the brand feel without any animation.
+  if (reduceMotion) {
+    return (
+      <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden="true" data-testid="hero-bg-animated-reduced">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 90% 70% at 50% 30%, rgba(2,192,255,0.10), transparent 70%)",
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-[0.20] dark:opacity-[0.12]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, rgba(2,192,255,0.35) 1px, transparent 0)",
+            backgroundSize: "26px 26px",
+            maskImage:
+              "radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%)",
+          }}
+        />
       </div>
     );
   }

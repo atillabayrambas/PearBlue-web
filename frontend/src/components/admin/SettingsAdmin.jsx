@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Save, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, Target, Sparkles } from "lucide-react";
+import { Save, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, Target, Sparkles, Upload, Loader2 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useLang } from "../../i18n/LanguageContext";
 import { API } from "./_shared";
@@ -52,6 +52,8 @@ export const SettingsAdmin = () => {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("general");
   const [instantMsg, setInstantMsg] = useState("");
+  const [videoUploading, setVideoUploading] = useState(false);
+  const videoFileRef = useRef(null);
   const loadedRef = useRef(false);
 
   useEffect(() => {
@@ -88,6 +90,40 @@ export const SettingsAdmin = () => {
   };
 
   const previewUrl = (mode) => `/?preview=${mode}`;
+
+  // Upload a video file (mp4/webm) directly to Emergent object storage via
+  // the backend. On success we auto-fill `hero_bg_video_url` with the
+  // returned relative URL prefixed with REACT_APP_BACKEND_URL so the public
+  // <video> tag can stream it back through /api/hero-videos/{id}.
+  const uploadHeroVideo = async (file) => {
+    if (!file) return;
+    const MAX = 20 * 1024 * 1024;
+    if (!/^video\/(mp4|webm)$/.test(file.type)) {
+      toast.error(en ? "Only MP4 or WebM files" : "Alleen MP4 of WebM bestanden");
+      return;
+    }
+    if (file.size > MAX) {
+      toast.error(en ? "File too large (max 20 MB)" : "Bestand te groot (max 20 MB)");
+      return;
+    }
+    setVideoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await axios.post(`${API}/hero-videos/upload`, fd, {
+        headers: { ...authHeader(), "Content-Type": "multipart/form-data" },
+      });
+      const absoluteUrl = `${process.env.REACT_APP_BACKEND_URL}${res.data.url}`;
+      await patch({ hero_bg_video_url: absoluteUrl, hero_bg_mode: "video" });
+      toast.success(en ? "Video uploaded" : "Video geüpload");
+    } catch (err) {
+      const detail = err?.response?.data?.detail || (en ? "Upload failed" : "Upload mislukt");
+      toast.error(detail);
+    } finally {
+      setVideoUploading(false);
+      if (videoFileRef.current) videoFileRef.current.value = "";
+    }
+  };
 
   return (
     <div data-testid="cms-settings">
@@ -205,9 +241,47 @@ export const SettingsAdmin = () => {
 
             {form.hero_bg_mode === "video" && (
               <div className="space-y-3">
+                {/* Direct upload — pushes the file to Emergent object storage
+                    via /api/hero-videos/upload and pre-fills the URL below. */}
+                <div className="rounded-xl border-2 border-dashed border-app hover:border-pear-500/60 transition p-4 flex items-center gap-3" data-testid="cms-hero-video-upload">
+                  <input
+                    ref={videoFileRef}
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    onChange={(e) => uploadHeroVideo(e.target.files?.[0])}
+                    disabled={videoUploading}
+                    className="hidden"
+                    data-testid="cms-input-hero-video-file"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => videoFileRef.current?.click()}
+                    disabled={videoUploading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-pear-500 hover:bg-pear-600 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 transition"
+                    data-testid="cms-btn-hero-video-upload"
+                  >
+                    {videoUploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {en ? "Uploading…" : "Bezig met uploaden…"}
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4" />
+                        {en ? "Upload video" : "Video uploaden"}
+                      </>
+                    )}
+                  </button>
+                  <span className="text-xs text-muted-fg leading-tight">
+                    {en
+                      ? "MP4 or WebM · max 20 MB · stored on Emergent cloud"
+                      : "MP4 of WebM · max 20 MB · opgeslagen op Emergent cloud"}
+                  </span>
+                </div>
+
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
-                    {en ? "Video URL (mp4 or webm)" : "Video URL (mp4 of webm)"}
+                    {en ? "…or paste a video URL" : "…of plak een video-URL"}
                   </span>
                   <input
                     value={form.hero_bg_video_url || ""}
