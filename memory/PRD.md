@@ -21,7 +21,13 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 48 (this session, v0.8.0-Beta) — Auto MP4↔WebM transcode + Social media in footer
+### Feb 2026 — Iteration 49 (this session, v0.8.1-Beta) — Hero video library gallery
+- **Video-bibliotheek in CMS** — Site instellingen → Hero achtergrond → Video-modus toont nu een galerij van eerder geüploade clips (aspect-video thumbnails, autoplay on-hover, filenaam-caption). "Kies"-knop swap de actieve hero-video zonder her-upload, prullenbak-icoon doet soft-delete. De actieve clip toont een pear-500 "ACTIVE"-pill en gehighlighte rand.
+- **Auto-refresh** — bibliotheek laadt zodra de admin naar Video-modus schakelt en na elke succesvolle upload. Handmatig "Vernieuwen"-knop naast de teller (`YOUR LIBRARY · N`).
+- **Cascade-cleanup** — als de admin de huidige actieve video verwijdert, blanken we `hero_bg_video_url` automatisch zodat de publieke hero terugvalt op de animated backdrop (geen broken video-tag).
+- **Bestaande backend endpoints hergebruikt** — `GET /api/hero-videos/list`, `DELETE /api/hero-videos/{id}`, geen nieuwe routes nodig. `hero_bg_video_url` blijft de single source of truth.
+
+### Feb 2026 — Iteration 48 (v0.8.0-Beta) — Auto MP4↔WebM transcode + Social media in footer
 - **ffmpeg auto-transcode** — bij elke video-upload draait ffmpeg 5.1 op de server: MP4-input krijgt automatisch een WebM-sibling (libvpx-vp9 realtime), WebM krijgt een MP4-sibling (libx264 ultrafast + faststart). Beide varianten worden in Emergent Object Storage bewaard onder één asset-ID. `hero_video_assets` collectie kreeg `mp4_path`, `webm_path`, `transcode_ok` velden.
 - **Content-negotiating streamer** — `/api/hero-videos/{id}` kijkt naar User-Agent en Accept-header en levert WebM voor Chromium/Firefox (kleiner), MP4 voor Safari/iOS (compat). `.mp4` en `.webm` suffixen forceren een specifiek formaat. Publieke hero `<video>` rendert nu twee `<source>`-tags met `.webm` + `.mp4` zodat de browser zelf de snelste variant kiest.
 - **Backend regressie**: `tests/test_hero_video_uploads.py::test_upload_transcodes_mp4_to_webm` doet end-to-end ffmpeg-transcode van een real testsrc-clip, controleert beide streams + Chrome/Safari content-negotiation. 8/8 tests groen.

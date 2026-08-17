@@ -55,8 +55,28 @@ export const SettingsAdmin = () => {
   const [tab, setTab] = useState("general");
   const [instantMsg, setInstantMsg] = useState("");
   const [videoUploading, setVideoUploading] = useState(false);
+  const [videoLibrary, setVideoLibrary] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const videoFileRef = useRef(null);
   const loadedRef = useRef(false);
+
+  const loadVideoLibrary = React.useCallback(async () => {
+    setLibraryLoading(true);
+    try {
+      const r = await axios.get(`${API}/hero-videos/list`, { headers: authHeader() });
+      setVideoLibrary(r.data || []);
+    } catch {
+      // silent — the CMS will just show an empty gallery
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, [authHeader]);
+
+  // Refresh the library whenever we enter Video mode so the admin sees
+  // whatever they've uploaded across sessions.
+  useEffect(() => {
+    if (form.hero_bg_mode === "video") loadVideoLibrary();
+  }, [form.hero_bg_mode, loadVideoLibrary]);
 
   useEffect(() => {
     axios.get(`${API}/settings`).then((r) => {
@@ -93,10 +113,6 @@ export const SettingsAdmin = () => {
 
   const previewUrl = (mode) => `/?preview=${mode}`;
 
-  // Upload a video file (mp4/webm) directly to Emergent object storage via
-  // the backend. On success we auto-fill `hero_bg_video_url` with the
-  // returned relative URL prefixed with REACT_APP_BACKEND_URL so the public
-  // <video> tag can stream it back through /api/hero-videos/{id}.
   const uploadHeroVideo = async (file) => {
     if (!file) return;
     const MAX = 20 * 1024 * 1024;
@@ -117,6 +133,7 @@ export const SettingsAdmin = () => {
       });
       const absoluteUrl = `${process.env.REACT_APP_BACKEND_URL}${res.data.url}`;
       await patch({ hero_bg_video_url: absoluteUrl, hero_bg_mode: "video" });
+      await loadVideoLibrary();
       toast.success(en ? "Video uploaded" : "Video geüpload");
     } catch (err) {
       const detail = err?.response?.data?.detail || (en ? "Upload failed" : "Upload mislukt");
@@ -124,6 +141,36 @@ export const SettingsAdmin = () => {
     } finally {
       setVideoUploading(false);
       if (videoFileRef.current) videoFileRef.current.value = "";
+    }
+  };
+
+  // Absolute URL for a stored library asset. We store absolute URLs in
+  // `hero_bg_video_url` so `<video>` on the public site loads directly.
+  const absoluteAssetUrl = (item) =>
+    `${process.env.REACT_APP_BACKEND_URL}${item.url}`;
+
+  const selectFromLibrary = async (item) => {
+    await patch({ hero_bg_video_url: absoluteAssetUrl(item), hero_bg_mode: "video" });
+    toast.success(en ? "Hero video updated" : "Hero-video bijgewerkt");
+  };
+
+  const deleteFromLibrary = async (item) => {
+    const confirmMsg = en
+      ? "Delete this video from the library? This can't be undone."
+      : "Deze video uit de bibliotheek verwijderen? Dit kan niet ongedaan worden.";
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      await axios.delete(`${API}/hero-videos/${item.id}`, { headers: authHeader() });
+      // If we just deleted the active hero, blank it out so the public site
+      // gracefully falls back to the animated backdrop.
+      if (form.hero_bg_video_url && form.hero_bg_video_url.includes(item.id)) {
+        await patch({ hero_bg_video_url: "" });
+      }
+      await loadVideoLibrary();
+      toast.success(en ? "Video deleted" : "Video verwijderd");
+    } catch (err) {
+      const detail = err?.response?.data?.detail || (en ? "Delete failed" : "Verwijderen mislukt");
+      toast.error(detail);
     }
   };
 
@@ -280,6 +327,94 @@ export const SettingsAdmin = () => {
                       : "MP4 of WebM · max 20 MB · opgeslagen op Emergent cloud"}
                   </span>
                 </div>
+
+                {/* Video library — every previously uploaded clip lives here
+                    so the admin can swap the active hero without re-uploading. */}
+                {(videoLibrary.length > 0 || libraryLoading) && (
+                  <div data-testid="cms-hero-video-library">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
+                        {en ? "Your library" : "Jouw bibliotheek"}{" "}
+                        <span className="text-muted-fg/60 font-normal normal-case">
+                          {libraryLoading
+                            ? (en ? "· loading…" : "· laden…")
+                            : `· ${videoLibrary.length}`}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={loadVideoLibrary}
+                        disabled={libraryLoading}
+                        className="text-xs text-pear-500 hover:underline disabled:opacity-50"
+                        data-testid="cms-hero-library-refresh"
+                      >
+                        {en ? "Refresh" : "Vernieuwen"}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {videoLibrary.map((item) => {
+                        const active = form.hero_bg_video_url && form.hero_bg_video_url.includes(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            className={`group relative rounded-xl overflow-hidden border transition ${
+                              active
+                                ? "border-pear-500 ring-2 ring-pear-500/40"
+                                : "border-app hover:border-pear-500/50"
+                            }`}
+                            data-testid={`cms-hero-library-item-${item.id}`}
+                          >
+                            <div className="aspect-video bg-slate-900 relative">
+                              <video
+                                src={absoluteAssetUrl(item)}
+                                muted
+                                loop
+                                playsInline
+                                preload="metadata"
+                                onMouseEnter={(e) => { e.currentTarget.play().catch(() => {}); }}
+                                onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                              {active && (
+                                <span
+                                  className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-pear-500 text-white text-[10px] font-semibold uppercase tracking-widest px-2 py-1 shadow-sm"
+                                  data-testid={`cms-hero-library-active-${item.id}`}
+                                >
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  {en ? "Active" : "Actief"}
+                                </span>
+                              )}
+                            </div>
+                            <div className="p-2 flex items-center gap-1.5 surface">
+                              <span className="text-[11px] text-muted-fg truncate flex-1" title={item.original_filename}>
+                                {item.original_filename || item.id.slice(0, 8)}
+                              </span>
+                              {!active && (
+                                <button
+                                  type="button"
+                                  onClick={() => selectFromLibrary(item)}
+                                  className="text-[11px] font-semibold text-pear-500 hover:text-white hover:bg-pear-500 rounded px-2 py-0.5 transition"
+                                  data-testid={`cms-hero-library-use-${item.id}`}
+                                >
+                                  {en ? "Use" : "Kies"}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => deleteFromLibrary(item)}
+                                className="text-muted-fg hover:text-red-500 transition"
+                                title={en ? "Delete" : "Verwijderen"}
+                                data-testid={`cms-hero-library-delete-${item.id}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
