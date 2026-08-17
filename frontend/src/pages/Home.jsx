@@ -20,24 +20,44 @@ export default function Home() {
   const { t, lang } = useLang();
   usePageSeo({ title: "Home", description: "PearBlue — websites, ICT-diensten en cybersecurity. Fris, modern en betaalbaar voor de nieuwe generatie ondernemers.", path: "/" });
   const [preview, setPreview] = useState(PORTFOLIO_PROJECTS.slice(0, 4));
-  const [projectCount, setProjectCount] = useState(PORTFOLIO_PROJECTS.length);
+  const [projectCount, setProjectCount] = useState(0);
+  const [clientCount, setClientCount] = useState(0);
 
   useEffect(() => {
     axios.get(`${API}/projects`).then((res) => {
-      // Deduplicate: prefer live CMS projects, fall back to the seed bundle
-      const cmsIds = new Set((res.data || []).map((p) => p.id));
-      const combined = [...(res.data || []), ...PORTFOLIO_PROJECTS.filter((p) => !cmsIds.has(p.id))];
+      const live = res.data || [];
+      // Preview: dedupe by id, prefer live CMS projects — falls back to seed for
+      // visual variety only. Counts use LIVE data as source of truth.
+      const liveIds = new Set(live.map((p) => p.id));
+      const combined = [...live, ...PORTFOLIO_PROJECTS.filter((p) => !liveIds.has(p.id))];
       setPreview(combined.slice(0, 4));
-      setProjectCount(combined.length);
+      setProjectCount(live.length);
+
+      // Client count: extract company name from title. Portfolio titles follow
+      // the convention "Company — Project" (em-dash separated). Fall back to
+      // the full title when the pattern is absent so we never miscount.
+      const clients = new Set();
+      for (const p of live) {
+        const raw = (p.title || "").trim();
+        if (!raw) continue;
+        const [head] = raw.split(/[—–-]/); // em-dash, en-dash, hyphen
+        const name = (head || raw).trim();
+        if (name) clients.add(name.toLowerCase());
+      }
+      setClientCount(clients.size);
     }).catch(() => {
       setPreview(PORTFOLIO_PROJECTS.slice(0, 4));
       setProjectCount(PORTFOLIO_PROJECTS.length);
+      setClientCount(PORTFOLIO_PROJECTS.length);
     });
   }, []);
 
-  // Round down to the nearest 10 so "80+", "90+", "100+" etc read as
-  // deliberate milestones rather than jittering by 1 on every new upload.
-  const projectMilestone = projectCount >= 10 ? `${Math.floor(projectCount / 10) * 10}+` : `${projectCount}`;
+  // Milestone label: exact number until we cross a tens-milestone, then "10+",
+  // "20+", "50+", "100+". Prevents jitter on every new upload while still
+  // showing honest counts under the first milestone.
+  const milestoneLabel = (n) => (n >= 10 ? `${Math.floor(n / 10) * 10}+` : `${n}`);
+  const projectMilestone = milestoneLabel(projectCount);
+  const clientMilestone = milestoneLabel(clientCount);
 
   return (
     <div data-testid="page-home">
@@ -109,7 +129,7 @@ export default function Home() {
 
             {/* Stats — centered, evenly spaced */}
             <motion.div variants={fadeUp} className="mt-14 grid grid-cols-3 gap-8 sm:gap-14 max-w-2xl" data-testid="hero-stats">
-              {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: "50+", l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
+              {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: clientMilestone, l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
                 <div key={i} className="text-center">
                   <div className="font-heading text-4xl sm:text-5xl font-medium text-strong">{s.n}</div>
                   <div className="text-xs text-muted-fg mt-1 uppercase tracking-widest">{s.l}</div>
@@ -259,14 +279,6 @@ const HeroBackground = () => (
       style={{ width: 340, height: 340, top: "40%", left: "55%" }}
       animate={{ x: [0, 20, -30, 0], y: [0, -15, 10, 0], scale: [1, 1.06, 0.96, 1] }}
       transition={{ duration: 30, repeat: Infinity, ease: "easeInOut" }}
-    />
-
-    {/* 4) Sweeping horizontal shine (very subtle) — moves left→right over ~14s */}
-    <motion.div
-      className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 dark:via-white/[0.04] to-transparent pointer-events-none"
-      initial={{ x: "-40%" }}
-      animate={{ x: "140%" }}
-      transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
     />
   </div>
 );
