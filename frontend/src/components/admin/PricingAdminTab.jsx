@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Save, Plus, Trash2, Edit3, X, ShieldCheck, Server, Globe, DollarSign } from "lucide-react";
@@ -49,6 +49,19 @@ export const PricingAdminTab = ({ en }) => {
   const [activeService, setActiveService] = useState("web");
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null = form hidden, or a draft object
+  const editorRef = useRef(null);
+  const [flash, setFlash] = useState(false);
+
+  // Scroll the editor into view and briefly flash the border whenever the
+  // draft changes — makes it obvious a click on "Bewerk" deep in the list
+  // actually did something even when the form sits high on the page.
+  useEffect(() => {
+    if (!editing) return;
+    editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFlash(true);
+    const t = setTimeout(() => setFlash(false), 900);
+    return () => clearTimeout(t);
+  }, [editing?.id, editing === null ? "closed" : "open"]);
 
   const load = async () => {
     setLoading(true);
@@ -149,7 +162,7 @@ export const PricingAdminTab = ({ en }) => {
 
       {/* Editor */}
       {editing ? (
-        <form onSubmit={submit} className="surface border border-pear-500/40 rounded-2xl p-6 space-y-4" data-testid="cms-pricing-form">
+        <form ref={editorRef} onSubmit={submit} className={`surface border rounded-2xl p-6 space-y-4 transition-all ${flash ? "border-pear-500 ring-4 ring-pear-500/25 shadow-xl" : "border-pear-500/40"}`} data-testid="cms-pricing-form">
           <div className="flex items-center justify-between gap-2 mb-2">
             <h3 className="font-heading font-semibold text-strong">
               {editing.id ? (en ? "Edit price item" : "Prijs-item bewerken") : (en ? "New price item" : "Nieuw prijs-item")}
