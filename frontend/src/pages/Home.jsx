@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, Star, ChevronRight } from "lucide-react";
+import { ArrowRight, Sparkles, Star, ChevronRight, ShieldCheck, Award, Clock } from "lucide-react";
 import { useLang } from "../i18n/LanguageContext";
 import { PricingTables } from "../components/PricingTables";
 import { PORTFOLIO_PROJECTS } from "../data/projects";
@@ -12,10 +12,6 @@ import { TrustStats } from "../components/TrustStats";
 import { TrustpilotWidget } from "../components/TrustpilotWidget";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const IMAGES = {
-  hero: "https://images.unsplash.com/photo-1585854467604-cf2080ccef31?crop=entropy&cs=srgb&fm=jpg&w=1400&q=85",
-};
 
 const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.6 } } };
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
@@ -34,30 +30,34 @@ export default function Home() {
 
   return (
     <div data-testid="page-home">
-      {/* HERO */}
-      <section className="relative overflow-hidden">
-        <div className="pear-blob bg-pear-200 w-[420px] h-[420px] top-[-100px] right-[-100px]" />
-        <div className="pear-blob bg-pear-100 w-[520px] h-[520px] bottom-[-200px] left-[-140px]" />
+      {/* HERO — full-width, animated background, no photo. Feels open, calm, trustworthy. */}
+      <section className="relative overflow-hidden isolate" data-testid="hero">
+        <HeroBackground />
+
         {/* Floating rotating review pill at top of the hero */}
         <div className="relative z-10">
           <FloatingReviewTicker />
         </div>
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 pt-20 pb-24 lg:pt-28 lg:pb-32 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative">
-          <motion.div initial="hidden" animate="show" variants={stagger} className="lg:col-span-7">
-            <motion.p variants={fadeUp} className="overline mb-5 leading-relaxed break-words max-w-[92%]" data-testid="hero-eyebrow">
-              <Sparkles className="inline h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 -mt-0.5" />
+
+        <div className="relative z-10 max-w-6xl mx-auto px-6 lg:px-10 pt-20 pb-24 lg:pt-28 lg:pb-36 text-center">
+          <motion.div initial="hidden" animate="show" variants={stagger} className="flex flex-col items-center">
+            <motion.p variants={fadeUp} className="overline inline-flex items-center gap-1.5 rounded-full surface border border-pear-500/25 px-4 py-1.5 shadow-sm" data-testid="hero-eyebrow">
+              <Sparkles className="h-3.5 w-3.5 text-pear-500" />
               <span className="sm:hidden">{lang === "en" ? "Websites · IT · Cybersecurity" : "Websites · IT · Cybersecurity"}</span>
               <span className="hidden sm:inline">{t("hero.eyebrow")}</span>
             </motion.p>
-            <motion.h1 variants={fadeUp} className="font-heading font-light text-4xl sm:text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tighter text-strong break-words" data-testid="hero-title">
+
+            <motion.h1 variants={fadeUp} className="font-heading font-light text-5xl sm:text-6xl md:text-7xl lg:text-[5.5rem] leading-[1.02] tracking-tighter text-strong break-words mt-8 max-w-5xl" data-testid="hero-title">
               {t("hero.title_1")}{" "}
               <span className="text-gradient-pear font-medium">{t("hero.title_accent")}</span>{" "}
               {t("hero.title_2")}
             </motion.h1>
-            <motion.p variants={fadeUp} className="mt-6 text-lg text-muted-fg max-w-2xl leading-relaxed" data-testid="hero-subtitle">
+
+            <motion.p variants={fadeUp} className="mt-8 text-lg sm:text-xl text-muted-fg max-w-2xl leading-relaxed" data-testid="hero-subtitle">
               {t("hero.subtitle")}
             </motion.p>
-            <motion.div variants={fadeUp} className="mt-9 flex flex-wrap gap-3">
+
+            <motion.div variants={fadeUp} className="mt-10 flex flex-wrap gap-3 justify-center">
               <Link to="/contact" className="btn-primary" data-testid="hero-cta-primary">
                 {t("hero.cta_primary")} <ArrowRight className="h-4 w-4" />
               </Link>
@@ -65,30 +65,51 @@ export default function Home() {
                 {t("hero.cta_secondary")}
               </Link>
             </motion.div>
-            <motion.div variants={fadeUp} className="mt-12 grid grid-cols-3 gap-6 max-w-lg" data-testid="hero-stats">
+
+            {/* Trust pill — customer quote surfaced as social proof under the CTAs */}
+            <motion.div
+              variants={fadeUp}
+              className="mt-8 inline-flex items-center gap-3 rounded-full surface border border-app px-4 py-2 shadow-[0_10px_30px_rgba(2,192,255,0.08)]"
+              data-testid="hero-trust-quote"
+            >
+              <div className="flex items-center gap-0.5 text-amber-400">
+                {[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}
+              </div>
+              <p className="text-xs sm:text-sm text-strong/85">
+                <span className="italic">
+                  {lang === "en" ? "\u201cFast, professional and the site looks fantastic.\u201d" : "\u201cSnel, professioneel en de site oogt fantastisch.\u201d"}
+                </span>
+                <span className="ml-2 text-muted-fg">— Jeroen, Bakkerij De Peer</span>
+              </p>
+            </motion.div>
+
+            {/* Reassurance strip — three lightweight trust signals */}
+            <motion.div
+              variants={fadeUp}
+              className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-fg"
+              data-testid="hero-reassurance"
+            >
+              <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "AVG-first · no lock-in" : "AVG-first · geen lock-in"}</span>
+              <span className="hidden sm:inline text-app">·</span>
+              <span className="inline-flex items-center gap-1.5"><Award className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "80+ delivered projects" : "80+ opgeleverde projecten"}</span>
+              <span className="hidden sm:inline text-app">·</span>
+              <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "Reply within 24h" : "Reactie binnen 24u"}</span>
+            </motion.div>
+
+            {/* Stats — centered, evenly spaced */}
+            <motion.div variants={fadeUp} className="mt-14 grid grid-cols-3 gap-8 sm:gap-14 max-w-2xl" data-testid="hero-stats">
               {[{ n: "80+", l: t("hero.stat_1") }, { n: "50+", l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
-                <div key={i} className="border-l-2 border-pear-500 pl-4">
-                  <div className="font-heading text-3xl font-medium text-strong">{s.n}</div>
-                  <div className="text-xs text-muted-fg mt-1">{s.l}</div>
+                <div key={i} className="text-center">
+                  <div className="font-heading text-4xl sm:text-5xl font-medium text-strong">{s.n}</div>
+                  <div className="text-xs text-muted-fg mt-1 uppercase tracking-widest">{s.l}</div>
                 </div>
               ))}
             </motion.div>
           </motion.div>
-
-          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} className="lg:col-span-5 relative">
-            <div className="relative rounded-3xl overflow-hidden aspect-[4/5] shadow-[0_30px_80px_rgba(2,192,255,0.2)]">
-              <img src={IMAGES.hero} alt="Fluid abstract" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-tr from-pear-500/10 via-transparent to-transparent" />
-            </div>
-            <div className="absolute -bottom-6 -left-6 surface rounded-2xl p-5 shadow-[0_20px_50px_rgba(10,25,47,0.08)] border border-app w-56 hidden sm:block">
-              <div className="flex items-center gap-1 text-pear-500 mb-2">
-                {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}
-              </div>
-              <p className="text-xs text-muted-fg leading-relaxed">&ldquo;Snel, professioneel en de site oogt fantastisch.&rdquo;</p>
-              <p className="text-xs font-semibold text-strong mt-2">— Jeroen, Bakkerij De Peer</p>
-            </div>
-          </motion.div>
         </div>
+
+        {/* Bottom fade so the hero blends into the marquee band below */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-[color:var(--bg)]" aria-hidden="true" />
       </section>
 
       {/* MARQUEE */}
@@ -175,3 +196,67 @@ export default function Home() {
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// HeroBackground — full-bleed animated backdrop for the landing hero
+//
+// Layers (bottom → top):
+//   1. Soft pear-mint radial wash to lift the section off the page background
+//   2. Static dot-grid mask (pear-tinted) — gives the wide hero visual texture
+//      without competing with the copy
+//   3. Three floating gradient orbs that gently drift → creates a calm,
+//      trustworthy sense of motion (framer-motion respects prefers-reduced-motion)
+//   4. Subtle top→bottom fade to hand off to the marquee cleanly
+//
+// The whole thing is `aria-hidden` because it is decorative. No image assets.
+// -----------------------------------------------------------------------------
+const HeroBackground = () => (
+  <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+    {/* 1) Base wash */}
+    <div className="absolute inset-0 bg-gradient-to-br from-pear-50/60 via-transparent to-pear-100/30 dark:from-pear-500/5 dark:via-transparent dark:to-pear-500/10" />
+
+    {/* 2) Dot grid (SVG data-URI mask so it works on both light/dark) */}
+    <div
+      className="absolute inset-0 opacity-[0.35] dark:opacity-20"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 1px 1px, rgba(2,192,255,0.35) 1px, transparent 0)",
+        backgroundSize: "26px 26px",
+        maskImage:
+          "radial-gradient(ellipse 80% 60% at 50% 40%, black 40%, transparent 100%)",
+        WebkitMaskImage:
+          "radial-gradient(ellipse 80% 60% at 50% 40%, black 40%, transparent 100%)",
+      }}
+    />
+
+    {/* 3) Floating orbs — slow, calming drift. Each orb has its own duration
+           and phase so they never sync up (feels alive, not looping). */}
+    <motion.div
+      className="absolute rounded-full blur-3xl bg-pear-400/30 dark:bg-pear-500/25"
+      style={{ width: 520, height: 520, top: -140, right: -100 }}
+      animate={{ x: [0, 40, -20, 0], y: [0, 30, -10, 0] }}
+      transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+    />
+    <motion.div
+      className="absolute rounded-full blur-3xl bg-sky-300/30 dark:bg-sky-400/15"
+      style={{ width: 620, height: 620, bottom: -240, left: -180 }}
+      animate={{ x: [0, -30, 25, 0], y: [0, -20, 20, 0] }}
+      transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
+    />
+    <motion.div
+      className="absolute rounded-full blur-3xl bg-emerald-300/20 dark:bg-emerald-400/10"
+      style={{ width: 340, height: 340, top: "40%", left: "55%" }}
+      animate={{ x: [0, 20, -30, 0], y: [0, -15, 10, 0], scale: [1, 1.06, 0.96, 1] }}
+      transition={{ duration: 30, repeat: Infinity, ease: "easeInOut" }}
+    />
+
+    {/* 4) Sweeping horizontal shine (very subtle) — moves left→right over ~14s */}
+    <motion.div
+      className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 dark:via-white/[0.04] to-transparent pointer-events-none"
+      initial={{ x: "-40%" }}
+      animate={{ x: "140%" }}
+      transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
+    />
+  </div>
+);
+
