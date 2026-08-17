@@ -144,6 +144,10 @@ body {
 
 .overline {
   @apply text-[10px] sm:text-xs tracking-[0.14em] sm:tracking-[0.24em] uppercase font-bold text-pear-500;
+  /* Explicitly cancel Tailwind's built-in `.overline` utility, which applies
+     `text-decoration-line: overline` and rendered a mysterious blue line
+     above every eyebrow label across the site. */
+  text-decoration-line: none;
 }
 
 .pear-blob {

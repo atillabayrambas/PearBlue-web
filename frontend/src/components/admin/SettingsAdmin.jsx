@@ -7,6 +7,26 @@ import { useLang } from "../../i18n/LanguageContext";
 import { API } from "./_shared";
 import { ROADMAP_ICON_NAMES, iconFromName } from "../../data/roadmapIcons";
 import { PricingAdminTab } from "./PricingAdminTab";
+import { invalidateSiteSettingsCache } from "../../hooks/useSiteSettings";
+
+// Small reusable pill-style toggle row used by the visibility card.
+// Instant-saves via the `onChange` callback (the parent uses `patch()` which
+// PUTs a single field to /api/settings, mirroring the Engineering tab UX).
+const ToggleRow = ({ label, sub, checked, onChange, testid }) => (
+  <label className="flex items-start gap-3 rounded-xl surface-2 border border-app p-4 cursor-pointer hover:border-pear-500 transition" data-testid={testid}>
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      className="mt-1 accent-pear-500 h-5 w-5"
+      data-testid={`${testid}-input`}
+    />
+    <div className="min-w-0">
+      <p className="text-sm font-semibold text-strong">{label}</p>
+      {sub && <p className="text-xs text-muted-fg mt-0.5 leading-relaxed">{sub}</p>}
+    </div>
+  </label>
+);
 
 export const SettingsAdmin = () => {
   const { authHeader } = useAuth();
@@ -22,6 +42,12 @@ export const SettingsAdmin = () => {
     maintenance_bg_mode: "dynamic",
     maintenance_bg_url: "",
     ai_translate_limit_per_minute: 30,
+    show_reviews: true,
+    show_trust_stats: true,
+    hero_bg_mode: "animated",
+    hero_bg_video_url: "",
+    hero_bg_video_poster: "",
+    hero_bg_video_dim: 35,
   });
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("general");
@@ -43,6 +69,7 @@ export const SettingsAdmin = () => {
     if (!loadedRef.current) return;
     try {
       await axios.put(`${API}/settings`, partial, { headers: authHeader() });
+      invalidateSiteSettingsCache();
       setInstantMsg(en ? "Saved" : "Opgeslagen");
       setTimeout(() => setInstantMsg(""), 1400);
     } catch {
@@ -55,6 +82,7 @@ export const SettingsAdmin = () => {
     setSaving(true);
     try {
       await axios.put(`${API}/settings`, form, { headers: authHeader() });
+      invalidateSiteSettingsCache();
       toast.success(en ? "Settings saved" : "Instellingen opgeslagen");
     } catch { toast.error(en ? "Save failed" : "Opslaan mislukt"); } finally { setSaving(false); }
   };
@@ -122,6 +150,139 @@ export const SettingsAdmin = () => {
               <input value={form.hero_headline_en || ""} onChange={change("hero_headline_en")} data-testid="cms-input-hero-en"
                 className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong" />
             </label>
+          </div>
+
+          <div className="pt-4 border-t border-app">
+            <h3 className="font-heading font-semibold text-strong mb-1">{en ? "Public visibility" : "Publieke zichtbaarheid"}</h3>
+            <p className="text-xs text-muted-fg mb-4">{en ? "Toggle major social-proof widgets sitewide. Great for a rebrand or dispute period." : "Schakel grote sociale-proof widgets sitebreed uit of aan. Handig bij rebrand of geschil."}</p>
+            <div className="space-y-3">
+              <ToggleRow
+                label={en ? "Show reviews everywhere" : "Reviews overal tonen"}
+                sub={en ? "Hides the review ticker, hero quote, featured reviews section and Trustpilot widget." : "Verbergt de review-ticker, hero-quote, featured-reviews sectie en de Trustpilot-widget."}
+                checked={!!form.show_reviews}
+                onChange={(v) => patch({ show_reviews: v })}
+                testid="cms-toggle-show-reviews"
+              />
+              <ToggleRow
+                label={en ? "Show trust stats on homepage" : "Vertrouwenscijfers op homepagina tonen"}
+                sub={en ? "Toggles the '7 Projects · 7 Happy clients · 16+ Years' stats block and the sitewide TrustStats section." : "Toggelt het '7 Projecten · 7 Klanten · 16+ Jaar'-blok en de sitebrede TrustStats-sectie."}
+                checked={!!form.show_trust_stats}
+                onChange={(v) => patch({ show_trust_stats: v })}
+                testid="cms-toggle-show-trust-stats"
+              />
+            </div>
+            {instantMsg && <span className="mt-2 inline-block text-xs text-emerald-500" data-testid="cms-visibility-saved">✓ {instantMsg}</span>}
+          </div>
+
+          <div className="pt-4 border-t border-app" data-testid="cms-hero-bg-card">
+            <h3 className="font-heading font-semibold text-strong mb-1">{en ? "Hero background" : "Hero achtergrond"}</h3>
+            <p className="text-xs text-muted-fg mb-4">
+              {en
+                ? "Choose the landing hero backdrop. Video plays muted and loops on the whole hero — great for a brand reel."
+                : "Kies de achtergrond van de hero. Video speelt gedempt en herhalend achter de hero — perfect voor een merkfilm."}
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {[
+                { key: "animated", label: en ? "Animated (default)" : "Animatie (standaard)" },
+                { key: "video", label: en ? "Video" : "Video" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => patch({ hero_bg_mode: opt.key })}
+                  className={`text-sm rounded-xl border px-4 py-2.5 transition ${
+                    form.hero_bg_mode === opt.key
+                      ? "border-pear-500 bg-pear-500/10 text-strong font-semibold"
+                      : "border-app surface-2 text-muted-fg hover:text-strong hover:border-pear-500/50"
+                  }`}
+                  data-testid={`cms-hero-bg-mode-${opt.key}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {form.hero_bg_mode === "video" && (
+              <div className="space-y-3">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
+                    {en ? "Video URL (mp4 or webm)" : "Video URL (mp4 of webm)"}
+                  </span>
+                  <input
+                    value={form.hero_bg_video_url || ""}
+                    onChange={change("hero_bg_video_url")}
+                    onBlur={() => patch({ hero_bg_video_url: form.hero_bg_video_url })}
+                    placeholder="https://cdn.example.com/hero.mp4"
+                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono"
+                    data-testid="cms-input-hero-video-url"
+                  />
+                  <span className="text-xs text-muted-fg mt-1 block">
+                    {en
+                      ? "Tip: keep clips under 5MB, 8–15s loops, muted. WebM is smaller than MP4."
+                      : "Tip: houd clips onder 5MB, 8–15s loops, gedempt. WebM is compacter dan MP4."}
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
+                    {en ? "Poster image URL (optional)" : "Posterafbeelding URL (optioneel)"}
+                  </span>
+                  <input
+                    value={form.hero_bg_video_poster || ""}
+                    onChange={change("hero_bg_video_poster")}
+                    onBlur={() => patch({ hero_bg_video_poster: form.hero_bg_video_poster })}
+                    placeholder="https://cdn.example.com/hero-poster.jpg"
+                    className="mt-1.5 w-full rounded-xl surface-2 border border-transparent focus:border-pear-500 focus:ring-2 focus:ring-pear-500/20 px-4 py-2.5 text-sm outline-none text-strong font-mono"
+                    data-testid="cms-input-hero-video-poster"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-fg">
+                    {en ? "Overlay dim" : "Overlay dempen"} ({form.hero_bg_video_dim ?? 35}%)
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={80}
+                    step={5}
+                    value={form.hero_bg_video_dim ?? 35}
+                    onChange={(e) => setForm((f) => ({ ...f, hero_bg_video_dim: Number(e.target.value) }))}
+                    onMouseUp={() => patch({ hero_bg_video_dim: Number(form.hero_bg_video_dim) })}
+                    onTouchEnd={() => patch({ hero_bg_video_dim: Number(form.hero_bg_video_dim) })}
+                    className="mt-2 w-full accent-pear-500"
+                    data-testid="cms-input-hero-video-dim"
+                  />
+                  <span className="text-xs text-muted-fg mt-1 block">
+                    {en
+                      ? "Darker overlay = more readable hero copy on bright clips."
+                      : "Donkerder overlay = beter leesbare hero-tekst bij lichte clips."}
+                  </span>
+                </label>
+
+                {form.hero_bg_video_url && (
+                  <div className="rounded-xl overflow-hidden border border-app aspect-video bg-slate-900 relative" data-testid="cms-hero-video-preview">
+                    <video
+                      src={form.hero_bg_video_url}
+                      poster={form.hero_bg_video_poster || undefined}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                    <div
+                      className="absolute inset-0 bg-slate-950 pointer-events-none"
+                      style={{ opacity: (form.hero_bg_video_dim ?? 35) / 100 }}
+                    />
+                    <span className="absolute bottom-2 right-2 text-[10px] uppercase tracking-widest text-white/70 bg-black/40 rounded px-2 py-0.5">
+                      {en ? "Preview" : "Voorbeeld"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <button type="submit" disabled={saving} className="btn-primary" data-testid="cms-settings-submit">

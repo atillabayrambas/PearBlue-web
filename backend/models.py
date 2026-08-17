@@ -161,6 +161,20 @@ class SiteSettings(BaseModel):
     maintenance_show_version: Optional[bool] = True
     # AI translate rate limit (per admin, per minute). Set via CMS.
     ai_translate_limit_per_minute: Optional[int] = 30
+    # Visibility toggles — flip these from CMS → General to hide social-proof
+    # widgets sitewide (rebrand, migration, dispute resolution, etc.). Default
+    # to True so the public site keeps its current look.
+    show_reviews: Optional[bool] = True
+    show_trust_stats: Optional[bool] = True
+    # Hero background — "animated" (default CSS/motion backdrop) or "video"
+    # (admin-supplied muted looping MP4/WebM). Admins upload/paste a URL and
+    # the public hero swaps the backdrop layer only; copy/CTAs are untouched.
+    hero_bg_mode: Optional[str] = "animated"  # "animated" | "video"
+    hero_bg_video_url: Optional[str] = ""
+    hero_bg_video_poster: Optional[str] = ""
+    # Dim the video with a translucent overlay so hero copy stays readable
+    # regardless of the clip's brightness. 0..80 (%), default 35.
+    hero_bg_video_dim: Optional[int] = 35
 
 
 class SiteSettingsUpdate(BaseModel):
@@ -173,6 +187,12 @@ class SiteSettingsUpdate(BaseModel):
     maintenance_bg_mode: Optional[str] = Field(None, pattern="^(dynamic|custom)$")
     maintenance_bg_url: Optional[str] = Field(None, max_length=500)
     ai_translate_limit_per_minute: Optional[int] = Field(None, ge=1, le=500)
+    show_reviews: Optional[bool] = None
+    show_trust_stats: Optional[bool] = None
+    hero_bg_mode: Optional[str] = Field(None, pattern="^(animated|video)$")
+    hero_bg_video_url: Optional[str] = Field(None, max_length=500)
+    hero_bg_video_poster: Optional[str] = Field(None, max_length=500)
+    hero_bg_video_dim: Optional[int] = Field(None, ge=0, le=80)
 
 
 class PortalRegistration(BaseModel):

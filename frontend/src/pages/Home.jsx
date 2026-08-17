@@ -10,6 +10,7 @@ import { usePageSeo } from "../hooks/usePageSeo";
 import { FeaturedReviews, FloatingReviewTicker } from "../components/Reviews";
 import { TrustStats } from "../components/TrustStats";
 import { TrustpilotWidget } from "../components/TrustpilotWidget";
+import { useSiteSettings } from "../hooks/useSiteSettings";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -18,6 +19,7 @@ const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 
 export default function Home() {
   const { t, lang } = useLang();
+  const { show_reviews, show_trust_stats, hero_bg_mode, hero_bg_video_url, hero_bg_video_poster, hero_bg_video_dim } = useSiteSettings();
   usePageSeo({ title: "Home", description: "PearBlue — websites, ICT-diensten en cybersecurity. Fris, modern en betaalbaar voor de nieuwe generatie ondernemers.", path: "/" });
   const [preview, setPreview] = useState(PORTFOLIO_PROJECTS.slice(0, 4));
   const [projectCount, setProjectCount] = useState(0);
@@ -69,16 +71,24 @@ export default function Home() {
     <div data-testid="page-home">
       {/* HERO — full-width, animated background, no photo. Feels open, calm, trustworthy. */}
       <section className="relative overflow-hidden isolate" data-testid="hero">
-        <HeroBackground />
+        <HeroBackground
+          mode={hero_bg_mode}
+          videoUrl={hero_bg_video_url}
+          poster={hero_bg_video_poster}
+          dim={hero_bg_video_dim}
+        />
 
-        {/* Floating rotating review pill at top of the hero */}
-        <div className="relative z-10">
-          <FloatingReviewTicker />
-        </div>
+        {/* Floating rotating review pill at top of the hero — respects the
+            CMS show_reviews toggle */}
+        {show_reviews && (
+          <div className="relative z-10">
+            <FloatingReviewTicker />
+          </div>
+        )}
 
         <div className="relative z-10 max-w-6xl mx-auto px-6 lg:px-10 pt-20 pb-24 lg:pt-28 lg:pb-36 text-center">
           <motion.div initial="hidden" animate="show" variants={stagger} className="flex flex-col items-center">
-            <motion.p variants={fadeUp} className="overline inline-flex items-center gap-1.5 rounded-full surface border border-pear-500/25 px-4 py-1.5 shadow-sm" data-testid="hero-eyebrow">
+            <motion.p variants={fadeUp} className="overline inline-flex items-center gap-1.5 rounded-full surface px-4 py-1.5 shadow-sm" data-testid="hero-eyebrow">
               <Sparkles className="h-3.5 w-3.5 text-pear-500" />
               <span className="sm:hidden">{lang === "en" ? "Websites · IT · Cybersecurity" : "Websites · IT · Cybersecurity"}</span>
               <span className="hidden sm:inline">{t("hero.eyebrow")}</span>
@@ -104,21 +114,23 @@ export default function Home() {
             </motion.div>
 
             {/* Trust pill — customer quote surfaced as social proof under the CTAs */}
-            <motion.div
-              variants={fadeUp}
-              className="mt-8 inline-flex items-center gap-3 rounded-full surface border border-app px-4 py-2 shadow-[0_10px_30px_rgba(2,192,255,0.08)]"
-              data-testid="hero-trust-quote"
-            >
-              <div className="flex items-center gap-0.5 text-amber-400">
-                {[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}
-              </div>
-              <p className="text-xs sm:text-sm text-strong/85">
-                <span className="italic">
-                  {lang === "en" ? "\u201cFast, professional and the site looks fantastic.\u201d" : "\u201cSnel, professioneel en de site oogt fantastisch.\u201d"}
-                </span>
-                <span className="ml-2 text-muted-fg">— Jeroen, Bakkerij De Peer</span>
-              </p>
-            </motion.div>
+            {show_reviews && (
+              <motion.div
+                variants={fadeUp}
+                className="mt-8 inline-flex items-center gap-3 rounded-full surface border border-app px-4 py-2 shadow-[0_10px_30px_rgba(2,192,255,0.08)]"
+                data-testid="hero-trust-quote"
+              >
+                <div className="flex items-center gap-0.5 text-amber-400">
+                  {[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}
+                </div>
+                <p className="text-xs sm:text-sm text-strong/85">
+                  <span className="italic">
+                    {lang === "en" ? "\u201cFast, professional and the site looks fantastic.\u201d" : "\u201cSnel, professioneel en de site oogt fantastisch.\u201d"}
+                  </span>
+                  <span className="ml-2 text-muted-fg">— Jeroen, Bakkerij De Peer</span>
+                </p>
+              </motion.div>
+            )}
 
             {/* Reassurance strip — three lightweight trust signals */}
             <motion.div
@@ -133,15 +145,17 @@ export default function Home() {
               <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-pear-500" /> {lang === "en" ? "Reply within 24h" : "Reactie binnen 24u"}</span>
             </motion.div>
 
-            {/* Stats — centered, evenly spaced */}
-            <motion.div variants={fadeUp} className="mt-14 grid grid-cols-3 gap-8 sm:gap-14 max-w-2xl" data-testid="hero-stats">
-              {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: clientMilestone, l: t("hero.stat_2") }, { n: `${yearsExperience}+`, l: t("hero.stat_3") }].map((s, i) => (
-                <div key={i} className="text-center">
-                  <div className="font-heading text-4xl sm:text-5xl font-medium text-strong">{s.n}</div>
-                  <div className="text-xs text-muted-fg mt-1 uppercase tracking-widest">{s.l}</div>
-                </div>
-              ))}
-            </motion.div>
+            {/* Stats — centered, evenly spaced (hidden when the CMS turns off trust stats) */}
+            {show_trust_stats && (
+              <motion.div variants={fadeUp} className="mt-14 grid grid-cols-3 gap-8 sm:gap-14 max-w-2xl" data-testid="hero-stats">
+                {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: clientMilestone, l: t("hero.stat_2") }, { n: `${yearsExperience}+`, l: t("hero.stat_3") }].map((s, i) => (
+                  <div key={i} className="text-center">
+                    <div className="font-heading text-4xl sm:text-5xl font-medium text-strong">{s.n}</div>
+                    <div className="text-xs text-muted-fg mt-1 uppercase tracking-widest">{s.l}</div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
           </motion.div>
         </div>
 
@@ -165,12 +179,12 @@ export default function Home() {
       {/* PRICING TABLES (3 pakketten) */}
       <PricingTables />
 
-      {/* TRUST STATS + auto-scrolling reviews marquee (middle of page, infinite loop) */}
-      <TrustStats />
-      <FeaturedReviews />
+      {/* TRUST STATS + auto-scrolling reviews marquee — respect CMS toggles */}
+      {show_trust_stats && <TrustStats />}
+      {show_reviews && <FeaturedReviews />}
 
       {/* TRUSTPILOT WIDGET (optional, activates when BUSINESS_UNIT_ID is set) */}
-      <TrustpilotWidget />
+      {show_reviews && <TrustpilotWidget />}
 
       {/* PORTFOLIO PREVIEW */}
       <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20" data-testid="portfolio-preview">
@@ -235,57 +249,97 @@ export default function Home() {
 }
 
 // -----------------------------------------------------------------------------
-// HeroBackground — full-bleed animated backdrop for the landing hero
+// HeroBackground — full-bleed backdrop for the landing hero
 //
-// Layers (bottom → top):
-//   1. Soft pear-mint radial wash to lift the section off the page background
-//   2. Static dot-grid mask (pear-tinted) — gives the wide hero visual texture
-//      without competing with the copy
-//   3. Three floating gradient orbs that gently drift → creates a calm,
-//      trustworthy sense of motion (framer-motion respects prefers-reduced-motion)
-//   4. Subtle top→bottom fade to hand off to the marquee cleanly
+// Two modes, toggled from CMS → Site Instellingen → Hero achtergrond:
+//   • "animated"  (default): CSS-only calm backdrop with drifting orbs and a
+//                            radially-masked dot grid. No hard horizontal or
+//                            diagonal edges — the previous linear masks and
+//                            `via-transparent` diagonal wash created a subtle
+//                            visible "streep" above the hero copy, which we
+//                            fixed by (a) dropping via-transparent and (b)
+//                            using a radial ellipse mask centered on the copy
+//                            so dots feather out on every side smoothly.
+//   • "video":              Admin-supplied muted looping clip (MP4/WebM) as
+//                            the backdrop, with a tunable dim overlay so hero
+//                            copy stays readable regardless of the clip.
 //
-// The whole thing is `aria-hidden` because it is decorative. No image assets.
+// The whole thing is `aria-hidden` because it is decorative.
 // -----------------------------------------------------------------------------
-const HeroBackground = () => (
-  <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
-    {/* 1) Base wash */}
-    <div className="absolute inset-0 bg-gradient-to-br from-pear-50/60 via-transparent to-pear-100/30 dark:from-pear-500/5 dark:via-transparent dark:to-pear-500/10" />
+const HeroBackground = ({ mode = "animated", videoUrl = "", poster = "", dim = 35 }) => {
+  // Video mode — only kicks in when admin has both selected "video" and
+  // supplied a URL. Missing URL falls back to the animated backdrop so the
+  // hero never renders empty.
+  if (mode === "video" && videoUrl) {
+    const overlayOpacity = Math.max(0, Math.min(80, Number(dim) || 0)) / 100;
+    return (
+      <div className="absolute inset-0 -z-10 overflow-hidden bg-[color:var(--bg)]" aria-hidden="true" data-testid="hero-bg-video">
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          src={videoUrl}
+          poster={poster || undefined}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        />
+        {/* Readability overlay — solid dark tint scaled by CMS `hero_bg_video_dim` */}
+        <div className="absolute inset-0 bg-slate-950" style={{ opacity: overlayOpacity }} />
+      </div>
+    );
+  }
 
-    {/* 2) Dot grid (SVG data-URI mask so it works on both light/dark) */}
-    <div
-      className="absolute inset-0 opacity-[0.35] dark:opacity-20"
-      style={{
-        backgroundImage:
-          "radial-gradient(circle at 1px 1px, rgba(2,192,255,0.35) 1px, transparent 0)",
-        backgroundSize: "26px 26px",
-        maskImage:
-          "radial-gradient(ellipse 80% 60% at 50% 40%, black 40%, transparent 100%)",
-        WebkitMaskImage:
-          "radial-gradient(ellipse 80% 60% at 50% 40%, black 40%, transparent 100%)",
-      }}
-    />
+  // Animated mode — soft base tint (single radial, no diagonal seam) +
+  // radial-masked dot grid + drifting orbs.
+  return (
+    <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden="true" data-testid="hero-bg-animated">
+      {/* Base tint — one soft radial glow, no linear/diagonal transitions
+          (avoids the mid-tone seam that read as a horizontal line). */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 90% 70% at 50% 30%, rgba(2,192,255,0.10), transparent 70%)",
+        }}
+      />
 
-    {/* 3) Floating orbs — slow, calming drift. Each orb has its own duration
-           and phase so they never sync up (feels alive, not looping). */}
-    <motion.div
-      className="absolute rounded-full blur-3xl bg-pear-400/30 dark:bg-pear-500/25"
-      style={{ width: 520, height: 520, top: -140, right: -100 }}
-      animate={{ x: [0, 40, -20, 0], y: [0, 30, -10, 0] }}
-      transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-    />
-    <motion.div
-      className="absolute rounded-full blur-3xl bg-sky-300/30 dark:bg-sky-400/15"
-      style={{ width: 620, height: 620, bottom: -240, left: -180 }}
-      animate={{ x: [0, -30, 25, 0], y: [0, -20, 20, 0] }}
-      transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
-    />
-    <motion.div
-      className="absolute rounded-full blur-3xl bg-emerald-300/20 dark:bg-emerald-400/10"
-      style={{ width: 340, height: 340, top: "40%", left: "55%" }}
-      animate={{ x: [0, 20, -30, 0], y: [0, -15, 10, 0], scale: [1, 1.06, 0.96, 1] }}
-      transition={{ duration: 30, repeat: Infinity, ease: "easeInOut" }}
-    />
-  </div>
-);
+      {/* Dot grid — radial mask centered on the hero so dots feather out on
+          every edge. No linear horizontal cutoff = no visible streep. */}
+      <div
+        className="absolute inset-0 opacity-[0.20] dark:opacity-[0.12]"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(2,192,255,0.35) 1px, transparent 0)",
+          backgroundSize: "26px 26px",
+          maskImage:
+            "radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%)",
+        }}
+      />
+
+      {/* Floating orbs — slow, calming drift. Each orb has its own duration
+          and phase so they never sync up (feels alive, not looping). */}
+      <motion.div
+        className="absolute rounded-full blur-3xl bg-pear-400/30 dark:bg-pear-500/25"
+        style={{ width: 520, height: 520, top: -140, right: -100 }}
+        animate={{ x: [0, 40, -20, 0], y: [0, 30, -10, 0] }}
+        transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute rounded-full blur-3xl bg-sky-300/30 dark:bg-sky-400/15"
+        style={{ width: 620, height: 620, bottom: -240, left: -180 }}
+        animate={{ x: [0, -30, 25, 0], y: [0, -20, 20, 0] }}
+        transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute rounded-full blur-3xl bg-emerald-300/20 dark:bg-emerald-400/10"
+        style={{ width: 340, height: 340, top: "40%", left: "55%" }}
+        animate={{ x: [0, 20, -30, 0], y: [0, -15, 10, 0], scale: [1, 1.06, 0.96, 1] }}
+        transition={{ duration: 30, repeat: Infinity, ease: "easeInOut" }}
+      />
+    </div>
+  );
+};
 
