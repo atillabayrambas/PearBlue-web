@@ -129,6 +129,9 @@ from models import (  # noqa: E402
     PricingItemCreate,
     PricingItemUpdate,
     PricingVolumeTier,
+    PricingCategory,
+    PricingCategoryCreate,
+    PricingCategoryUpdate,
 )
 
 
@@ -3841,20 +3844,32 @@ async def seed_pricing():
     """One-shot: seed the pricing catalog if the collection is empty.
     Idempotent — subsequent boots leave admin edits/deletes untouched."""
     try:
-        existing = await db.pricing_items.count_documents({})
-        if existing > 0:
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        for item in PRICING_SEED:
-            doc = {
-                "id": str(uuid.uuid4()),
-                "created_at": now,
-                **item,
-            }
-            await db.pricing_items.insert_one(doc)
-        logger.info(f"Pricing catalog seeded ({len(PRICING_SEED)} items).")
+        # Seed items
+        if await db.pricing_items.count_documents({}) == 0:
+            now = datetime.now(timezone.utc).isoformat()
+            for item in PRICING_SEED:
+                doc = {"id": str(uuid.uuid4()), "created_at": now, **item}
+                await db.pricing_items.insert_one(doc)
+            logger.info(f"Pricing catalog seeded ({len(PRICING_SEED)} items).")
+        # Seed categories (separate collection so the CMS can CRUD them)
+        if await db.pricing_categories.count_documents({}) == 0:
+            now = datetime.now(timezone.utc).isoformat()
+            for cat in PRICING_CATEGORIES:
+                doc = {"id": str(uuid.uuid4()), "created_at": now, **cat}
+                await db.pricing_categories.insert_one(doc)
+            logger.info(f"Pricing categories seeded ({len(PRICING_CATEGORIES)} categories).")
     except Exception as e:
         logger.warning(f"Pricing seed failed: {e}")
+
+
+async def _fetch_pricing_categories():
+    """Loads categories from Mongo, falls back to the seed constant if the
+    collection is somehow empty (defensive)."""
+    docs = await db.pricing_categories.find({}, {"_id": 0}).to_list(200)
+    if not docs:
+        return PRICING_CATEGORIES
+    docs.sort(key=lambda x: (x.get("service", ""), x.get("order", 100)))
+    return docs
 
 
 @api_router.get("/site/pricing")
@@ -3865,9 +3880,73 @@ async def public_pricing():
     items = await db.pricing_items.find({}, {"_id": 0}).to_list(1000)
     items.sort(key=lambda x: (x.get("service", ""), x.get("cat", ""), x.get("order", 100)))
     return {
-        "categories": PRICING_CATEGORIES,
+        "categories": await _fetch_pricing_categories(),
         "items": items,
     }
+
+
+# ----- Category CRUD (admin) -----
+@api_router.get("/admin/pricing/categories")
+async def admin_list_pricing_categories(current=Depends(require_admin)):
+    return await _fetch_pricing_categories()
+
+
+@api_router.post("/admin/pricing/categories", response_model=PricingCategory)
+async def admin_create_pricing_category(payload: PricingCategoryCreate, current=Depends(require_admin)):
+    existing = await db.pricing_categories.find_one({"key": payload.key})
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Categorie-sleutel '{payload.key}' bestaat al.")
+    cat = PricingCategory(**payload.model_dump())
+    doc = cat.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.pricing_categories.insert_one(doc)
+    await _log_activity(current.get("email"), "pricing_category.create", cat.id, {"key": cat.key})
+    return cat
+
+
+@api_router.patch("/admin/pricing/categories/{cat_id}")
+async def admin_update_pricing_category(cat_id: str, patch: PricingCategoryUpdate, current=Depends(require_admin)):
+    updates = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Geen wijzigingen aangeleverd.")
+    current_doc = await db.pricing_categories.find_one({"id": cat_id})
+    if not current_doc:
+        raise HTTPException(status_code=404, detail="Categorie niet gevonden.")
+    old_key = current_doc.get("key")
+    new_key = updates.get("key")
+    # Guard against key-collision on rename
+    if new_key and new_key != old_key:
+        clash = await db.pricing_categories.find_one({"key": new_key})
+        if clash:
+            raise HTTPException(status_code=400, detail=f"Categorie-sleutel '{new_key}' bestaat al.")
+    await db.pricing_categories.update_one({"id": cat_id}, {"$set": updates})
+    # Cascade key rename to items referencing the old key
+    if new_key and new_key != old_key:
+        await db.pricing_items.update_many({"cat": old_key}, {"$set": {"cat": new_key}})
+    doc = await db.pricing_categories.find_one({"id": cat_id}, {"_id": 0})
+    await _log_activity(current.get("email"), "pricing_category.update", cat_id, {"fields": list(updates.keys())})
+    return doc
+
+
+@api_router.delete("/admin/pricing/categories/{cat_id}")
+async def admin_delete_pricing_category(cat_id: str, cascade: bool = False, current=Depends(require_admin)):
+    """Delete a category. By default refuses if any items still reference it —
+    pass `cascade=true` to delete the category AND all its items in one shot."""
+    doc = await db.pricing_categories.find_one({"id": cat_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Categorie niet gevonden.")
+    key = doc.get("key")
+    item_count = await db.pricing_items.count_documents({"cat": key})
+    if item_count > 0 and not cascade:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Categorie '{key}' bevat nog {item_count} prijs-item(s). Verwijder eerst de items of gebruik ?cascade=true.",
+        )
+    if cascade and item_count > 0:
+        await db.pricing_items.delete_many({"cat": key})
+    await db.pricing_categories.delete_one({"id": cat_id})
+    await _log_activity(current.get("email"), "pricing_category.delete", cat_id, {"key": key, "cascaded_items": item_count if cascade else 0})
+    return {"ok": True, "cascaded_items": item_count if cascade else 0}
 
 
 @api_router.get("/admin/pricing")

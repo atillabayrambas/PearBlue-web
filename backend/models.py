@@ -356,3 +356,31 @@ class PricingItemUpdate(BaseModel):
     order: Optional[int] = None
     special: Optional[str] = Field(None, max_length=60)
     volume_tiers: Optional[List[PricingVolumeTier]] = None
+
+
+class PricingCategory(BaseModel):
+    """A grouping used on /prijslijst + calculator (bv. 'Website-bescherming')."""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    key: str = Field(..., min_length=1, max_length=40, description="Stable slug used by items in `cat`")
+    service: str = Field(..., pattern="^(web|ict|cyber)$")
+    nl: str
+    en: Optional[str] = None
+    order: int = 100
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PricingCategoryCreate(BaseModel):
+    key: str = Field(..., min_length=1, max_length=40)
+    service: str = Field(..., pattern="^(web|ict|cyber)$")
+    nl: str = Field(..., min_length=1, max_length=120)
+    en: Optional[str] = Field(None, max_length=120)
+    order: int = 100
+
+
+class PricingCategoryUpdate(BaseModel):
+    key: Optional[str] = Field(None, min_length=1, max_length=40)
+    service: Optional[str] = Field(None, pattern="^(web|ict|cyber)$")
+    nl: Optional[str] = Field(None, min_length=1, max_length=120)
+    en: Optional[str] = Field(None, max_length=120)
+    order: Optional[int] = None

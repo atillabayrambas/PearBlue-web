@@ -59,6 +59,12 @@ export default function Home() {
   const projectMilestone = milestoneLabel(projectCount);
   const clientMilestone = milestoneLabel(clientCount);
 
+  // Years of experience — counted from PearBlue's founding date so it always
+  // reflects reality without a manual bump. Rounded DOWN so we never claim a
+  // milestone before it's fully earned (7.9 years → "7", not "8").
+  const FOUNDED = new Date("2010-06-01T00:00:00Z");
+  const yearsExperience = Math.max(1, Math.floor((Date.now() - FOUNDED.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+
   return (
     <div data-testid="page-home">
       {/* HERO — full-width, animated background, no photo. Feels open, calm, trustworthy. */}
@@ -129,7 +135,7 @@ export default function Home() {
 
             {/* Stats — centered, evenly spaced */}
             <motion.div variants={fadeUp} className="mt-14 grid grid-cols-3 gap-8 sm:gap-14 max-w-2xl" data-testid="hero-stats">
-              {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: clientMilestone, l: t("hero.stat_2") }, { n: "7+", l: t("hero.stat_3") }].map((s, i) => (
+              {[{ n: projectMilestone, l: t("hero.stat_1") }, { n: clientMilestone, l: t("hero.stat_2") }, { n: `${yearsExperience}+`, l: t("hero.stat_3") }].map((s, i) => (
                 <div key={i} className="text-center">
                   <div className="font-heading text-4xl sm:text-5xl font-medium text-strong">{s.n}</div>
                   <div className="text-xs text-muted-fg mt-1 uppercase tracking-widest">{s.l}</div>
