@@ -17,6 +17,32 @@ const DEFAULTS = {
   hero_bg_video_url: "",
   hero_bg_video_poster: "",
   hero_bg_video_dim: 35,
+  // Social — every channel defaults to empty so the footer hides them
+  // until the admin fills one in.
+  social_linkedin: "",
+  social_facebook: "",
+  social_instagram: "",
+  social_twitter: "",
+  social_youtube: "",
+  social_tiktok: "",
+  social_whatsapp: "",
+  social_telegram: "",
+  social_signal: "",
+  social_discord: "",
+  social_github: "",
+  social_gitlab: "",
+  social_behance: "",
+  social_dribbble: "",
+  social_medium: "",
+  social_mastodon: "",
+  social_bluesky: "",
+  social_threads: "",
+  social_vimeo: "",
+  social_twitch: "",
+  social_trustpilot: "",
+  social_google_business: "",
+  social_pinterest: "",
+  social_reddit: "",
 };
 
 let _cache = null;

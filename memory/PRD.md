@@ -21,7 +21,16 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 47 (this session, v0.7.9-Beta) — Hero video uploads + prefers-reduced-motion
+### Feb 2026 — Iteration 48 (this session, v0.8.0-Beta) — Auto MP4↔WebM transcode + Social media in footer
+- **ffmpeg auto-transcode** — bij elke video-upload draait ffmpeg 5.1 op de server: MP4-input krijgt automatisch een WebM-sibling (libvpx-vp9 realtime), WebM krijgt een MP4-sibling (libx264 ultrafast + faststart). Beide varianten worden in Emergent Object Storage bewaard onder één asset-ID. `hero_video_assets` collectie kreeg `mp4_path`, `webm_path`, `transcode_ok` velden.
+- **Content-negotiating streamer** — `/api/hero-videos/{id}` kijkt naar User-Agent en Accept-header en levert WebM voor Chromium/Firefox (kleiner), MP4 voor Safari/iOS (compat). `.mp4` en `.webm` suffixen forceren een specifiek formaat. Publieke hero `<video>` rendert nu twee `<source>`-tags met `.webm` + `.mp4` zodat de browser zelf de snelste variant kiest.
+- **Backend regressie**: `tests/test_hero_video_uploads.py::test_upload_transcodes_mp4_to_webm` doet end-to-end ffmpeg-transcode van een real testsrc-clip, controleert beide streams + Chrome/Safari content-negotiation. 8/8 tests groen.
+- **Social media in footer** — nieuwe `<SocialIcons>` component toont pill-buttons van elk kanaal waarvan de admin een URL heeft ingevuld. Lege velden = geen icoon. Volledig CMS-gestuurd via nieuwe kaart "Social media kanalen" in Site instellingen → Algemeen.
+- **24 kanalen ondersteund** — LinkedIn, Facebook, Instagram, X (Twitter), YouTube, TikTok, WhatsApp, Telegram, Signal, Discord, GitHub, GitLab, Behance, Dribbble, Medium, Mastodon, Bluesky, Threads, Vimeo, Twitch, Pinterest, Reddit, Trustpilot, Google Business. Iconen uit `react-icons/fa6`.
+- **Nieuwe backend velden** in `SiteSettings`/`SiteSettingsUpdate`: `social_*` (24 string velden, elk max_length=500). Empty string = verborgen in footer.
+- **Regressietests**: `tests/test_social_settings.py` — 4/4 pass (defaults present, roundtrip, max_length rejection, admin-only).
+
+### Feb 2026 — Iteration 47 (v0.7.9-Beta) — Hero video uploads + prefers-reduced-motion
 - **Directe video-upload uit CMS** — nieuwe upload-knop in Site instellingen → Hero achtergrond. Admin selecteert MP4/WebM (max 20MB), bestand wordt naar Emergent Object Storage gestuurd via `POST /api/hero-videos/upload`, `hero_bg_video_url` wordt automatisch gevuld met `${BACKEND}/api/hero-videos/{id}` en de publieke hero swapt direct. Fallback URL-veld blijft beschikbaar voor externe CDN's.
 - **Nieuwe backend module** `/app/backend/hero_uploads.py` — dedicated router (mounted via `make_router(db, require_admin)`) met endpoints `POST /upload`, `GET /list`, `DELETE /{id}` (soft-delete conform playbook — Emergent storage heeft geen delete API), en publieke `GET /{id}` streamer met `Cache-Control: public, max-age=31536000, immutable`. Session-scoped storage key wordt gecached + geforceerd hermint bij 403/404. Content-type whitelist `video/mp4` en `video/webm`.
 - **MongoDB collectie** `hero_video_assets` — `{id, storage_path, content_type, size, original_filename, uploaded_by, created_at, is_deleted}`.

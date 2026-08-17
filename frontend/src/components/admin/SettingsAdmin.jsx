@@ -8,6 +8,7 @@ import { API } from "./_shared";
 import { ROADMAP_ICON_NAMES, iconFromName } from "../../data/roadmapIcons";
 import { PricingAdminTab } from "./PricingAdminTab";
 import { invalidateSiteSettingsCache } from "../../hooks/useSiteSettings";
+import { SOCIAL_CHANNELS } from "../SocialIcons";
 
 // Small reusable pill-style toggle row used by the visibility card.
 // Instant-saves via the `onChange` callback (the parent uses `patch()` which
@@ -48,6 +49,7 @@ export const SettingsAdmin = () => {
     hero_bg_video_url: "",
     hero_bg_video_poster: "",
     hero_bg_video_dim: 35,
+    ...Object.fromEntries(SOCIAL_CHANNELS.map((c) => [c.key, ""])),
   });
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("general");
@@ -357,6 +359,57 @@ export const SettingsAdmin = () => {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="pt-4 border-t border-app" data-testid="cms-social-card">
+            <h3 className="font-heading font-semibold text-strong mb-1">{en ? "Social channels" : "Social media kanalen"}</h3>
+            <p className="text-xs text-muted-fg mb-4">
+              {en
+                ? "Paste the full URL for every channel you're active on. Empty fields are hidden from the footer automatically."
+                : "Plak de volledige URL voor elk kanaal waar je actief bent. Lege velden verbergen we automatisch in de footer."}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {SOCIAL_CHANNELS.map(({ key, label, Icon }) => (
+                <label
+                  key={key}
+                  className="flex items-center gap-2 rounded-xl surface-2 border border-app px-3 py-2 focus-within:border-pear-500 transition"
+                  data-testid={`cms-social-row-${key.replace("social_", "")}`}
+                >
+                  <span className="shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-full bg-pear-500/10 text-pear-500">
+                    <Icon aria-hidden="true" className="h-4 w-4" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="block text-[10px] font-semibold uppercase tracking-widest text-muted-fg">{label}</span>
+                    <input
+                      type="url"
+                      value={form[key] || ""}
+                      onChange={change(key)}
+                      onBlur={() => patch({ [key]: (form[key] || "").trim() })}
+                      placeholder="https://…"
+                      className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none text-sm text-strong placeholder:text-muted-fg/50 p-0"
+                      data-testid={`cms-input-${key}`}
+                    />
+                  </div>
+                  {form[key] && (
+                    <a
+                      href={form[key]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-pear-500 hover:underline shrink-0"
+                      title={en ? "Open" : "Openen"}
+                      data-testid={`cms-social-open-${key.replace("social_", "")}`}
+                    >
+                      ↗
+                    </a>
+                  )}
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-fg mt-3">
+              {en
+                ? "Tip: WhatsApp accepts wa.me/31612345678, Signal expects signal.me/#p/+31…, Mastodon needs the full https://server.tld/@handle URL."
+                : "Tip: WhatsApp accepteert wa.me/31612345678, Signal verwacht signal.me/#p/+31…, Mastodon heeft de volledige https://server.tld/@handle URL nodig."}
+            </p>
           </div>
 
           <button type="submit" disabled={saving} className="btn-primary" data-testid="cms-settings-submit">

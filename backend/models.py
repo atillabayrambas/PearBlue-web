@@ -175,6 +175,39 @@ class SiteSettings(BaseModel):
     # Dim the video with a translucent overlay so hero copy stays readable
     # regardless of the clip's brightness. 0..80 (%), default 35.
     hero_bg_video_dim: Optional[int] = 35
+    # ------------------------------------------------------------------
+    # Social media links — every field is optional. The public footer only
+    # renders an icon when its URL is non-empty. Curated selection covers
+    # general reach (Meta / X / TikTok), pro networks (LinkedIn / GitHub /
+    # Behance / Dribbble), video (YouTube / Vimeo / Twitch), messaging
+    # (WhatsApp / Telegram / Signal / Discord), reviews (Trustpilot /
+    # Google Business) and next-gen networks (Mastodon / Bluesky /
+    # Threads / Medium).
+    # ------------------------------------------------------------------
+    social_linkedin: Optional[str] = ""
+    social_facebook: Optional[str] = ""
+    social_instagram: Optional[str] = ""
+    social_twitter: Optional[str] = ""       # a.k.a. X
+    social_youtube: Optional[str] = ""
+    social_tiktok: Optional[str] = ""
+    social_whatsapp: Optional[str] = ""      # wa.me / phone
+    social_telegram: Optional[str] = ""
+    social_signal: Optional[str] = ""        # signal.me link
+    social_discord: Optional[str] = ""
+    social_github: Optional[str] = ""
+    social_gitlab: Optional[str] = ""
+    social_behance: Optional[str] = ""
+    social_dribbble: Optional[str] = ""
+    social_medium: Optional[str] = ""
+    social_mastodon: Optional[str] = ""
+    social_bluesky: Optional[str] = ""
+    social_threads: Optional[str] = ""
+    social_vimeo: Optional[str] = ""
+    social_twitch: Optional[str] = ""
+    social_trustpilot: Optional[str] = ""
+    social_google_business: Optional[str] = ""
+    social_pinterest: Optional[str] = ""
+    social_reddit: Optional[str] = ""
 
 
 class SiteSettingsUpdate(BaseModel):
@@ -193,6 +226,33 @@ class SiteSettingsUpdate(BaseModel):
     hero_bg_video_url: Optional[str] = Field(None, max_length=500)
     hero_bg_video_poster: Optional[str] = Field(None, max_length=500)
     hero_bg_video_dim: Optional[int] = Field(None, ge=0, le=80)
+    # Social links — plain URL strings; empty means "hide the icon".
+    # Length caps guard against accidental paste of monster blobs; 500 chars
+    # is comfortably above any legitimate share URL.
+    social_linkedin: Optional[str] = Field(None, max_length=500)
+    social_facebook: Optional[str] = Field(None, max_length=500)
+    social_instagram: Optional[str] = Field(None, max_length=500)
+    social_twitter: Optional[str] = Field(None, max_length=500)
+    social_youtube: Optional[str] = Field(None, max_length=500)
+    social_tiktok: Optional[str] = Field(None, max_length=500)
+    social_whatsapp: Optional[str] = Field(None, max_length=500)
+    social_telegram: Optional[str] = Field(None, max_length=500)
+    social_signal: Optional[str] = Field(None, max_length=500)
+    social_discord: Optional[str] = Field(None, max_length=500)
+    social_github: Optional[str] = Field(None, max_length=500)
+    social_gitlab: Optional[str] = Field(None, max_length=500)
+    social_behance: Optional[str] = Field(None, max_length=500)
+    social_dribbble: Optional[str] = Field(None, max_length=500)
+    social_medium: Optional[str] = Field(None, max_length=500)
+    social_mastodon: Optional[str] = Field(None, max_length=500)
+    social_bluesky: Optional[str] = Field(None, max_length=500)
+    social_threads: Optional[str] = Field(None, max_length=500)
+    social_vimeo: Optional[str] = Field(None, max_length=500)
+    social_twitch: Optional[str] = Field(None, max_length=500)
+    social_trustpilot: Optional[str] = Field(None, max_length=500)
+    social_google_business: Optional[str] = Field(None, max_length=500)
+    social_pinterest: Optional[str] = Field(None, max_length=500)
+    social_reddit: Optional[str] = Field(None, max_length=500)
 
 
 class PortalRegistration(BaseModel):

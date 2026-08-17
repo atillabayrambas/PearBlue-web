@@ -5,6 +5,8 @@ import { Mail, Phone, MapPin, Send, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useLang } from "../i18n/LanguageContext";
 import { Logo } from "./Logo";
+import { SocialIcons } from "./SocialIcons";
+import { useSiteSettings } from "../hooks/useSiteSettings";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -76,6 +78,7 @@ const NewsletterForm = () => {
 export const Footer = () => {
   const { t, lang } = useLang();
   const version = useAppVersion();
+  const settings = useSiteSettings();
   return (
     <footer className="mt-24 border-t border-app surface" data-testid="site-footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-16 grid grid-cols-1 md:grid-cols-4 gap-10">
@@ -115,11 +118,14 @@ export const Footer = () => {
         </div>
       </div>
       <div className="border-t border-app">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-muted-fg">
-          <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")}{version ? <> · <span className="text-muted-fg/70" data-testid="footer-version">v{version}</span></> : null}</p>
-          <p className="inline-flex items-center gap-1.5" data-testid="footer-made-with-care">
-            Made with care in the Netherlands. <span aria-label="Netherlands flag" role="img">🇳🇱</span> <span aria-label="heart" role="img">❤️</span>
-          </p>
+        <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 flex flex-col gap-4">
+          <SocialIcons settings={settings} />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-muted-fg">
+            <p>© {new Date().getFullYear()} PearBlue®. {t("footer.rights")}{version ? <> · <span className="text-muted-fg/70" data-testid="footer-version">v{version}</span></> : null}</p>
+            <p className="inline-flex items-center gap-1.5" data-testid="footer-made-with-care">
+              Made with care in the Netherlands. <span aria-label="Netherlands flag" role="img">🇳🇱</span> <span aria-label="heart" role="img">❤️</span>
+            </p>
+          </div>
         </div>
       </div>
     </footer>

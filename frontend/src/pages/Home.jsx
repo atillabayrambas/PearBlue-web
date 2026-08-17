@@ -277,13 +277,20 @@ const HeroBackground = ({ mode = "animated", videoUrl = "", poster = "", dim = 3
   // Video mode — only kicks in when admin has both selected "video" and
   // supplied a URL. Missing URL falls back to the animated backdrop so the
   // hero never renders empty.
+  //
+  // When the URL matches our internal `/api/hero-videos/{id}` pattern the
+  // backend has both an MP4 and WebM variant available; we render TWO
+  // <source> tags so the browser picks whichever it plays fastest
+  // (WebM/VP9 for Chromium/Firefox, MP4/H.264 for Safari/iOS).
   if (mode === "video" && videoUrl) {
     const overlayOpacity = Math.max(0, Math.min(80, Number(dim) || 0)) / 100;
+    const heroVideoMatch = videoUrl.match(/^(.*\/api\/hero-videos\/[0-9a-f-]{8,})(?:\.(mp4|webm))?$/i);
+    const isInternal = Boolean(heroVideoMatch);
+    const baseUrl = heroVideoMatch ? heroVideoMatch[1] : videoUrl;
     return (
       <div className="absolute inset-0 -z-10 overflow-hidden bg-[color:var(--bg)]" aria-hidden="true" data-testid="hero-bg-video">
         <video
           className="absolute inset-0 w-full h-full object-cover"
-          src={videoUrl}
           poster={poster || undefined}
           autoPlay={!reduceMotion}
           muted
@@ -291,7 +298,16 @@ const HeroBackground = ({ mode = "animated", videoUrl = "", poster = "", dim = 3
           playsInline
           preload="metadata"
           data-reduced-motion={reduceMotion ? "true" : "false"}
-        />
+        >
+          {isInternal ? (
+            <>
+              <source src={`${baseUrl}.webm`} type="video/webm" />
+              <source src={`${baseUrl}.mp4`} type="video/mp4" />
+            </>
+          ) : (
+            <source src={videoUrl} />
+          )}
+        </video>
         {/* Readability overlay — solid dark tint scaled by CMS `hero_bg_video_dim` */}
         <div className="absolute inset-0 bg-slate-950" style={{ opacity: overlayOpacity }} />
       </div>
