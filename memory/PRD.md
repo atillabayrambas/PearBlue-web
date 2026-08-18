@@ -21,7 +21,18 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 49 (this session, v0.8.1-Beta) — Hero video library gallery
+### Feb 2026 — Iteration 50 (this session, v0.8.2-Beta) — Deployment vault (CMS tab)
+- **Nieuwe "Deployment"-tab in Site instellingen** — één plek voor álle 17 env vars die op Render/Vercel horen te staan: MONGO_URL, DB_NAME, EMERGENT_LLM_KEY, ZOHO_CLIENT_ID/SECRET, ZOHO_BOOKS/PROJECTS/DESK_ORG_ID, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, TOKEN_ENCRYPTION_KEY, RESEND_API_KEY, JWT_SECRET, SESSION_SECRET, FRONTEND_URL, CORS_ORIGINS, SUPER_ADMIN_EMAILS.
+- **Encrypted at rest** — waarden worden opgeslagen in `deployment_vault` collectie via de bestaande Fernet cipher (`enc_secret`/`dec_secret`), dezelfde die Zoho refresh-tokens beschermt.
+- **Waarschuwing prominent** — grote amber banner bovenaan: "Dit is een kluis — géén runtime configuratie. Wijzigingen herstarten de backend NIET; kopieer naar Render/Vercel." Voorkomt dat een admin denkt dat aanpassingen live gaan.
+- **"LIVE ON BACKEND" indicator** — per rij groen chip als de variable écht als `os.environ` gezet is in het proces (env_status), rode chip als niet. Snelle sanity-check tegen productie.
+- **Ingebouwde docs per key** — Nederlandse "waar vindt je dit" tekst + externe "Open ↗" link naar het juiste dashboard (MongoDB Atlas, Zoho API Console, Stripe, Resend, Emergent).
+- **Bulk-tools** — "Kopieer .env-blok"-knop bouwt een paste-ready `.env` string (met quotes op waarden met spaties), "Alles opslaan"-knop met dirty-teller, "Vernieuwen"-knop. Per-rij Eye-toggle om sensitive values te tonen/verbergen.
+- **Whitelist enforcement** — backend accepteert alleen keys uit `DEPLOYMENT_VAULT_KEYS`, onbekende keys stilzwijgend genegeerd. Max 4000 chars per waarde.
+- **Nieuwe endpoints**: `GET/PUT /api/admin/deployment/vault` (admin-guarded). Response bevat vault + env_status + updated_at/updated_by meta.
+- **Regressietests**: `tests/test_deployment_vault.py` — 4/4 pass (auth-guard, shape/17-keys, encrypt-roundtrip, whitelist).
+
+### Feb 2026 — Iteration 49 (v0.8.1-Beta) — Hero video library gallery
 - **Video-bibliotheek in CMS** — Site instellingen → Hero achtergrond → Video-modus toont nu een galerij van eerder geüploade clips (aspect-video thumbnails, autoplay on-hover, filenaam-caption). "Kies"-knop swap de actieve hero-video zonder her-upload, prullenbak-icoon doet soft-delete. De actieve clip toont een pear-500 "ACTIVE"-pill en gehighlighte rand.
 - **Auto-refresh** — bibliotheek laadt zodra de admin naar Video-modus schakelt en na elke succesvolle upload. Handmatig "Vernieuwen"-knop naast de teller (`YOUR LIBRARY · N`).
 - **Cascade-cleanup** — als de admin de huidige actieve video verwijdert, blanken we `hero_bg_video_url` automatisch zodat de publieke hero terugvalt op de animated backdrop (geen broken video-tag).

@@ -9,6 +9,7 @@ import { ROADMAP_ICON_NAMES, iconFromName } from "../../data/roadmapIcons";
 import { PricingAdminTab } from "./PricingAdminTab";
 import { invalidateSiteSettingsCache } from "../../hooks/useSiteSettings";
 import { SOCIAL_CHANNELS } from "../SocialIcons";
+import { DeploymentAdminTab } from "./DeploymentAdminTab";
 
 // Small reusable pill-style toggle row used by the visibility card.
 // Instant-saves via the `onChange` callback (the parent uses `patch()` which
@@ -188,6 +189,7 @@ export const SettingsAdmin = () => {
           { key: "pricing", label: en ? "Pricing" : "Prijslijst" },
           { key: "roadmap", label: en ? "Roadmap" : "Roadmap" },
           { key: "engineering", label: en ? "Engineering" : "Engineering" },
+          { key: "deployment", label: en ? "Deployment" : "Deployment" },
         ].map((t) => (
           <button
             key={t.key}
@@ -201,6 +203,7 @@ export const SettingsAdmin = () => {
 
       {tab === "pricing" && <PricingAdminTab en={en} />}
       {tab === "roadmap" && <RoadmapAdminTab en={en} />}
+      {tab === "deployment" && <DeploymentAdminTab en={en} />}
 
       {tab === "general" && (
         <form onSubmit={save} className="surface border border-app rounded-2xl p-6 space-y-5 max-w-2xl" data-testid="cms-settings-form">

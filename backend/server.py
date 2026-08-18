@@ -828,7 +828,70 @@ async def update_settings(payload: SiteSettingsUpdate, current=Depends(require_a
     return SiteSettings(**(doc or {}))
 
 
-# Public read-only maintenance snapshot — used by the public shell to gate UI.
+# ---------------------------------------------------------------------------
+# Deployment vault — admin-facing scratchpad for the env vars needed on the
+# hosting platform (Render/Vercel/etc.). Values are encrypted at rest via the
+# same Fernet cipher used for Zoho tokens.
+#
+# IMPORTANT: This vault does NOT drive runtime behaviour. Changing a value
+# here does not restart the process or reconfigure anything — the admin
+# copies the value to their deployment platform manually. The vault exists
+# so the admin has ONE place with all keys + inline documentation, which is
+# vastly less error-prone than juggling notes and dashboards.
+# ---------------------------------------------------------------------------
+DEPLOYMENT_VAULT_KEYS = [
+    "MONGO_URL", "DB_NAME", "EMERGENT_LLM_KEY",
+    "ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET",
+    "ZOHO_BOOKS_ORG_ID", "ZOHO_PROJECTS_PORTAL_ID", "ZOHO_DESK_ORG_ID",
+    "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
+    "TOKEN_ENCRYPTION_KEY",
+    "RESEND_API_KEY",
+    "JWT_SECRET", "SESSION_SECRET",
+    "FRONTEND_URL", "CORS_ORIGINS",
+    "SUPER_ADMIN_EMAILS",
+]
+
+
+@api_router.get("/admin/deployment/vault")
+async def get_deployment_vault(current=Depends(require_admin)):
+    """Return the admin's saved vault + which vars are currently set in the
+    running process's environment (for a "✓ SET" indicator in the CMS)."""
+    doc = await db.deployment_vault.find_one({"_id": "singleton"}, {"_id": 0}) or {}
+    vault = {}
+    for k in DEPLOYMENT_VAULT_KEYS:
+        stored = doc.get(k, "")
+        vault[k] = dec_secret(stored) if stored else ""
+    env_status = {k: bool(os.environ.get(k)) for k in DEPLOYMENT_VAULT_KEYS}
+    return {
+        "vault": vault,
+        "env_status": env_status,
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+@api_router.put("/admin/deployment/vault")
+async def update_deployment_vault(payload: Dict[str, Any], current=Depends(require_admin)):
+    updates: Dict[str, Any] = {}
+    for k, v in (payload or {}).items():
+        if k not in DEPLOYMENT_VAULT_KEYS:
+            continue
+        if not isinstance(v, str):
+            continue
+        v = v.strip()
+        if len(v) > 4000:
+            raise HTTPException(status_code=400, detail=f"{k} too long")
+        updates[k] = enc_secret(v) if v else ""
+    if not updates:
+        return {"ok": True, "updated": 0}
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updates["updated_by"] = current.get("email")
+    await db.deployment_vault.update_one(
+        {"_id": "singleton"},
+        {"$set": updates},
+        upsert=True,
+    )
+    return {"ok": True, "updated": len([k for k in updates if k in DEPLOYMENT_VAULT_KEYS])}
 @api_router.get("/site/maintenance")
 async def get_public_maintenance():
     doc = await db.site_settings.find_one({"_id": "singleton"}, {"_id": 0}) or {}
