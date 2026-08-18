@@ -98,3 +98,79 @@ def test_mint_admin_token_carries_role():
     claims = pyjwt.decode(tok, JWT_SECRET, algorithms=[JWT_ALG])
     assert claims["sub"] == "someone@example.com"
     assert claims["role"] == "beheerder"
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic path (`_resolve_cms_role_with_debug`) — introduced to surface
+# actionable reasons on the frontend when a legitimate super admin is denied
+# CMS access (usually because SUPER_ADMIN_EMAILS wasn't set on the runtime
+# host, e.g. Render vs. preview).
+# ---------------------------------------------------------------------------
+def test_debug_reason_empty_whitelist():
+    """When the whitelist is empty and no admin doc exists, the debug
+    payload must clearly point the operator at the missing env var."""
+    from zoho_portal import _resolve_cms_role_with_debug
+    async def go():
+        db = _stub_db(admin_doc=None)
+        with patch("zoho_portal.SUPER_ADMIN_EMAILS", set()):
+            return await _resolve_cms_role_with_debug(db, "beheer@multibay.eu")
+    role, debug = asyncio.run(go())
+    assert role is None
+    assert debug["reason"] == "super_admin_emails_env_not_set"
+    assert debug["whitelist_size"] == 0
+    assert debug["whitelist_match"] is False
+    assert debug["admins_doc_found"] is False
+
+
+def test_debug_reason_email_not_whitelisted_but_others_are():
+    """Whitelist exists but doesn't include this email → different reason."""
+    from zoho_portal import _resolve_cms_role_with_debug
+    async def go():
+        db = _stub_db(admin_doc=None)
+        with patch("zoho_portal.SUPER_ADMIN_EMAILS", {"someone-else@example.com"}):
+            return await _resolve_cms_role_with_debug(db, "beheer@multibay.eu")
+    role, debug = asyncio.run(go())
+    assert role is None
+    assert debug["reason"] == "email_not_whitelisted_and_no_admins_doc"
+    assert debug["whitelist_size"] == 1
+
+
+def test_debug_reason_admins_role_below_cms_threshold():
+    """User has an admins doc but the role isn't in the CMS allowlist."""
+    from zoho_portal import _resolve_cms_role_with_debug
+    async def go():
+        db = _stub_db(admin_doc={"role": "gebruiker"})
+        with patch("zoho_portal.SUPER_ADMIN_EMAILS", set()):
+            return await _resolve_cms_role_with_debug(db, "user@example.com")
+    role, debug = asyncio.run(go())
+    assert role is None
+    assert debug["reason"] == "admins_role_not_in_cms_allowlist"
+    assert debug["admins_doc_found"] is True
+    assert debug["admins_doc_role"] == "gebruiker"
+    assert debug["admins_role_grants_cms"] is False
+
+
+def test_debug_reason_whitelist_hit_still_returns_debug():
+    """Successful whitelist match should also surface the debug payload
+    (useful for logging) with `whitelist_match=True`."""
+    from zoho_portal import _resolve_cms_role_with_debug
+    async def go():
+        db = _stub_db(admin_doc=None)
+        with patch("zoho_portal.SUPER_ADMIN_EMAILS", {"owner@example.com"}):
+            return await _resolve_cms_role_with_debug(db, "owner@example.com")
+    role, debug = asyncio.run(go())
+    assert role == "super_admin"
+    assert debug["whitelist_match"] is True
+    assert debug["whitelist_size"] == 1
+
+
+def test_debug_reason_empty_email():
+    """Zoho returning no email must be flagged distinctly."""
+    from zoho_portal import _resolve_cms_role_with_debug
+    async def go():
+        db = _stub_db(admin_doc=None)
+        with patch("zoho_portal.SUPER_ADMIN_EMAILS", {"owner@example.com"}):
+            return await _resolve_cms_role_with_debug(db, "")
+    role, debug = asyncio.run(go())
+    assert role is None
+    assert debug["reason"] == "empty_email_from_zoho"

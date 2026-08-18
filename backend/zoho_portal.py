@@ -89,14 +89,37 @@ async def _resolve_cms_role(db, email_lower: str) -> Optional[str]:
     beheerder/moderator/etc. that had been manually added to `admins` was
     denied a CMS session and never saw the CMS icon in the navigation.
     """
+    role, _ = await _resolve_cms_role_with_debug(db, email_lower)
+    return role
+
+
+async def _resolve_cms_role_with_debug(db, email_lower: str) -> tuple[Optional[str], dict]:
+    """Same as `_resolve_cms_role` but also returns a diagnostic dict
+    explaining which path succeeded/failed. Used by the exchange endpoint
+    to surface actionable feedback when a legitimate admin is denied CMS
+    access (usually because `SUPER_ADMIN_EMAILS` isn't set on the runtime
+    environment where the backend actually runs — e.g. Render vs. preview).
+    """
+    debug: dict = {
+        "email_seen": email_lower or None,
+        "whitelist_size": len(SUPER_ADMIN_EMAILS),
+        "whitelist_match": False,
+        "admins_doc_found": False,
+        "admins_doc_role": None,
+        "admins_role_grants_cms": False,
+    }
     if not email_lower:
-        return None
+        debug["reason"] = "empty_email_from_zoho"
+        return None, debug
     # Defense in depth — always renormalize even if the caller already did.
     email_lower = email_lower.strip().casefold()
     if not email_lower:
-        return None
+        debug["reason"] = "empty_email_after_normalize"
+        return None, debug
+    debug["email_seen"] = email_lower
     # 1. Whitelist bootstrap — always wins, always super_admin
     if email_lower in SUPER_ADMIN_EMAILS:
+        debug["whitelist_match"] = True
         await db.admins.update_one(
             {"email": email_lower},
             {
@@ -113,13 +136,23 @@ async def _resolve_cms_role(db, email_lower: str) -> Optional[str]:
             },
             upsert=True,
         )
-        return "super_admin"
+        return "super_admin", debug
     # 2. Existing admins-collection record with a CMS-access role
     doc = await db.admins.find_one({"email": email_lower}, {"role": 1})
-    if doc and doc.get("role") in ROLES_WITH_CMS_ACCESS:
-        return doc["role"]
+    if doc:
+        debug["admins_doc_found"] = True
+        debug["admins_doc_role"] = doc.get("role")
+        if doc.get("role") in ROLES_WITH_CMS_ACCESS:
+            debug["admins_role_grants_cms"] = True
+            return doc["role"], debug
     # 3. Portal-only
-    return None
+    if debug["admins_doc_found"] and not debug["admins_role_grants_cms"]:
+        debug["reason"] = "admins_role_not_in_cms_allowlist"
+    elif not debug["whitelist_match"] and debug["whitelist_size"] == 0:
+        debug["reason"] = "super_admin_emails_env_not_set"
+    else:
+        debug["reason"] = "email_not_whitelisted_and_no_admins_doc"
+    return None, debug
 
 
 def _require_portal_user(request: Request) -> str:
@@ -188,18 +221,83 @@ def make_router(db) -> APIRouter:
             update["refresh_token"] = _enc(token["refresh_token"])
         await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": update}, upsert=True)
         request.session["portal_user_id"] = uid
-        email_lower = (identity.get("Email") or "").strip().casefold()
-        cms_role = await _resolve_cms_role(db, email_lower)
+        email_lower = (identity.get("Email") or identity.get("email") or "").strip().casefold()
+        cms_role, role_debug = await _resolve_cms_role_with_debug(db, email_lower)
         response: dict = {
             "ok": True,
-            "email": identity.get("Email"),
+            "email": identity.get("Email") or identity.get("email"),
             "display_name": update["display_name"],
             "is_admin": cms_role is not None,
         }
         if cms_role:
             response["admin_token"] = _mint_admin_token(email_lower, cms_role)
             response["admin_role"] = cms_role
+        else:
+            # Surface *why* admin access was denied so the operator can fix
+            # the config (usually missing SUPER_ADMIN_EMAILS env var on the
+            # runtime host). This response is only actionable to the person
+            # who just authenticated, so it's safe to expose.
+            response["role_debug"] = role_debug
+            # Offer bootstrap eligibility when the environment has literally
+            # no admins configured yet — the frontend can then surface a
+            # one-click "become the first super admin" button.
+            admins_count = await db.admins.count_documents({"role": {"$in": list(ROLES_WITH_CMS_ACCESS)}})
+            response["bootstrap_eligible"] = (
+                role_debug.get("whitelist_size", 0) == 0
+                and admins_count == 0
+                and bool(email_lower)
+            )
         return response
+
+    @router.post("/auth/zoho/bootstrap-super-admin")
+    async def zoho_bootstrap_super_admin(request: Request):
+        """One-time chicken-and-egg breaker: if `SUPER_ADMIN_EMAILS` env is
+        empty AND the `admins` collection has zero CMS-role docs, then the
+        first Zoho-authenticated user can promote themselves to super_admin.
+        After that this endpoint returns 409 for everyone (there's already
+        an admin — new promotions must go through the CMS Users tab).
+
+        Requires an active Zoho portal session (i.e. the caller has just
+        completed OAuth and holds `portal_user_id` in the session cookie).
+        """
+        uid = request.session.get("portal_user_id")
+        if not uid:
+            raise HTTPException(401, "Not authenticated with Zoho")
+        # Look up the Zoho user email from our own store — never trust the
+        # client for this.
+        zu = await db.zoho_users.find_one({"zoho_user_id": uid}, {"email": 1})
+        email = (zu or {}).get("email") or ""
+        email_lower = email.strip().casefold()
+        if not email_lower:
+            raise HTTPException(400, "Zoho session has no email attached")
+        # Guard: only allow when both conditions are true.
+        if SUPER_ADMIN_EMAILS:
+            raise HTTPException(409, "SUPER_ADMIN_EMAILS is configured — add your email there instead of using bootstrap")
+        admins_count = await db.admins.count_documents({"role": {"$in": list(ROLES_WITH_CMS_ACCESS)}})
+        if admins_count > 0:
+            raise HTTPException(409, "An admin already exists — new admins must be promoted via the CMS Users tab")
+        await db.admins.update_one(
+            {"email": email_lower},
+            {
+                "$set": {
+                    "email": email_lower,
+                    "role": "super_admin",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                "$setOnInsert": {
+                    "password_hash": "zoho-oauth-only",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "auth_source": "zoho-bootstrap",
+                },
+            },
+            upsert=True,
+        )
+        return {
+            "ok": True,
+            "admin_token": _mint_admin_token(email_lower, "super_admin"),
+            "admin_role": "super_admin",
+            "email": email,
+        }
 
     @router.get("/auth/zoho/callback")
     async def zoho_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):

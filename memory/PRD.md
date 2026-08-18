@@ -21,6 +21,17 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 53 (v0.8.5-Beta) — Zoho admin diagnostics + bootstrap
+- **Bug op productie**: super-admin (`beheer@multibay.eu`) kreeg géén CMS-toegang na Zoho login op https://pearblue.nl/https://login.pearblue.nl. Root cause: op de **Render backend** ontbrak (of was fout gespeld) de env var `SUPER_ADMIN_EMAILS`. De preview backend had de waarde wél. `_resolve_cms_role` gaf daarom stil `None` terug, waardoor de frontend naar `/portal` navigeerde zonder `admin_token`.
+- **Actionable diagnostics** — `_resolve_cms_role_with_debug` retourneert nu naast de role ook een debug-dict (`whitelist_size`, `whitelist_match`, `admins_doc_found`, `admins_doc_role`, `reason`). `/api/auth/zoho/exchange` neemt deze op in `role_debug` als er géén `admin_token` uitgereikt wordt, plus een `bootstrap_eligible` boolean.
+- **Frontend ZohoCallback UI** — als het exchange-antwoord `role_debug` bevat, blijft de gebruiker op de callback pagina en ziet: (1) een Nederlandse uitleg waarom (mapping van reason-code → helptekst met exacte env-var naam), (2) een collapsible technische JSON dump, (3) een "Ga naar klantportaal"-knop, (4) optioneel een groene bootstrap-knop.
+- **`POST /api/auth/zoho/bootstrap-super-admin`** — chicken-and-egg breaker. Wanneer `SUPER_ADMIN_EMAILS` env leeg is **én** de `admins` collection nul CMS-role docs bevat, kan de eerste Zoho-authenticated gebruiker zichzelf éénmalig promoveren tot super_admin. Daarna 409 voor iedereen (nieuwe admins gaan via CMS Users tab). Requires actieve Zoho session cookie — geen client-side trust.
+- **Zoho identity email fallback** — accepteert nu zowel `Email` (Zoho standaard, capitalized) als `email` (sommige regio's/tiers) voor future-proofing.
+- **Regressietests** — 5 nieuwe tests in `test_zoho_role_detection.py` dekken alle debug-reason paden: empty whitelist, whitelist met andere email, admins-doc met sub-CMS role, succesvolle whitelist-hit, empty email. **19/19 tests pass**.
+- **Actie voor operator (jij)** — twee opties om productie live te krijgen:
+  1. **Aanbevolen**: log opnieuw in met Zoho op https://pearblue.nl → op de callback-pagina verschijnt nu de "Word super-admin"-knop (mits geen andere admins) → klik en je bent binnen.
+  2. **Alternatief**: op Render.com, in de service settings van login.pearblue.nl, voeg toe: `SUPER_ADMIN_EMAILS=beheer@multibay.eu` en herstart de service.
+
 ### Feb 2026 — Iteration 52 (v0.8.4-Beta) — Vercel build ESLint fixes
 - **Bug**: Vercel production build (`CI=true react-scripts build`) faalde omdat `react-hooks/exhaustive-deps` warnings als errors werden behandeld in 15+ bestanden verspreid over Admin CMS + pages.
 - **Fix**: Alle `load()`/`loadTemplates()`/`loadStatus()` functies gerefactored naar `useCallback` met correcte deps (`authHeader`, `msgId`, `ticketId`, `email`, `lang`, `en`). Alle bijbehorende `useEffect(() => { load(); }, [])` → `useEffect(() => { load(); }, [load])` — stabiele referentie via useCallback.
