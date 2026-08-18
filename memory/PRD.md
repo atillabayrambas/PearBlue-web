@@ -21,7 +21,16 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 50 (this session, v0.8.2-Beta) — Deployment vault (CMS tab)
+### Feb 2026 — Iteration 51 (this session, v0.8.3-Beta) — Zoho admin role detection fix
+- **Bug**: gebruikers die in de `admins` collectie een CMS-role hadden (beheerder/moderator/analist/financien/chat_support/crm/super_admin) maar NIET in `SUPER_ADMIN_EMAILS` env whitelist stonden, kregen géén `admin_token` bij Zoho login. Gevolg: het CMS-icoon verscheen niet in de navigatie na een succesvolle Zoho super-admin login.
+- **Fix**: nieuwe `_resolve_cms_role(db, email)` helper in `zoho_portal.py` met 3-tier precedence: (1) whitelist bootstrap → altijd super_admin + auto-upsert admins-doc, (2) bestaande admins-collectie role in `ROLES_WITH_CMS_ACCESS` → hergebruik die exacte role, (3) anders portal-only (geen admin_token).
+- **Role wordt nu correct in JWT gezet**: `_mint_admin_token(email, role)` accepteert de resolved role als parameter i.p.v. hardcoded `super_admin`. Zo krijgt een moderator via Zoho login een JWT met `role="moderator"` — waar `require_admin` (backend) en `isAdmin` (frontend) correct op reageren.
+- **Case-safe normalisatie** — `SUPER_ADMIN_EMAILS` gebruikt nu `casefold()` i.p.v. `lower()` (correcter voor internationale characters), resolver renormaliseert defensief.
+- **Extra response veld** `admin_role` in `/api/auth/zoho/exchange` response (naast `admin_token`) — nuttig voor frontend debug/logging.
+- **Integration playbook geconsulteerd** (integration_playbook_expert_v2) voordat auth-wijzigingen zijn gedaan, per system prompt regel voor auth-mutaties.
+- **Regressietests**: `tests/test_zoho_role_detection.py` — 14/14 pass. Dekt: elke CMS role wordt herkend (parametrized over 8 roles), whitelist bootstrap upsert, portal-only fallback, non-CMS role rejection, empty-email edge case, whitelist promotion overwrites lower role, en JWT payload check.
+
+### Feb 2026 — Iteration 50 (v0.8.2-Beta) — Deployment vault (CMS tab)
 - **Nieuwe "Deployment"-tab in Site instellingen** — één plek voor álle 17 env vars die op Render/Vercel horen te staan: MONGO_URL, DB_NAME, EMERGENT_LLM_KEY, ZOHO_CLIENT_ID/SECRET, ZOHO_BOOKS/PROJECTS/DESK_ORG_ID, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, TOKEN_ENCRYPTION_KEY, RESEND_API_KEY, JWT_SECRET, SESSION_SECRET, FRONTEND_URL, CORS_ORIGINS, SUPER_ADMIN_EMAILS.
 - **Encrypted at rest** — waarden worden opgeslagen in `deployment_vault` collectie via de bestaande Fernet cipher (`enc_secret`/`dec_secret`), dezelfde die Zoho refresh-tokens beschermt.
 - **Waarschuwing prominent** — grote amber banner bovenaan: "Dit is een kluis — géén runtime configuratie. Wijzigingen herstarten de backend NIET; kopieer naar Render/Vercel." Voorkomt dat een admin denkt dat aanpassingen live gaan.

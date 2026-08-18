@@ -21,11 +21,18 @@ BOOKS_ORG_ID = os.environ.get("ZOHO_BOOKS_ORG_ID", "").strip()
 PROJECTS_PORTAL_ID = os.environ.get("ZOHO_PROJECTS_PORTAL_ID", "").strip()
 DESK_ORG_ID = os.environ.get("ZOHO_DESK_ORG_ID", "").strip()
 SUPER_ADMIN_EMAILS = {
-    e.strip().lower() for e in os.environ.get("SUPER_ADMIN_EMAILS", "").split(",") if e.strip()
+    e.strip().casefold() for e in os.environ.get("SUPER_ADMIN_EMAILS", "").split(",") if e.strip()
 }
 JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
 JWT_ALG = "HS256"
 JWT_EXP_MINUTES = 60 * 24 * 7  # 7 days
+
+# Kept in sync with server.py::ROLES_WITH_CMS_ACCESS. Duplicating avoids a
+# circular import; the set is small and easy to audit for drift.
+ROLES_WITH_CMS_ACCESS = {
+    "admin", "super_admin", "beheerder", "analist",
+    "moderator", "chat_support", "financien", "crm",
+}
 
 TOKEN_ENC_KEY = os.environ.get("TOKEN_ENCRYPTION_KEY", "").encode()
 _cipher = Fernet(TOKEN_ENC_KEY) if TOKEN_ENC_KEY else None
@@ -50,14 +57,69 @@ def _dec(value: str) -> str:
     return _cipher.decrypt(value.encode()).decode()
 
 
-def _mint_admin_token(email: str) -> str:
+def _mint_admin_token(email: str, role: str = "super_admin") -> str:
+    """Sign an admin JWT for the given email + role.
+
+    Role defaults to `super_admin` for the SUPER_ADMIN_EMAILS bootstrap path,
+    but Zoho users promoted through the `admins` collection keep the exact
+    role assigned to them (beheerder, moderator, financien, etc.). The role
+    claim is what `require_admin` on the server side gates CMS access on.
+    """
     payload = {
         "sub": email,
-        "role": "super_admin",
+        "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXP_MINUTES),
         "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def _resolve_cms_role(db, email_lower: str) -> Optional[str]:
+    """Return the CMS role for a Zoho-authenticated email, or None if the
+    user is portal-only (no CMS access).
+
+    Precedence:
+      1. SUPER_ADMIN_EMAILS whitelist  → bootstrap/refresh as super_admin
+      2. Existing `admins` collection entry with a CMS-access role → return
+         THAT role (preserves manual beheerder/moderator/... assignments)
+      3. Otherwise → None (portal-only login, no admin token)
+
+    This fixes the previous bug where a Zoho login only produced an
+    admin_token when the email was hardcoded in the env whitelist — any
+    beheerder/moderator/etc. that had been manually added to `admins` was
+    denied a CMS session and never saw the CMS icon in the navigation.
+    """
+    if not email_lower:
+        return None
+    # Defense in depth — always renormalize even if the caller already did.
+    email_lower = email_lower.strip().casefold()
+    if not email_lower:
+        return None
+    # 1. Whitelist bootstrap — always wins, always super_admin
+    if email_lower in SUPER_ADMIN_EMAILS:
+        await db.admins.update_one(
+            {"email": email_lower},
+            {
+                "$set": {
+                    "email": email_lower,
+                    "role": "super_admin",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                "$setOnInsert": {
+                    "password_hash": "zoho-oauth-only",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "auth_source": "zoho",
+                },
+            },
+            upsert=True,
+        )
+        return "super_admin"
+    # 2. Existing admins-collection record with a CMS-access role
+    doc = await db.admins.find_one({"email": email_lower}, {"role": 1})
+    if doc and doc.get("role") in ROLES_WITH_CMS_ACCESS:
+        return doc["role"]
+    # 3. Portal-only
+    return None
 
 
 def _require_portal_user(request: Request) -> str:
@@ -126,21 +188,17 @@ def make_router(db) -> APIRouter:
             update["refresh_token"] = _enc(token["refresh_token"])
         await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": update}, upsert=True)
         request.session["portal_user_id"] = uid
-        email_lower = (identity.get("Email") or "").lower().strip()
-        is_super_admin = email_lower in SUPER_ADMIN_EMAILS
-        response: dict = {"ok": True, "email": identity.get("Email"), "display_name": update["display_name"], "is_admin": is_super_admin}
-        if is_super_admin:
-            # Ensure an admins-collection record exists so /api/auth/me works consistently
-            existing_admin = await db.admins.find_one({"email": email_lower})
-            if existing_admin is None:
-                await db.admins.insert_one({
-                    "email": email_lower,
-                    "password_hash": "zoho-oauth-only",
-                    "role": "super_admin",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "auth_source": "zoho",
-                })
-            response["admin_token"] = _mint_admin_token(email_lower)
+        email_lower = (identity.get("Email") or "").strip().casefold()
+        cms_role = await _resolve_cms_role(db, email_lower)
+        response: dict = {
+            "ok": True,
+            "email": identity.get("Email"),
+            "display_name": update["display_name"],
+            "is_admin": cms_role is not None,
+        }
+        if cms_role:
+            response["admin_token"] = _mint_admin_token(email_lower, cms_role)
+            response["admin_role"] = cms_role
         return response
 
     @router.get("/auth/zoho/callback")
