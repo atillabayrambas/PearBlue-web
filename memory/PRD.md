@@ -21,6 +21,15 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 57 (v0.8.9-Beta) — Unified logout (portal ↔ CMS)
+- **Bug**: uitloggen via het klantportaal loste de CMS-sessie niet op (en vice versa). Elke context (`AuthContext` voor CMS, `PortalAuthContext` voor Zoho portal, plus lokale state in `Portal.jsx`) beheerde zijn eigen logout, wat leidde tot half uitgelogde staten.
+- **Fix — cross-context `pb:logout` event bus**: elke logout dispatchet nu een custom DOM event dat door alle contexts wordt opgevangen. Concrete effecten:
+  - `AuthContext.logout()` (CMS/StaffBanner) — POST `/auth/portal/logout` (fire-and-forget), verwijdert `pb_admin_token`, dispatched `pb:logout`
+  - `PortalAuthContext.logout()` — POST `/auth/portal/logout`, verwijdert `pb_admin_token` uit localStorage, dispatched `pb:logout`
+  - Beide contexts + `Portal.jsx`'s lokale `me` state luisteren naar het event en resetten hun state in dezelfde React-tick
+- **Portal.jsx** gebruikt nu `usePortalAuth().logout` in plaats van een eigen inline axios call — één plek waar de logout-logica leeft.
+- **Verificatie**: Vercel build clean, 0 lint errors op alle 3 gewijzigde bestanden.
+
 ### Feb 2026 — Iteration 56 (v0.8.8-Beta) — IMAP UID sync + mailbox edit UI
 - **Kritieke bug**: IMAP parser gebruikte `SEARCH UNSEEN` en importeerde daardoor **nul** al-gelezen mails uit de bestaande INBOX van `info@pearblue.nl`. De meeste bestaande mail is al gelezen in Zoho Mail webmail → parser sloeg ze allemaal over.
 - **Fix — UID-based incremental sync**: `_fetch_new_messages` gebruikt nu `UID SEARCH`. Eerste run per mailbox = `SINCE {backfill_days} ago` (default 30 dagen backfill, per-mailbox instelbaar). Volgende runs = `UID {last_uid+1}:*` — onafhankelijk van `\Seen` vlag. `last_uid` wordt bewaard in `db.mailboxes` na elke sync. Idempotentie blijft geguard via `db.imap_ingested` (mailbox_id, uid).

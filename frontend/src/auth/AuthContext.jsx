@@ -27,6 +27,18 @@ export const AuthProvider = ({ children }) => {
       .finally(() => setLoading(false));
   }, []);
 
+  // Cross-context sync: any logout (portal OR CMS) dispatches `pb:logout`,
+  // and BOTH contexts drop their local state so the whole app agrees.
+  useEffect(() => {
+    const clear = () => {
+      localStorage.removeItem(TOKEN_KEY);
+      setToken(null);
+      setUser(null);
+    };
+    window.addEventListener("pb:logout", clear);
+    return () => window.removeEventListener("pb:logout", clear);
+  }, []);
+
   const login = async (email, password) => {
     const res = await axios.post(`${API}/auth/login`, { email, password });
     const t = res.data.access_token;
@@ -50,9 +62,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Fire-and-forget the portal session logout on the server so the Zoho
+    // session cookie is invalidated too — CMS logout and portal logout are
+    // now unified (see PortalAuthContext for the mirror side).
+    try { axios.post(`${API}/auth/portal/logout`, {}, { withCredentials: true }).catch(() => {}); } catch { /* ignore */ }
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
+    // Broadcast so PortalAuthContext (and any other subscriber) drops state.
+    try { window.dispatchEvent(new Event("pb:logout")); } catch { /* ignore */ }
   };
 
   const authHeader = () => (token ? { Authorization: `Bearer ${token}` } : {});

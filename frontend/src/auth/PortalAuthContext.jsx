@@ -24,8 +24,18 @@ export const PortalAuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await axios.post(`${API}/auth/portal/logout`, {}, { withCredentials: true }); } catch {}
+    try { await axios.post(`${API}/auth/portal/logout`, {}, { withCredentials: true }); } catch { /* ignore */ }
+    // Also drop the CMS admin token so a single sign-out clears both sessions.
+    try { localStorage.removeItem("pb_admin_token"); } catch { /* ignore */ }
     setState({ loading: false, authenticated: false, user: null });
+    try { window.dispatchEvent(new Event("pb:logout")); } catch { /* ignore */ }
+  }, []);
+
+  // Sync state when the CMS AuthContext (or any other source) broadcasts.
+  useEffect(() => {
+    const clear = () => setState({ loading: false, authenticated: false, user: null });
+    window.addEventListener("pb:logout", clear);
+    return () => window.removeEventListener("pb:logout", clear);
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);

@@ -14,6 +14,7 @@ import { PhoneInput } from "../components/PhoneInput";
 import { usePostalLookup } from "../hooks/usePostalLookup";
 import { extractNlPostcode, extractHouseNumber, NL_POSTCODE_RE, isoToFlag } from "../hooks/usePostalLookup";
 import { useAuth } from "../auth/AuthContext";
+import { usePortalAuth } from "../auth/PortalAuthContext";
 import { useLang } from "../i18n/LanguageContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -288,6 +289,7 @@ export default function Portal() {
   const [pdfPreview, setPdfPreview] = useState(null); // { url, invoice_id }
   const location = useLocation();
   const { isAdmin } = useAuth();
+  const { logout: unifiedLogout } = usePortalAuth();
 
   const loadMe = () => {
     setMe((m) => ({ ...m, loading: true }));
@@ -297,6 +299,14 @@ export default function Portal() {
   };
 
   useEffect(() => { loadMe(); }, []);
+  // Keep local `me` in sync with a global `pb:logout` broadcast so the
+  // portal card flips back to the sign-in prompt the instant any logout
+  // fires (CMS button, staff banner, portal logout button — all equal now).
+  useEffect(() => {
+    const clear = () => setMe({ loading: false, authenticated: false, user: null });
+    window.addEventListener("pb:logout", clear);
+    return () => window.removeEventListener("pb:logout", clear);
+  }, []);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const err = params.get("error");
@@ -304,7 +314,9 @@ export default function Portal() {
   }, [location.search, lang]);
 
   const logout = async () => {
-    await axios.post(`${API}/auth/portal/logout`, {}, { withCredentials: true });
+    // Unified — clears the Zoho portal session AND the CMS admin token AND
+    // broadcasts `pb:logout` so every context resets in the same tick.
+    await unifiedLogout();
     setMe({ loading: false, authenticated: false, user: null });
     toast.success(lang === "en" ? "Signed out" : "Uitgelogd");
   };
