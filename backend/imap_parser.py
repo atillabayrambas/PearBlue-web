@@ -251,35 +251,61 @@ def _extract_body(msg) -> str:
         return ""
 
 
-def _fetch_new_messages(host: str, port: int, use_ssl: bool, username: str, password: str, folder: str = "INBOX") -> list:
-    """Blocking IMAP fetch — returns a list of dicts with parsed messages.
-    Runs inside `asyncio.to_thread`."""
+def _fetch_new_messages(host: str, port: int, use_ssl: bool, username: str, password: str, folder: str = "INBOX", last_uid: Optional[int] = None, backfill_days: int = 30) -> tuple[list, Optional[int]]:
+    """Blocking IMAP fetch — returns (messages, new_max_uid).
+
+    UID-based sync so we don't skip already-read (`\\Seen`) messages:
+      * First run for a mailbox (`last_uid is None`)  → fetch everything since
+        `backfill_days` ago (default 30 days). Existing INBOX content is then
+        imported the first time the mailbox is synced.
+      * Subsequent runs → fetch `UID {last_uid+1}:*` so we only look at mail
+        that arrived since the previous poll — regardless of \\Seen flags.
+
+    Idempotency is still guarded by `db.imap_ingested` (mailbox_id, uid).
+    Runs inside `asyncio.to_thread`.
+    """
     imap_cls = imaplib.IMAP4_SSL if use_ssl else imaplib.IMAP4
     conn = imap_cls(host, port)
     try:
         conn.login(username, password)
         conn.select(folder)
-        typ, data = conn.search(None, "UNSEEN")
+        if last_uid is not None and last_uid > 0:
+            # Incremental — everything strictly newer than what we saw last time.
+            typ, data = conn.uid("search", None, f"UID {int(last_uid) + 1}:*")
+        else:
+            # First sync — backfill so already-read INBOX messages get imported.
+            since = (datetime.now(timezone.utc) - timedelta(days=max(1, backfill_days))).strftime("%d-%b-%Y")
+            typ, data = conn.uid("search", None, f"SINCE {since}")
         if typ != "OK":
-            return []
-        ids = data[0].split()
+            return [], last_uid
+        raw_uids = data[0].split() if data and data[0] else []
+        # Sort numerically so `max_uid` really is the highest UID we saw.
+        try:
+            uids = sorted({int(u) for u in raw_uids})
+        except ValueError:
+            uids = []
         results = []
-        for msgid in ids[-200:]:  # cap per-poll load
-            typ, msg_data = conn.fetch(msgid, "(RFC822 UID)")
+        max_uid_seen = last_uid or 0
+        # Cap per-poll load — process the newest 500 UIDs (plenty for a
+        # 60s poll interval even under heavy inbound volume).
+        for uid_int in uids[-500:]:
+            uid_bytes = str(uid_int).encode()
+            typ, msg_data = conn.uid("fetch", uid_bytes, "(RFC822)")
             if typ != "OK" or not msg_data or msg_data[0] is None:
                 continue
-            # Extract UID from response envelope like: b'1 (UID 42 RFC822 {size}'
             raw = msg_data[0]
-            envelope = raw[0].decode(errors="replace") if isinstance(raw, tuple) else ""
-            uid_match = re.search(r"UID (\d+)", envelope)
-            uid = uid_match.group(1) if uid_match else msgid.decode()
             payload = raw[1] if isinstance(raw, tuple) else b""
-            msg = email.message_from_bytes(payload)
+            if not payload:
+                continue
+            try:
+                msg = email.message_from_bytes(payload)
+            except Exception:
+                continue
             subject = _decode_header(msg.get("Subject"))
             from_name, from_addr = parseaddr(_decode_header(msg.get("From")))
             body = _extract_body(msg)
             results.append({
-                "uid": uid,
+                "uid": str(uid_int),
                 "subject": subject,
                 "from_name": from_name,
                 "from_email": (from_addr or "").lower(),
@@ -287,19 +313,21 @@ def _fetch_new_messages(host: str, port: int, use_ssl: bool, username: str, pass
                 "date": _decode_header(msg.get("Date")),
                 "message_id": _decode_header(msg.get("Message-ID")),
             })
+            if uid_int > max_uid_seen:
+                max_uid_seen = uid_int
         try:
             conn.close()
         except Exception:
             pass
         conn.logout()
-        return results
+        return results, max_uid_seen
     except imaplib.IMAP4.error as e:
         logger.warning(f"IMAP {username}@{host} error: {e}")
         try:
             conn.logout()
         except Exception:
             pass
-        return []
+        return [], last_uid
 
 
 async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
@@ -309,11 +337,20 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
     if not pwd:
         counters["skipped"] += 1
         return counters
+    # Use per-mailbox `last_uid` for incremental sync, or backfill on first
+    # run. Backfill window is configurable per-mailbox (default 30 days).
+    last_uid_raw = mbox.get("last_uid")
     try:
-        messages = await asyncio.to_thread(
+        last_uid = int(last_uid_raw) if last_uid_raw is not None else None
+    except (TypeError, ValueError):
+        last_uid = None
+    backfill_days = int(mbox.get("backfill_days") or 30)
+    try:
+        messages, new_max_uid = await asyncio.to_thread(
             _fetch_new_messages,
             mbox["host"], int(mbox.get("port") or 993), bool(mbox.get("use_ssl", True)),
             mbox["username"], pwd, mbox.get("folder") or "INBOX",
+            last_uid, backfill_days,
         )
     except Exception as e:
         logger.warning(f"IMAP fetch crashed for {mbox.get('email')}: {e}")
@@ -420,10 +457,10 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
         record["ticket_ref"] = subject_ref
         await db.imap_ingested.insert_one(record)
 
-    await db.mailboxes.update_one(
-        {"id": mbox["id"]},
-        {"$set": {"last_sync": datetime.now(timezone.utc).isoformat(), "last_sync_counts": counters}},
-    )
+    update = {"last_sync": datetime.now(timezone.utc).isoformat(), "last_sync_counts": counters}
+    if new_max_uid and new_max_uid > (last_uid or 0):
+        update["last_uid"] = int(new_max_uid)
+    await db.mailboxes.update_one({"id": mbox["id"]}, {"$set": update})
     return counters
 
 

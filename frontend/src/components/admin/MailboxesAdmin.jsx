@@ -9,7 +9,9 @@ export const MailboxesAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX" });
+  const emptyForm = { label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX", backfill_days: 30 };
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null); // null = create mode, id = edit mode
   const [selectedId, setSelectedId] = useState(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
@@ -40,15 +42,54 @@ export const MailboxesAdmin = () => {
   }, [authHeader]);
   useEffect(() => { load(); }, [load]);
 
-  const add = async (e) => {
+  const startEdit = (m) => {
+    setEditingId(m.id);
+    setForm({
+      label: m.label || "",
+      email: m.email || "",
+      host: m.host || "",
+      port: m.port || 993,
+      username: m.username || "",
+      password: "", // never pre-fill — user must retype OR leave blank to keep existing
+      use_ssl: m.use_ssl !== false,
+      folder: m.folder || "INBOX",
+      backfill_days: m.backfill_days || 30,
+    });
+    setShowForm(true);
+  };
+
+  const cancelForm = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowForm(false);
+  };
+
+  const submitForm = async (e) => {
     e.preventDefault();
     try {
-      const r = await axios.post(`${API}/admin/mailboxes`, form, { headers: authHeader() });
-      toast.success("Mailbox toegevoegd");
-      setItems([...items, r.data]);
-      setForm({ label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX" });
-      setShowForm(false);
-    } catch (e) { toast.error(e?.response?.data?.detail || "Toevoegen mislukt"); }
+      if (editingId) {
+        // Update — send only non-empty password so blank keeps the existing.
+        const { password, ...rest } = form;
+        const payload = password ? { ...rest, password } : rest;
+        const r = await axios.patch(`${API}/admin/mailboxes/${editingId}`, payload, { headers: authHeader() });
+        toast.success("Mailbox bijgewerkt");
+        setItems(items.map((m) => (m.id === editingId ? r.data : m)));
+      } else {
+        const r = await axios.post(`${API}/admin/mailboxes`, form, { headers: authHeader() });
+        toast.success("Mailbox toegevoegd");
+        setItems([...items, r.data]);
+      }
+      cancelForm();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Opslaan mislukt"); }
+  };
+
+  const resetUid = async (m) => {
+    if (!window.confirm(`Reset UID-cursor voor "${m.label}"?\n\nBij de volgende sync worden ALLE mails van de laatste ${m.backfill_days || 30} dagen opnieuw ingelezen (idempotent — bestaande records worden niet gedupliceerd).`)) return;
+    try {
+      await axios.post(`${API}/admin/mailboxes/${m.id}/reset-uid`, {}, { headers: authHeader() });
+      toast.success("UID-cursor gereset — voer nu een Sync uit");
+      load();
+    } catch { toast.error("Reset mislukt"); }
   };
 
   const del = async (id) => {
@@ -118,9 +159,17 @@ export const MailboxesAdmin = () => {
                   <p className="text-[10px] text-muted-fg mt-0.5">Laatste sync: {m.last_sync ? new Date(m.last_sync).toLocaleString("nl-NL") : "nooit"} {m.last_sync_counts && <span>· {m.last_sync_counts.ingested || 0} nieuw · {m.last_sync_counts.matched || 0} gekoppeld</span>}</p>
                 </div>
                 {canManage && (
-                  <button onClick={() => del(m.id)} className="text-red-500 hover:text-red-600 text-xs px-3 py-1 border border-red-200 rounded-full" data-testid={`mailbox-delete-${m.id}`}>
-                    Verwijderen
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => startEdit(m)} className="text-pear-600 hover:text-pear-700 text-xs px-3 py-1 border border-pear-200 rounded-full" data-testid={`mailbox-edit-${m.id}`}>
+                      Bewerken
+                    </button>
+                    <button onClick={() => resetUid(m)} className="text-slate-600 hover:text-slate-800 text-xs px-3 py-1 border border-slate-200 rounded-full" data-testid={`mailbox-reset-uid-${m.id}`} title={`Reset UID-cursor — bij volgende sync worden alle mails van de laatste ${m.backfill_days || 30} dagen opnieuw gescand`}>
+                      🔄 Herimport
+                    </button>
+                    <button onClick={() => del(m.id)} className="text-red-500 hover:text-red-600 text-xs px-3 py-1 border border-red-200 rounded-full" data-testid={`mailbox-delete-${m.id}`}>
+                      Verwijderen
+                    </button>
+                  </div>
                 )}
               </li>
             ))}
@@ -131,25 +180,38 @@ export const MailboxesAdmin = () => {
       {canManage && (
         <>
           {!showForm ? (
-            <button onClick={() => setShowForm(true)} className="btn-primary" data-testid="mailbox-add-btn">
+            <button onClick={() => { setEditingId(null); setForm(emptyForm); setShowForm(true); }} className="btn-primary" data-testid="mailbox-add-btn">
               <Plus className="h-4 w-4" /> Mailbox toevoegen
             </button>
           ) : (
-            <form onSubmit={add} className="surface border border-app rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="mailbox-form">
+            <form onSubmit={submitForm} className="surface border border-app rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="mailbox-form">
+              <div className="md:col-span-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-strong" data-testid="mailbox-form-title">
+                  {editingId ? "Mailbox bewerken" : "Nieuwe mailbox"}
+                </h3>
+                {editingId && <span className="text-[10px] text-muted-fg font-mono">id: {editingId.slice(0, 8)}…</span>}
+              </div>
               <input required placeholder="Label (bv. Support)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-label" />
               <input required type="email" placeholder="you@pearblue.nl" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-email" />
               <input required placeholder="IMAP host (imap.provider.com)" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-host" />
               <input type="number" placeholder="Port" value={form.port} onChange={(e) => setForm({ ...form, port: parseInt(e.target.value, 10) || 993 })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-port" />
               <input required placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-username" />
-              <input required type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-password" />
+              <input required={!editingId} type="password" placeholder={editingId ? "Wachtwoord (leeg = behouden)" : "Password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-password" />
               <input placeholder="Folder (default INBOX)" value={form.folder} onChange={(e) => setForm({ ...form, folder: e.target.value })} className="rounded-lg border border-app surface px-3 py-2 text-sm" data-testid="mailbox-input-folder" />
-              <label className="flex items-center gap-2 text-xs md:col-span-1">
+              <label className="flex items-center gap-2 text-xs">
+                <span className="text-muted-fg">Backfill</span>
+                <input type="number" min="1" max="365" value={form.backfill_days} onChange={(e) => setForm({ ...form, backfill_days: parseInt(e.target.value, 10) || 30 })} className="w-20 rounded-lg border border-app surface px-2 py-1 text-sm" data-testid="mailbox-input-backfill" />
+                <span className="text-muted-fg">dagen bij eerste sync</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs md:col-span-2">
                 <input type="checkbox" checked={form.use_ssl} onChange={(e) => setForm({ ...form, use_ssl: e.target.checked })} className="accent-pear-500" data-testid="mailbox-input-ssl" />
                 SSL/TLS (aanbevolen)
               </label>
               <div className="md:col-span-2 flex gap-2">
-                <button type="submit" className="btn-primary" data-testid="mailbox-submit">Opslaan</button>
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary" data-testid="mailbox-cancel">Annuleer</button>
+                <button type="submit" className="btn-primary" data-testid="mailbox-submit">
+                  {editingId ? "Wijzigingen opslaan" : "Opslaan"}
+                </button>
+                <button type="button" onClick={cancelForm} className="btn-secondary" data-testid="mailbox-cancel">Annuleer</button>
               </div>
             </form>
           )}

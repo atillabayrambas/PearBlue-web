@@ -2351,6 +2351,18 @@ class MailboxCreate(BaseModel):
     folder: str = Field("INBOX", min_length=1, max_length=80)
 
 
+class MailboxUpdate(BaseModel):
+    label: Optional[str] = Field(None, min_length=1, max_length=80)
+    email: Optional[str] = Field(None, min_length=3, max_length=200)
+    host: Optional[str] = Field(None, min_length=1, max_length=200)
+    port: Optional[int] = Field(None, ge=1, le=65535)
+    username: Optional[str] = Field(None, min_length=1, max_length=200)
+    password: Optional[str] = Field(None, min_length=1, max_length=200)
+    use_ssl: Optional[bool] = None
+    folder: Optional[str] = Field(None, min_length=1, max_length=80)
+    backfill_days: Optional[int] = Field(None, ge=1, le=365)
+
+
 @api_router.get("/admin/mailboxes")
 async def list_mailboxes(current=Depends(require_admin)):
     docs = await db.mailboxes.find({}, {"_id": 0, "password": 0}).to_list(50)
@@ -2377,6 +2389,8 @@ async def add_mailbox(payload: MailboxCreate, current=Depends(require_admin)):
         "password": enc_secret(payload.password),  # Fernet-encrypted at rest
         "use_ssl": payload.use_ssl,
         "folder": (payload.folder or "INBOX").strip() or "INBOX",
+        "backfill_days": 30,
+        "last_uid": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current.get("email"),
         "last_sync": None,
@@ -2385,6 +2399,54 @@ async def add_mailbox(payload: MailboxCreate, current=Depends(require_admin)):
     doc.pop("password", None)
     doc.pop("_id", None)
     return doc
+
+
+@api_router.patch("/admin/mailboxes/{mid}")
+async def update_mailbox(mid: str, payload: MailboxUpdate, current=Depends(require_admin)):
+    """Update mailbox settings (host/port/credentials/folder/backfill). Password
+    is optional — passing an empty string leaves the existing password intact."""
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen beheerders en super admins mogen mailboxen wijzigen")
+    existing = await db.mailboxes.find_one({"id": mid})
+    if not existing:
+        raise HTTPException(404, "Mailbox niet gevonden")
+    update: dict = {}
+    if payload.label is not None: update["label"] = payload.label.strip()
+    if payload.email is not None:
+        new_email = payload.email.strip().lower()
+        if new_email != existing.get("email"):
+            dup = await db.mailboxes.find_one({"email": new_email, "id": {"$ne": mid}})
+            if dup:
+                raise HTTPException(409, f"Mailbox met e-mail {new_email} bestaat al")
+        update["email"] = new_email
+    if payload.host is not None: update["host"] = payload.host.strip()
+    if payload.port is not None: update["port"] = payload.port
+    if payload.username is not None: update["username"] = payload.username.strip()
+    if payload.password:  # empty string / None → keep existing
+        update["password"] = enc_secret(payload.password)
+    if payload.use_ssl is not None: update["use_ssl"] = payload.use_ssl
+    if payload.folder is not None: update["folder"] = payload.folder.strip() or "INBOX"
+    if payload.backfill_days is not None: update["backfill_days"] = payload.backfill_days
+    if not update:
+        return {"status": "noop"}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update["updated_by"] = current.get("email")
+    await db.mailboxes.update_one({"id": mid}, {"$set": update})
+    doc = await db.mailboxes.find_one({"id": mid}, {"_id": 0, "password": 0})
+    return doc
+
+
+@api_router.post("/admin/mailboxes/{mid}/reset-uid")
+async def reset_mailbox_uid(mid: str, current=Depends(require_admin)):
+    """Clear `last_uid` on a mailbox so the next sync backfills from scratch.
+    Useful when you want to re-import already-read INBOX content after
+    changing the backfill window or migrating from an earlier parser version."""
+    if current.get("role") not in {"super_admin", "admin", "beheerder"}:
+        raise HTTPException(403, "Alleen beheerders en super admins mogen dit doen")
+    res = await db.mailboxes.update_one({"id": mid}, {"$set": {"last_uid": None}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Mailbox niet gevonden")
+    return {"status": "reset", "last_uid": None}
 
 
 @api_router.delete("/admin/mailboxes/{mid}")

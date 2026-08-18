@@ -21,6 +21,19 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 56 (v0.8.8-Beta) — IMAP UID sync + mailbox edit UI
+- **Kritieke bug**: IMAP parser gebruikte `SEARCH UNSEEN` en importeerde daardoor **nul** al-gelezen mails uit de bestaande INBOX van `info@pearblue.nl`. De meeste bestaande mail is al gelezen in Zoho Mail webmail → parser sloeg ze allemaal over.
+- **Fix — UID-based incremental sync**: `_fetch_new_messages` gebruikt nu `UID SEARCH`. Eerste run per mailbox = `SINCE {backfill_days} ago` (default 30 dagen backfill, per-mailbox instelbaar). Volgende runs = `UID {last_uid+1}:*` — onafhankelijk van `\Seen` vlag. `last_uid` wordt bewaard in `db.mailboxes` na elke sync. Idempotentie blijft geguard via `db.imap_ingested` (mailbox_id, uid).
+- **Nieuwe backend endpoints**:
+  - `PATCH /api/admin/mailboxes/{id}` — update label/host/port/username/password/folder/backfill_days (leeg wachtwoord = behoud bestaande, Fernet-encryptie intact)
+  - `POST /api/admin/mailboxes/{id}/reset-uid` — wist `last_uid` zodat volgende sync opnieuw backfilled (idempotent)
+- **CMS UI — MailboxesAdmin.jsx**:
+  - **"Bewerken" knop** per mailbox row → opent form in edit-mode (label, host, port, folder, backfill window, optioneel wachtwoord wijzigen). Form-title dynamisch: "Mailbox bewerken" vs "Nieuwe mailbox".
+  - **"🔄 Herimport" knop** per row → reset UID cursor met confirmation dialog die uitlegt wat er gebeurt.
+  - **Backfill-veld** in form: "N dagen bij eerste sync" — user kan tot 365 dagen kiezen om oude mails alsnog te importeren.
+- **Regressietests** — `test_imap_uid_sync.py` met 4 cases: (1) eerste run backfilled ALLE UIDs inclusief \Seen, (2) incrementele run gebruikt `UID last+1:*`, (3) lege SEARCH behoudt last_uid, (4) subject/from parsing overleeft envelope refactor. **23/23 tests slagen** (Zoho + IMAP).
+- **Actie voor jou**: deploy naar Render → open Mailboxes tab → klik "🔄 Herimport" bij `info@pearblue.nl` → klik "Sync nu". Alle mail van de laatste 30 dagen wordt geïmporteerd en gematcht.
+
 ### Feb 2026 — Iteration 55 (v0.8.7-Beta) — Staff-mode visibility (StaffBanner)
 - **User rapporteerde 2 "bugs"**: (a) CMS toegankelijk zonder in te loggen, (b) maintenance-modus werkt niet meer.
 - **Onderzoek** (headless Playwright, schone browser sessie): beide "bugs" bevestigd als **NIET waar** op productie:
