@@ -34,11 +34,57 @@ export default function ZohoCallback() {
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;
-    const params = new URLSearchParams(location.search);
-    const code = params.get("code");
-    const state = params.get("state");
-    const err = params.get("error");
+    const search = new URLSearchParams(location.search);
+    // Strip leading '#' from the hash fragment (React Router keeps it).
+    const hash = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+
+    // ---- Path 1: server-side callback landed us here with `#admin_token=…`
+    // (production Render flow — ZOHO_REDIRECT_URI points at the backend
+    // GET /api/auth/zoho/callback endpoint which mints and redirects here).
+    const fragToken = hash.get("admin_token");
+    const fragRole = hash.get("admin_role");
+    if (fragToken) {
+      (async () => {
+        try {
+          await refresh();
+          await adoptToken(fragToken);
+          // Immediately wipe the token from window.location so it never
+          // ends up in a copy-pasted URL or the browser back-forward cache.
+          window.history.replaceState(null, "", "/oauth/zoho/callback");
+          toast.success(fragRole ? `Ingelogd als ${fragRole}` : "Ingelogd");
+          navigate("/admin", { replace: true });
+        } catch (e) {
+          setError(e?.message || "Kon admin token niet activeren");
+        }
+      })();
+      return;
+    }
+
+    // ---- Path 2: server-side callback landed us here with `?portal_only=1&role_debug=…`
+    // (production Render flow, portal-only user — role resolution denied
+    // CMS access; the server passed the diagnostic in a query string).
+    if (search.get("portal_only") === "1") {
+      let roleDebug = null;
+      try { roleDebug = JSON.parse(search.get("role_debug") || "null"); } catch { /* ignore */ }
+      if (roleDebug) {
+        refresh().finally(() => {
+          setDebug({
+            role_debug: roleDebug,
+            bootstrap_eligible: search.get("bootstrap_eligible") === "1",
+            email: search.get("email") || "",
+          });
+        });
+        return;
+      }
+    }
+
+    // ---- Path 3: legacy frontend-driven exchange (dev preview, where
+    // ZOHO_REDIRECT_URI points at this frontend page). We still POST the
+    // code+state to /auth/zoho/exchange so both flows keep working.
+    const err = search.get("error");
     if (err) { setError(err); return; }
+    const code = search.get("code");
+    const state = search.get("state");
     if (!code || !state) { setError("Missing OAuth parameters"); return; }
     axios
       .post(`${API}/auth/zoho/exchange`, { code, state }, { withCredentials: true })
@@ -49,20 +95,18 @@ export default function ZohoCallback() {
           navigate("/admin", { replace: true });
           return;
         }
-        // No admin_token — surface WHY when we have diagnostics so the
-        // user isn't left staring at a portal without CMS access.
         if (res.data?.role_debug) {
           setDebug({
             role_debug: res.data.role_debug,
             bootstrap_eligible: !!res.data.bootstrap_eligible,
             email: res.data.email,
           });
-          return; // stay on this page so the diagnostic is visible
+          return;
         }
         navigate("/portal", { replace: true });
       })
       .catch((e) => setError(e?.response?.data?.detail || e.message || "Zoho login mislukt"));
-  }, [location.search, navigate, refresh, adoptToken]);
+  }, [location.search, location.hash, navigate, refresh, adoptToken]);
 
   const runBootstrap = async () => {
     setBootstrapBusy(true);

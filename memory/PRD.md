@@ -21,6 +21,17 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 54 (v0.8.6-Beta) — Server-side Zoho callback role resolution
+- **Bug op productie**: `ZOHO_REDIRECT_URI` op Render wijst naar `GET /api/auth/zoho/callback` (server-side flow), NIET naar de frontend `/oauth/zoho/callback` page. De server-side callback deed de OAuth token exchange en zette de portal session, maar had géén role-resolution en géén admin_token minting — dus mint hij nooit een admin_token en redirectte blind naar `/portal`. Frontend riep dus nooit `/api/auth/zoho/exchange` aan (dat was alleen de dev-preview flow). Resultaat: zelfs met correct gezette `SUPER_ADMIN_EMAILS` op Render kreeg de gebruiker geen CMS-toegang.
+- **Fix**: `GET /api/auth/zoho/callback` doet nu de **volledige** role-resolution via `_resolve_cms_role_with_debug`. Als de gebruiker admin is → mint admin_token en redirect naar `/oauth/zoho/callback#admin_token=…&admin_role=…` (URL fragment, wordt nooit naar servers gestuurd, dus veilig voor Render/CDN logs). Als portal-only → redirect naar `/oauth/zoho/callback?portal_only=1&role_debug=…&bootstrap_eligible=…`.
+- **Frontend `ZohoCallback.jsx`** — nu 3 paden:
+  1. `#admin_token=…` in URL fragment → adoptToken + navigate naar `/admin` + wipe URL via `history.replaceState` zodat token niet in browser history achterblijft.
+  2. `?portal_only=1&role_debug=…` in query string → toon debug UI (dezelfde als POST-flow diagnostic).
+  3. `?code=…&state=…` legacy → oude POST-exchange flow (dev preview).
+- **Nieuw diagnostisch endpoint `GET /api/auth/zoho/debug`** — requires een actieve portal session. Retourneert: `resolved_role`, `would_get_admin_token`, `role_debug`, `bootstrap_eligible`, `admins_with_cms_access_count`. Zonder session: retourneert `whitelist_size` en een hint. Nu kan de operator op productie direct zien: "Zit ik in de whitelist? Heeft de backend mijn email correct herkend?" zonder in server logs te hoeven graven.
+- **Removed HTTPException raises in callback** → nu redirecten met `?error=…` zodat de frontend de fout kan tonen i.p.v. Raw 400/500 pagina.
+- **Verificatie**: 19/19 pytest tests slagen, Vercel build clean, `curl /api/auth/zoho/debug` retourneert 200 met correcte JSON.
+
 ### Feb 2026 — Iteration 53 (v0.8.5-Beta) — Zoho admin diagnostics + bootstrap
 - **Bug op productie**: super-admin (`beheer@multibay.eu`) kreeg géén CMS-toegang na Zoho login op https://pearblue.nl/https://login.pearblue.nl. Root cause: op de **Render backend** ontbrak (of was fout gespeld) de env var `SUPER_ADMIN_EMAILS`. De preview backend had de waarde wél. `_resolve_cms_role` gaf daarom stil `None` terug, waardoor de frontend naar `/portal` navigeerde zonder `admin_token`.
 - **Actionable diagnostics** — `_resolve_cms_role_with_debug` retourneert nu naast de role ook een debug-dict (`whitelist_size`, `whitelist_match`, `admins_doc_found`, `admins_doc_role`, `reason`). `/api/auth/zoho/exchange` neemt deze op in `role_debug` als er géén `admin_token` uitgereikt wordt, plus een `bootstrap_eligible` boolean.

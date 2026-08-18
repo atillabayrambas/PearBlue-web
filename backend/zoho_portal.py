@@ -2,6 +2,7 @@
 Follows the least-privilege scopes playbook; stores tokens encrypted per user.
 """
 import os
+import json
 import secrets
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlencode
@@ -299,13 +300,53 @@ def make_router(db) -> APIRouter:
             "email": email,
         }
 
+    @router.get("/auth/zoho/debug")
+    async def zoho_debug(request: Request):
+        """Diagnostic endpoint — tells the caller *why* their currently
+        authenticated Zoho session does (or does not) get CMS access. Requires
+        an active portal session (session cookie set by the callback flow).
+
+        Safe to expose: it only reveals config about the caller's own email,
+        never enumerates the whitelist or lists other admins.
+        """
+        uid = request.session.get("portal_user_id")
+        if not uid:
+            return {
+                "authenticated": False,
+                "hint": "Not logged in with Zoho yet — start the OAuth flow via /api/auth/zoho/login first.",
+                "whitelist_size": len(SUPER_ADMIN_EMAILS),
+            }
+        zu = await db.zoho_users.find_one({"zoho_user_id": uid}, {"email": 1, "display_name": 1})
+        email = (zu or {}).get("email") or ""
+        email_lower = email.strip().casefold()
+        cms_role, role_debug = await _resolve_cms_role_with_debug(db, email_lower)
+        admins_count = await db.admins.count_documents({"role": {"$in": list(ROLES_WITH_CMS_ACCESS)}})
+        return {
+            "authenticated": True,
+            "email": email,
+            "display_name": (zu or {}).get("display_name"),
+            "resolved_role": cms_role,
+            "would_get_admin_token": cms_role is not None,
+            "role_debug": role_debug,
+            "bootstrap_eligible": (
+                role_debug.get("whitelist_size", 0) == 0
+                and admins_count == 0
+                and bool(email_lower)
+            ),
+            "admins_with_cms_access_count": admins_count,
+        }
+
     @router.get("/auth/zoho/callback")
     async def zoho_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+        # Production `ZOHO_REDIRECT_URI` on Render points here (backend GET
+        # callback). We therefore do the FULL role-resolution here — the
+        # separate POST /auth/zoho/exchange endpoint is kept for setups
+        # where the redirect URI points at the frontend page instead.
         if error:
-            return RedirectResponse(f"{FRONTEND_URL}/portal?error={error}")
+            return RedirectResponse(f"{FRONTEND_URL}/oauth/zoho/callback?error={error}")
         saved = request.session.pop("oauth_state", "")
         if not code or not state or not secrets.compare_digest(state, saved or ""):
-            raise HTTPException(400, "Invalid OAuth state or code")
+            return RedirectResponse(f"{FRONTEND_URL}/oauth/zoho/callback?error=invalid_state")
         async with httpx.AsyncClient(timeout=20) as client:
             tok_res = await client.post(f"{ACCOUNTS}/oauth/v2/token", data={
                 "grant_type": "authorization_code",
@@ -316,17 +357,17 @@ def make_router(db) -> APIRouter:
             })
             token = tok_res.json()
             if "access_token" not in token:
-                raise HTTPException(400, f"Zoho token exchange failed: {token}")
+                return RedirectResponse(f"{FRONTEND_URL}/oauth/zoho/callback?error=token_exchange_failed")
             access = token["access_token"]
             id_res = await client.get(f"{ACCOUNTS}/oauth/user/info",
                                       headers={"Authorization": f"Zoho-oauthtoken {access}"})
             identity = id_res.json()
         uid = str(identity.get("ZUID") or identity.get("id") or identity.get("Email") or "")
         if not uid:
-            raise HTTPException(400, "Zoho identity response had no stable user ID")
+            return RedirectResponse(f"{FRONTEND_URL}/oauth/zoho/callback?error=no_stable_uid")
         update = {
             "zoho_user_id": uid,
-            "email": identity.get("Email"),
+            "email": identity.get("Email") or identity.get("email"),
             "display_name": identity.get("Display_Name") or identity.get("First_Name"),
             "access_token": _enc(access),
             "api_domain": token.get("api_domain", DEFAULT_API_DOMAIN),
@@ -336,7 +377,31 @@ def make_router(db) -> APIRouter:
             update["refresh_token"] = _enc(token["refresh_token"])
         await db.zoho_users.update_one({"zoho_user_id": uid}, {"$set": update}, upsert=True)
         request.session["portal_user_id"] = uid
-        return RedirectResponse(f"{FRONTEND_URL}/portal")
+        # ---- Role resolution (shared with POST /exchange) ---------------
+        email_lower = (identity.get("Email") or identity.get("email") or "").strip().casefold()
+        cms_role, role_debug = await _resolve_cms_role_with_debug(db, email_lower)
+        if cms_role:
+            # Admin token in URL fragment (`#…`) — fragments are NEVER sent
+            # to servers so this cannot leak into any Render/CDN access log.
+            # The frontend page immediately consumes and replaces the URL.
+            admin_token = _mint_admin_token(email_lower, cms_role)
+            frag = urlencode({"admin_token": admin_token, "admin_role": cms_role})
+            return RedirectResponse(f"{FRONTEND_URL}/oauth/zoho/callback#{frag}")
+        # Portal-only — surface the diagnostic to the frontend so the user
+        # sees WHY they were denied CMS access (same UX as the POST flow).
+        admins_count = await db.admins.count_documents({"role": {"$in": list(ROLES_WITH_CMS_ACCESS)}})
+        bootstrap_eligible = (
+            role_debug.get("whitelist_size", 0) == 0
+            and admins_count == 0
+            and bool(email_lower)
+        )
+        params = urlencode({
+            "portal_only": "1",
+            "email": identity.get("Email") or identity.get("email") or "",
+            "role_debug": json.dumps(role_debug, separators=(",", ":")),
+            "bootstrap_eligible": "1" if bootstrap_eligible else "0",
+        })
+        return RedirectResponse(f"{FRONTEND_URL}/oauth/zoho/callback?{params}")
 
     @router.get("/auth/portal/me")
     async def portal_me(request: Request):
