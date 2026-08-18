@@ -131,7 +131,8 @@ export const Navbar = () => {
             )}
           </Link>
           {isAdmin && (
-            <Link to="/admin" className="inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-2.5 sm:px-3 py-1.5" data-testid="nav-cms">
+            <Link to="/admin" className="inline-flex items-center gap-1 text-xs font-semibold text-pear-500 border border-pear-500/40 rounded-full px-2.5 sm:px-3 py-1.5" data-testid="nav-cms" title={lang === "nl" ? "Je bent ingelogd als admin — klik om CMS te openen" : "You are signed in as admin — click to open the CMS"}>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
               CMS
             </Link>
           )}

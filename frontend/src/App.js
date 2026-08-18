@@ -14,6 +14,7 @@ import { CookieBanner } from "@/components/CookieBanner";
 import { AnalyticsLoader } from "@/components/AnalyticsLoader";
 import { CustomScriptsInjector } from "@/components/CustomScriptsInjector";
 import { ParallaxBackground } from "@/components/ParallaxBackground";
+import { StaffBanner } from "@/components/StaffBanner";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Services from "@/pages/Services";
@@ -89,8 +90,10 @@ function Shell() {
   if (m.loaded && m.blocked) {
     return <MaintenancePage config={m.config} forceMode={m.forceMode} />;
   }
+  const siteStatus = m.loaded ? m.status : "live";
   return (
     <div className="min-h-screen flex flex-col relative">
+      {!isAdmin && <StaffBanner siteStatus={siteStatus} />}
       {!isAdmin && <ParallaxBackground />}
       {!isAdmin && <Navbar />}
       <main className="flex-1">

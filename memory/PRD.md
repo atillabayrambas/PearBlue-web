@@ -21,6 +21,20 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 55 (v0.8.7-Beta) — Staff-mode visibility (StaffBanner)
+- **User rapporteerde 2 "bugs"**: (a) CMS toegankelijk zonder in te loggen, (b) maintenance-modus werkt niet meer.
+- **Onderzoek** (headless Playwright, schone browser sessie): beide "bugs" bevestigd als **NIET waar** op productie:
+  - `pearblue.nl` zonder token → toont correcte `coming_soon` splash
+  - `pearblue.nl/admin` zonder token → redirect naar `/admin/login`
+- **Werkelijke oorzaak**: user was zelf logged in met een geldig `pb_admin_token` in localStorage (van eerdere Zoho login). De maintenance-gate en admin-route zijn opzettelijk zo ontworpen dat admins **doorwerken tijdens maintenance** — zonder visuele indicator werd dit een verwarrende UX ("ik zet maintenance aan en het werkt niet"). 
+- **Fix — nieuwe `StaffBanner` component**: gele banner boven de Navbar op **publieke pagina's** die alleen zichtbaar is als (isAdmin && site_status !== "live"). Toont:
+  - Huidige site status (maintenance/coming_soon) + e-mail + rol
+  - "Bekijk splash" link (opent `?preview=maintenance` om de visitor-view te zien zonder uitloggen)
+  - "Uitloggen als staff" knop — één klik om admin-state te wissen en de site als bezoeker te ervaren
+  - Kruisje om banner te verbergen tijdens de sessie
+- **Bonus UX**: groene pulsating dot op de CMS-navlink om subtiel te tonen "je bent staff", plus `title` tooltip.
+- **Verificatie**: Vercel build clean, StaffBanner code 0 lint errors, publieke coming_soon splash gedraagt zich correct voor niet-authenticated visitors op productie.
+
 ### Feb 2026 — Iteration 54 (v0.8.6-Beta) — Server-side Zoho callback role resolution
 - **Bug op productie**: `ZOHO_REDIRECT_URI` op Render wijst naar `GET /api/auth/zoho/callback` (server-side flow), NIET naar de frontend `/oauth/zoho/callback` page. De server-side callback deed de OAuth token exchange en zette de portal session, maar had géén role-resolution en géén admin_token minting — dus mint hij nooit een admin_token en redirectte blind naar `/portal`. Frontend riep dus nooit `/api/auth/zoho/exchange` aan (dat was alleen de dev-preview flow). Resultaat: zelfs met correct gezette `SUPER_ADMIN_EMAILS` op Render kreeg de gebruiker geen CMS-toegang.
 - **Fix**: `GET /api/auth/zoho/callback` doet nu de **volledige** role-resolution via `_resolve_cms_role_with_debug`. Als de gebruiker admin is → mint admin_token en redirect naar `/oauth/zoho/callback#admin_token=…&admin_role=…` (URL fragment, wordt nooit naar servers gestuurd, dus veilig voor Render/CDN logs). Als portal-only → redirect naar `/oauth/zoho/callback?portal_only=1&role_debug=…&bootstrap_eligible=…`.
