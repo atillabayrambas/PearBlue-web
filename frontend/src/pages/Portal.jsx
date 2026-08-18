@@ -301,7 +301,7 @@ export default function Portal() {
     const params = new URLSearchParams(location.search);
     const err = params.get("error");
     if (err) toast.error(`${lang === "en" ? "Zoho login failed" : "Zoho login niet gelukt"}: ${err}`);
-  }, [location.search]);
+  }, [location.search, lang]);
 
   const logout = async () => {
     await axios.post(`${API}/auth/portal/logout`, {}, { withCredentials: true });

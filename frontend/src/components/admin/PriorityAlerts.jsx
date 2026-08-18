@@ -16,7 +16,7 @@ export const PriorityAlerts = () => {
     // Ticker keeps the hourly-reappear logic recalculating without hammering the API.
     const t = setInterval(() => setTick((x) => x + 1), 60000);
     return () => clearInterval(t);
-  }, []);
+  }, [authHeader]);
   // Silent 60s refresh so open selects / typed text upstream never get reset.
   useSilentPolling(
     () => axios.get(`${API}/admin/priority-alerts`, { headers: authHeader() }).then((r) => r.data || null).catch(() => null),

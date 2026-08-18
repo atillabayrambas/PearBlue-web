@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Check, XCircle } from "lucide-react";
@@ -13,7 +13,7 @@ export const RegistrationsAdmin = () => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       axios.get(`${API}/portal/registrations`, { headers: authHeader() }),
@@ -22,8 +22,8 @@ export const RegistrationsAdmin = () => {
       .then(([r, a]) => { setItems(r.data || []); setAssignees(a.data || []); })
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const review = async (id, status) => {
     const note = status === "rejected"

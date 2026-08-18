@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Save, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, Target, Sparkles, Upload, Loader2 } from "lucide-react";
@@ -735,10 +735,10 @@ const ZohoBooksCard = ({ en }) => {
   const [wizardBusy, setWizardBusy] = useState(false);
   const [wizardOrgs, setWizardOrgs] = useState([]);
 
-  const loadStatus = () => axios.get(`${API}/admin/integrations/zoho-books`, { headers: authHeader() })
+  const loadStatus = useCallback(() => axios.get(`${API}/admin/integrations/zoho-books`, { headers: authHeader() })
     .then((r) => { setStatus(r.data || {}); setForm((f) => ({ ...f, org_id: r.data?.org_id || "", dc: r.data?.dc || "eu" })); })
-    .catch(() => {});
-  useEffect(() => { loadStatus(); }, []);
+    .catch(() => {}), [authHeader]);
+  useEffect(() => { loadStatus(); }, [loadStatus]);
 
   const change = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -977,15 +977,15 @@ const RoadmapAdminTab = ({ en }) => {
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await axios.get(`${API}/admin/roadmap`, { headers: authHeader() });
       setItems(r.data || []);
     } catch { toast.error(en ? "Load failed" : "Laden mislukt"); }
     finally { setLoading(false); }
-  };
-  useEffect(() => { load(); }, []);
+  }, [authHeader, en]);
+  useEffect(() => { load(); }, [load]);
 
   const reset = () => { setForm(EMPTY_FORM); setEditingId(null); };
 

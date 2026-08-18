@@ -45,7 +45,7 @@ export const AnalyticsAdmin = () => {
       axios.get(`${API}/chat/stats?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
       axios.get(`${API}/admin/chat/ratings?days=${daysParam}${extra}`, { headers: authHeader() }).then((r) => r.data).catch(() => null),
     ]).then(([s, r]) => { setStats(s); setRatings(r); }).finally(() => setLoading(false));
-  }, [days, customFrom, customTo]);
+  }, [days, customFrom, customTo, authHeader]);
 
   // Silent 15s refresh of the chat stats — never touches `loading`, skips
   // ticks while the admin is interacting with a form field or when the tab

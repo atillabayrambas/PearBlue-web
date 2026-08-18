@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Check, Trash2, Sparkles, Send, Clock, BarChart3 } from "lucide-react";
@@ -57,7 +57,7 @@ export const ReviewsAdmin = () => {
   const [autopilotStatus, setAutopilotStatus] = useState(null);
   const [weekly, setWeekly] = useState(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     axios.get(`${API}/reviews/all`, { headers: authHeader() })
       .then((r) => setItems(r.data || []))
@@ -75,8 +75,8 @@ export const ReviewsAdmin = () => {
     axios.get(`${API}/admin/reviews/books-autopilot-weekly?days=7`, { headers: authHeader() })
       .then((r) => setWeekly(r.data || null))
       .catch(() => setWeekly(null));
-  };
-  useEffect(() => { load(); }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const scanInvites = async () => {
     setScanBusy(true);

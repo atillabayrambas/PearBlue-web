@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -43,15 +43,15 @@ export default function TicketDetail() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     axios.get(`${API}/portal/tickets/${ticketId}`, { withCredentials: true })
       .then((r) => setTicket({ loading: false, data: r.data, error: null }))
       .catch((e) => setTicket({ loading: false, data: null, error: e?.response?.data?.detail || e.message }));
     axios.get(`${API}/portal/tickets/${ticketId}/threads`, { withCredentials: true })
       .then((r) => setThreads({ loading: false, data: r.data?.data || [] }))
       .catch(() => setThreads({ loading: false, data: [] }));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ticketId]);
+  }, [ticketId]);
+  useEffect(() => { load(); }, [load]);
 
   const sendReply = async () => {
     if (!reply.trim()) { toast.error(t("emptyReply")); return; }

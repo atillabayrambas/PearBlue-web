@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ export const MessagesAdmin = () => {
   const [sort, setSort] = useState("date");    // date | name | priority
   const [selected, setSelected] = useState(new Set());
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [r, a] = await Promise.all([
@@ -26,8 +26,8 @@ export const MessagesAdmin = () => {
       setItems(r.data || []);
       setAssignees(a.data || []);
     } catch { /* ignore */ } finally { setLoading(false); }
-  };
-  useEffect(() => { load(); }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   // Silent background refresh every 15s — does NOT toggle loading, skips ticks
   // while the user is interacting with a field, only updates state when the

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { MessageSquare } from "lucide-react";
@@ -18,7 +18,7 @@ export const FeedbackAdmin = () => {
   const [filter, setFilter] = useState("open");
   const [openItem, setOpenItem] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [r, a] = await Promise.all([
@@ -28,8 +28,8 @@ export const FeedbackAdmin = () => {
       setItems(r.data || []);
       setAssignees(a.data || []);
     } catch { toast.error("Kon feedback niet laden"); } finally { setLoading(false); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const setStatus = async (id, status) => {
     try {

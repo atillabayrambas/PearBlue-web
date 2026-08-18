@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { ShieldX } from "lucide-react";
@@ -9,12 +9,12 @@ export const VirusScannerAdmin = () => {
   const { authHeader } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try { const r = await axios.get(`${API}/admin/virus-scanner/logs`, { headers: authHeader() }); setLogs(r.data || []); }
     catch { toast.error("Kon virus-logs niet laden"); } finally { setLoading(false); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
   const act = async (id, action) => {
     try {
       await axios.post(`${API}/admin/virus-scanner/${id}/${action}`, {}, { headers: authHeader() });

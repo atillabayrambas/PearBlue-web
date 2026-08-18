@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Send } from "lucide-react";
@@ -12,19 +12,19 @@ export const BrevoAdmin = () => {
   const [stats, setStats] = useState(null);
   const [campaigns, setCampaigns] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [s, st, c] = await Promise.all([
         axios.get(`${API}/admin/brevo/settings`, { headers: authHeader() }),
         axios.get(`${API}/admin/newsletter/stats`, { headers: authHeader() }).catch(() => ({ data: null })),
         axios.get(`${API}/admin/brevo/campaigns`, { headers: authHeader() }).catch(() => ({ data: null })),
       ]);
-      setSettings(s.data || settings);
+      setSettings((prev) => s.data || prev);
       setStats(st.data);
       setCampaigns(c.data);
     } catch { /* ignore */ }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const save = async (e) => {
     e.preventDefault();

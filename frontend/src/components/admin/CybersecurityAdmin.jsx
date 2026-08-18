@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -28,7 +28,7 @@ export const CybersecurityAdmin = () => {
   const [filter, setFilter] = useState("all");
   const [virusUnread, setVirusUnread] = useState(0);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [b, s, c, v] = await Promise.all([
@@ -44,8 +44,8 @@ export const CybersecurityAdmin = () => {
     } catch (e) {
       toast.error(en ? "Failed to load cybersecurity data" : "Kon cybersecurity-data niet laden");
     } finally { setLoading(false); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  }, [authHeader, en]);
+  useEffect(() => { load(); }, [load]);
 
   const toggle = async (block, unblock) => {
     try {

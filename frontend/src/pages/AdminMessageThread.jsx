@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -62,14 +62,14 @@ export default function AdminMessageThread() {
   const [showTplMgr, setShowTplMgr] = useState(false);
   const [previewAtt, setPreviewAtt] = useState(null); // { att, url, mime }
 
-  const loadTemplates = () => {
+  const loadTemplates = useCallback(() => {
     axios.get(`${API}/admin/reply-templates`, { headers: authHeader() })
       .then((r) => setTemplates(r.data || []))
       .catch(() => setTemplates([]));
-  };
-  useEffect(() => { loadTemplates(); /* eslint-disable-next-line */ }, []);
+  }, [authHeader]);
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     axios.get(`${API}/admin/contact/${msgId}`, { headers: authHeader() })
       .then((r) => {
@@ -79,8 +79,8 @@ export default function AdminMessageThread() {
       })
       .catch((e) => setError(e?.response?.data?.detail || e.message))
       .finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [msgId]);
+  }, [msgId, authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const patch = async (upd) => {
     try {
@@ -432,12 +432,13 @@ export default function AdminMessageThread() {
 // -----------------------------------------------------------------------------
 function AttachmentsGrid({ attachments, msgId, authHeader, onDelete, onDownload, onOpenPreview }) {
   const [thumbs, setThumbs] = useState({}); // { attId: objectUrl }
+  const loadedRef = useRef(new Set());
   useEffect(() => {
     let cancelled = false;
     const urls = [];
     (async () => {
       for (const a of attachments) {
-        if (thumbs[a.id]) continue;
+        if (loadedRef.current.has(a.id)) continue;
         if (!(a.mime || "").startsWith("image/")) continue;
         try {
           const r = await axios.get(`${API}/admin/contact/${msgId}/attachments/${a.id}/preview`, {
@@ -446,13 +447,13 @@ function AttachmentsGrid({ attachments, msgId, authHeader, onDelete, onDownload,
           if (cancelled) return;
           const url = URL.createObjectURL(r.data);
           urls.push(url);
+          loadedRef.current.add(a.id);
           setThumbs((prev) => ({ ...prev, [a.id]: url }));
         } catch { /* skip */ }
       }
     })();
     return () => { cancelled = true; urls.forEach(URL.revokeObjectURL); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachments.length, msgId]);
+  }, [attachments, msgId, authHeader]);
 
   const openPreview = async (a) => {
     const isImage = (a.mime || "").startsWith("image/");

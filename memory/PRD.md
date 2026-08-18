@@ -21,7 +21,16 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
-### Feb 2026 — Iteration 51 (this session, v0.8.3-Beta) — Zoho admin role detection fix
+### Feb 2026 — Iteration 52 (v0.8.4-Beta) — Vercel build ESLint fixes
+- **Bug**: Vercel production build (`CI=true react-scripts build`) faalde omdat `react-hooks/exhaustive-deps` warnings als errors werden behandeld in 15+ bestanden verspreid over Admin CMS + pages.
+- **Fix**: Alle `load()`/`loadTemplates()`/`loadStatus()` functies gerefactored naar `useCallback` met correcte deps (`authHeader`, `msgId`, `ticketId`, `email`, `lang`, `en`). Alle bijbehorende `useEffect(() => { load(); }, [])` → `useEffect(() => { load(); }, [load])` — stabiele referentie via useCallback.
+- **AttachmentsGrid effect** in AdminMessageThread refactored om `useRef` te gebruiken voor "already loaded" tracking i.p.v. `thumbs` state check (voorkomt oneindige re-render loop met correcte deps).
+- **PricingAdminTab** — complexe expressies (`editing?.id`, `editing === null ? "closed" : "open"`) in deps array uitgepakt naar losse variabelen (`editingId`, `editingOpen`) om ESLint statisch te laten controleren.
+- **`eslint-disable-next-line` comments** volledig verwijderd overal — géén shortcuts, alleen correcte deps.
+- **Files gefixed** (13): `BrevoAdmin`, `CybersecurityAdmin`, `FeedbackAdmin`, `MailboxesAdmin`, `MessagesAdmin`, `PricingAdminTab`, `PriorityAlerts`, `RegistrationsAdmin`, `ReviewsAdmin`, `SettingsAdmin`, `UsersAdmin`, `AdminAnalytics`, `AdminFinancials`, `AdminMessageThread`, `Portal`, `TicketDetail`.
+- **Verificatie**: `CI=true yarn build` compileert nu clean (319 kB gzip), homepage-smoke test slaagt.
+
+### Feb 2026 — Iteration 51 (v0.8.3-Beta) — Zoho admin role detection fix
 - **Bug**: gebruikers die in de `admins` collectie een CMS-role hadden (beheerder/moderator/analist/financien/chat_support/crm/super_admin) maar NIET in `SUPER_ADMIN_EMAILS` env whitelist stonden, kregen géén `admin_token` bij Zoho login. Gevolg: het CMS-icoon verscheen niet in de navigatie na een succesvolle Zoho super-admin login.
 - **Fix**: nieuwe `_resolve_cms_role(db, email)` helper in `zoho_portal.py` met 3-tier precedence: (1) whitelist bootstrap → altijd super_admin + auto-upsert admins-doc, (2) bestaande admins-collectie role in `ROLES_WITH_CMS_ACCESS` → hergebruik die exacte role, (3) anders portal-only (geen admin_token).
 - **Role wordt nu correct in JWT gezet**: `_mint_admin_token(email, role)` accepteert de resolved role als parameter i.p.v. hardcoded `super_admin`. Zo krijgt een moderator via Zoho login een JWT met `role="moderator"` — waar `require_admin` (backend) en `isAdmin` (frontend) correct op reageren.

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Inbox, Plus, Send, Clock } from "lucide-react";
@@ -28,7 +28,7 @@ export const MailboxesAdmin = () => {
     finally { setRebuildBusy(false); }
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [r, l] = await Promise.all([
         axios.get(`${API}/admin/mailboxes`, { headers: authHeader() }),
@@ -37,8 +37,8 @@ export const MailboxesAdmin = () => {
       setItems(r.data || []);
       setIngested(l.data || []);
     } catch { toast.error("Kon mailboxen niet laden"); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const add = async (e) => {
     e.preventDefault();

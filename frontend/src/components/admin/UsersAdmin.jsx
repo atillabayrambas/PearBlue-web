@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Plus, Trash2, Save, Settings as SettingsIcon, Eye, ChevronLeft, ChevronRight, ShieldCheck, ShieldX } from "lucide-react";
@@ -38,7 +38,7 @@ export const UsersAdmin = () => {
   const isSuperAdmin = (me?.role === "super_admin" || me?.role === "admin");
   const isBeheerder = isSuperAdmin || me?.role === "beheerder";
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       axios.get(`${API}/admin/users`, { headers: authHeader() }),
@@ -48,8 +48,8 @@ export const UsersAdmin = () => {
       .then(([u, r, l]) => { setUsers(u.data || []); setRoles(r.data || []); setLogs(l.data || []); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  }, [authHeader]);
+  useEffect(() => { load(); }, [load]);
 
   const createUser = async (e) => {
     e.preventDefault();
@@ -395,13 +395,13 @@ const UserDocumentsPanel = ({ email }) => {
   const [docType, setDocType] = useState("contract");
   const [label, setLabel] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const r = await axios.get(`${API}/admin/portal/documents`, { params: { user_email: email }, headers: authHeader() });
       setDocs(r.data?.documents || []);
     } catch { /* keep silent — panel is best-effort */ }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [email]);
+  }, [authHeader, email]);
+  useEffect(() => { load(); }, [load]);
 
   const upload = async (e) => {
     const f = e.target.files?.[0];

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Save, Plus, Trash2, Edit3, X, ShieldCheck, Server, Globe, DollarSign, ArrowUp, ArrowDown, Folder, FolderPlus } from "lucide-react";
@@ -55,15 +55,17 @@ export const PricingAdminTab = ({ en }) => {
   // Scroll the editor into view and briefly flash the border whenever the
   // draft changes — makes it obvious a click on "Bewerk" deep in the list
   // actually did something even when the form sits high on the page.
+  const editingId = editing?.id ?? null;
+  const editingOpen = editing !== null;
   useEffect(() => {
     if (!editing) return;
     editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setFlash(true);
     const t = setTimeout(() => setFlash(false), 900);
     return () => clearTimeout(t);
-  }, [editing?.id, editing === null ? "closed" : "open"]);
+  }, [editingId, editingOpen, editing]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [adminR, publicR] = await Promise.all([
@@ -74,8 +76,8 @@ export const PricingAdminTab = ({ en }) => {
       setCategories(publicR.data?.categories || []);
     } catch { toast.error(en ? "Load failed" : "Laden mislukt"); }
     finally { setLoading(false); }
-  };
-  useEffect(() => { load(); }, []);
+  }, [authHeader, en]);
+  useEffect(() => { load(); }, [load]);
 
   // Category manager state — inline modal-like form for CRUD on categories.
   const [catEditing, setCatEditing] = useState(null); // null | draft
@@ -83,9 +85,11 @@ export const PricingAdminTab = ({ en }) => {
   const startNewCat = () => setCatEditing({ key: "", service: activeService, nl: "", en: "", order: 100 });
   const startEditCat = (c) => setCatEditing({ ...c });
   const closeCatEditor = () => setCatEditing(null);
+  const catEditingId = catEditing?.id ?? null;
+  const catEditingOpen = catEditing !== null;
   useEffect(() => {
     if (catEditing) setTimeout(() => catEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
-  }, [catEditing?.id, catEditing === null ? "closed" : "open"]);
+  }, [catEditingId, catEditingOpen, catEditing]);
 
   const submitCategory = async (e) => {
     e.preventDefault();

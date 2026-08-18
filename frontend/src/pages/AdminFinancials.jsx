@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import { Euro, TrendingUp, TrendingDown, Sparkles, Info } from "lucide-react";
@@ -51,7 +51,7 @@ export const FinancialsAdmin = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = { period };
@@ -67,9 +67,9 @@ export const FinancialsAdmin = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [period, customFrom, customTo, authHeader]);
 
-  useEffect(() => { if (period !== "custom") load(); /* eslint-disable-next-line */ }, [period]);
+  useEffect(() => { if (period !== "custom") load(); }, [period, load]);
 
   const emergent = data?.emergent_ai;
   const zoho = data?.zoho_books;

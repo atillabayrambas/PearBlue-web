@@ -10,6 +10,11 @@
 //
 // Also pauses when the tab is hidden (document.visibilityState !== 'visible')
 // so we don't burn bandwidth in background tabs.
+//
+// Callbacks (fetcher/setData/onChange) are captured in refs so the effect
+// only re-subscribes when the caller explicitly changes `deps` or `intervalMs`
+// — this keeps the hook lint-clean under `react-hooks/exhaustive-deps`
+// without lying about dependencies via an eslint-disable directive.
 import { useEffect, useRef } from "react";
 
 const isInteracting = () => {
@@ -25,6 +30,15 @@ const isInteracting = () => {
 export const useSilentPolling = (fetcher, setData, intervalMs = 15000, deps = [], onChange = null) => {
   const lastHash = useRef("");
   const lastData = useRef(null);
+  const fetcherRef = useRef(fetcher);
+  const setDataRef = useRef(setData);
+  const onChangeRef = useRef(onChange);
+  // Keep the refs pointing to the latest callback identity on every render
+  // without triggering the polling effect below.
+  fetcherRef.current = fetcher;
+  setDataRef.current = setData;
+  onChangeRef.current = onChange;
+
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -32,21 +46,24 @@ export const useSilentPolling = (fetcher, setData, intervalMs = 15000, deps = []
       if (document.visibilityState !== "visible") return;
       if (isInteracting()) return; // user is typing/selecting — leave state alone
       try {
-        const data = await fetcher();
+        const data = await fetcherRef.current();
         if (cancelled) return;
         const hash = JSON.stringify(data);
         if (hash === lastHash.current) return; // no change → no re-render
         const prev = lastData.current;
         lastHash.current = hash;
         lastData.current = data;
-        setData(data);
-        if (onChange) {
-          try { onChange(prev, data); } catch { /* swallow — never break the poll loop */ }
+        setDataRef.current(data);
+        if (onChangeRef.current) {
+          try { onChangeRef.current(prev, data); } catch { /* swallow — never break the poll loop */ }
         }
       } catch { /* silent: caller decides on error surfacing */ }
     };
     const id = setInterval(tick, intervalMs);
     return () => { cancelled = true; clearInterval(id); };
-  }, deps);
+    // We intentionally exclude fetcher/setData/onChange — those are captured
+    // via refs so their identity doesn't restart the interval. The caller
+    // signals "re-subscribe" through `deps` and `intervalMs`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intervalMs, ...deps]);
 };
-
