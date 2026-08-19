@@ -21,6 +21,12 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 60 (v0.9.2-Beta) — IMAP delete-mirror fallback via imap_ingested
+- **Bug**: berichten die vóór iteratie 58 zijn ingested hebben géén `imap_source` op de `contact_messages` doc. Wissen in CMS Berichten liet de mail dus onaangeroerd op de IMAP-server staan (helper retourneerde stil `no_source`).
+- **Fix**: `move_contact_message_to_imap_trash` doet nu **fallback lookup via `imap_ingested`** — als `imap_source` ontbreekt, zoekt hij alle ingest-rows waar `matched_id` of `matched_parent_id` matched met de doc's id. Verzamelt ALLE bijbehorende UIDs binnen dezelfde mailbox (multi-UID threads worden compleet naar Trash verplaatst, niet alleen de laatste reply).
+- **Response** bevat nu `via` (`imap_source` vs `imap_ingested_fallback`) en `uids` array voor debugability.
+- **Regressietest**: `test_move_contact_message_fallback_via_imap_ingested` bewijst dat een legacy doc zonder `imap_source` maar mét ingest breadcrumbs correct alle UIDs naar Trash verplaatst — en unrelated ingest rows niet raakt. **36/36 tests slagen**.
+
 ### Feb 2026 — Iteration 59 (v0.9.1-Beta) — Mailbox switcher + role-based access
 - **Feature**: bij meerdere IMAP mailboxen wilde de user (a) kunnen switchen tussen mailboxen in de Berichten tab, en (b) per mailbox rollen kunnen kiezen die de mails mogen zien.
 - **Backend**:

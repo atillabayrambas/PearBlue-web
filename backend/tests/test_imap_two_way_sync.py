@@ -58,8 +58,28 @@ class _StubCollection:
         self._docs[:] = keep
         return MagicMock(deleted_count=deleted)
 
-    def find(self, query=None):  # noqa: ARG002
+    def find(self, query=None, projection=None):  # noqa: ARG002
         parent = self
+
+        def _match(d, q):
+            if not q:
+                return True
+            if "$or" in q:
+                return any(_match(d, cond) for cond in q["$or"])
+            for k, v in q.items():
+                if isinstance(v, dict):
+                    # Very small operator handler — enough for the parser's queries.
+                    if "$gte" in v and not (d.get(k) is not None and d.get(k) >= v["$gte"]):
+                        return False
+                    if "$in" in v and d.get(k) not in v["$in"]:
+                        return False
+                    if "$exists" in v and (bool(k in d) != bool(v["$exists"])):
+                        return False
+                elif d.get(k) != v:
+                    return False
+            return True
+
+        filtered = [d for d in parent._docs if _match(d, query or {})]
 
         class _Cursor:
             def __aiter__(self):
@@ -67,9 +87,9 @@ class _StubCollection:
                 return self
 
             async def __anext__(self):
-                if self._i >= len(parent._docs):
+                if self._i >= len(filtered):
                     raise StopAsyncIteration
-                d = parent._docs[self._i]
+                d = filtered[self._i]
                 self._i += 1
                 return d
         return _Cursor()
@@ -211,10 +231,48 @@ def test_deletion_detection_is_failsafe_on_connection_error(monkeypatch):
 
 
 def test_move_contact_message_no_imap_source_returns_noop():
-    """Documents without an `imap_source` pointer (created via the
-    contact form, not from IMAP) must not attempt any IMAP call."""
+    """Documents without an `imap_source` pointer AND no imap_ingested
+    breadcrumb (created via the contact form, not from IMAP) must not
+    attempt any IMAP call."""
     db = _StubDB(mailboxes=[])
     result = asyncio.run(imap_parser.move_contact_message_to_imap_trash(
         db, {"id": "msg-a"}, lambda s: "decrypted"
     ))
     assert result == {"moved": 0, "method": "no_source"}
+
+
+def test_move_contact_message_fallback_via_imap_ingested(monkeypatch):
+    """Legacy tickets (pre-iteration-58) lack `imap_source` on the doc.
+    The fallback must find their UIDs via the `imap_ingested` breadcrumbs
+    so CMS delete still moves the mail to Trash. This is what the user
+    was hitting on production."""
+    ingested = [
+        {"_id": 1, "mailbox_id": "mbox-1", "uid": "20", "matched_id": "msg-legacy"},
+        {"_id": 2, "mailbox_id": "mbox-1", "uid": "21", "matched_parent_id": "msg-legacy"},
+        # Unrelated row — must NOT be picked up
+        {"_id": 3, "mailbox_id": "mbox-1", "uid": "99", "matched_id": "other-msg"},
+    ]
+    mailboxes = [{
+        "id": "mbox-1", "host": "imap.example.com", "port": 993, "use_ssl": True,
+        "username": "u", "password": "encrypted-blob", "folder": "INBOX",
+    }]
+    db = _StubDB(imap_ingested=ingested, mailboxes=mailboxes)
+
+    captured = {}
+
+    async def fake_thread(fn, *args, **kwargs):  # noqa: ARG001
+        # args: host, port, use_ssl, username, password, folder, uids
+        captured["uids"] = list(args[6])
+        return {"moved": len(args[6]), "method": "move", "trash_folder": "Trash"}
+
+    monkeypatch.setattr(imap_parser.asyncio, "to_thread", fake_thread)
+
+    legacy_doc = {"id": "msg-legacy"}  # NO imap_source on the doc
+    result = asyncio.run(imap_parser.move_contact_message_to_imap_trash(
+        db, legacy_doc, lambda s: "decrypted"
+    ))
+    assert result["moved"] == 2
+    assert result["via"] == "imap_ingested_fallback"
+    assert sorted(captured["uids"]) == ["20", "21"]
+    # Unrelated UID 99 must not have been included.
+    assert "99" not in captured["uids"]

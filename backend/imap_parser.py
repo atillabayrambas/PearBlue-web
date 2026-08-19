@@ -448,14 +448,51 @@ def _imap_list_current_uids(host: str, port: int, use_ssl: bool, username: str,
 
 
 async def move_contact_message_to_imap_trash(db, contact_msg: dict, dec_fn) -> dict:
-    """Given a contact_messages doc that carries an `imap_source` pointer,
-    move the underlying mail on the IMAP server to Trash. Idempotent — the
-    caller is expected to delete the Mongo doc afterwards. Called from the
-    CMS bulk-delete endpoint."""
+    """Given a contact_messages doc, move the underlying IMAP mail to
+    Trash on the mail server. Idempotent — the caller is expected to
+    delete the Mongo doc afterwards.
+
+    Source-pointer resolution (in order):
+      1. Native `imap_source` on the doc (post-iteration-58 tickets)
+      2. Fallback: look up `imap_ingested` where `matched_id` or
+         `matched_parent_id` matches this doc's `id` — this catches
+         legacy tickets ingested BEFORE `imap_source` was added, and
+         also multi-UID tickets that were merged by dedup logic.
+
+    Returns a dict with `moved`, `method`, and (on fallback) `via`.
+    """
+    msg_id = (contact_msg or {}).get("id")
     src = (contact_msg or {}).get("imap_source") or {}
     mbox_id = src.get("mailbox_id")
-    uid = src.get("uid")
-    if not mbox_id or not uid:
+    uids: list[str] = []
+    if src.get("uid"):
+        uids.append(str(src["uid"]))
+    via = "imap_source"
+    # ── Fallback: sweep all ingest rows that link to this message ───────
+    # If the ticket was created before `imap_source` existed, or if it's
+    # a merged thread with multiple UIDs, gather them ALL so the whole
+    # conversation ends up in Trash — not just the last reply.
+    if msg_id:
+        cursor = db.imap_ingested.find({"$or": [
+            {"matched_id": msg_id},
+            {"matched_parent_id": msg_id},
+        ]}, {"mailbox_id": 1, "uid": 1})
+        async for row in cursor:
+            row_mbox = row.get("mailbox_id")
+            row_uid = row.get("uid")
+            if not row_mbox or not row_uid:
+                continue
+            # Only support a single mailbox per delete — messages should
+            # never straddle mailboxes in practice. If they do, we drop
+            # the ones that don't match the primary mailbox.
+            if not mbox_id:
+                mbox_id = row_mbox
+                via = "imap_ingested_fallback"
+            if row_mbox != mbox_id:
+                continue
+            if str(row_uid) not in uids:
+                uids.append(str(row_uid))
+    if not mbox_id or not uids:
         return {"moved": 0, "method": "no_source"}
     mbox = await db.mailboxes.find_one({"id": mbox_id})
     if not mbox:
@@ -463,11 +500,14 @@ async def move_contact_message_to_imap_trash(db, contact_msg: dict, dec_fn) -> d
     pwd = dec_fn(mbox.get("password", ""))
     if not pwd:
         return {"moved": 0, "method": "no_password"}
-    return await asyncio.to_thread(
+    result = await asyncio.to_thread(
         _imap_move_uids_to_trash,
         mbox["host"], int(mbox.get("port") or 993), bool(mbox.get("use_ssl", True)),
-        mbox["username"], pwd, mbox.get("folder") or "INBOX", [str(uid)],
+        mbox["username"], pwd, mbox.get("folder") or "INBOX", uids,
     )
+    result["via"] = via
+    result["uids"] = uids
+    return result
 
 
 async def detect_server_side_deletions(db, mbox: dict, dec_fn, since_days: int = 60) -> dict:
