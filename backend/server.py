@@ -1786,13 +1786,57 @@ class BulkIds(BaseModel):
     ids: List[str]
 
 
+@api_router.delete("/admin/contact/{msg_id}")
+async def delete_contact_message(msg_id: str, current=Depends(require_permission("messages"))):
+    """Delete one contact message. If the message originated from an IMAP
+    sync (has `imap_source`), the underlying mail is also moved to the
+    account's Trash folder — completing the CMS → mailbox side of the
+    2-way sync."""
+    from imap_parser import move_contact_message_to_imap_trash  # local import — keeps top-level imports minimal
+    doc = await db.contact_messages.find_one({"id": msg_id})
+    if not doc:
+        raise HTTPException(404, "Message not found")
+    imap_result = None
+    if doc.get("imap_source"):
+        try:
+            imap_result = await move_contact_message_to_imap_trash(db, doc, dec_secret)
+        except Exception as e:  # pragma: no cover — defensive
+            logger.warning(f"IMAP move-to-trash for msg {msg_id} failed: {e}")
+            imap_result = {"moved": 0, "method": "exception", "error": str(e)}
+    await db.contact_messages.delete_one({"id": msg_id})
+    await db.contact_message_replies.delete_many({"parent_id": msg_id})
+    # Drop the ingest breadcrumb so a full re-sync doesn't resurrect this ticket.
+    await db.imap_ingested.delete_many({"$or": [{"matched_id": msg_id}, {"matched_parent_id": msg_id}]})
+    await _log_activity(current.get("email"), "message.delete", msg_id, {"imap": imap_result})
+    return {"status": "deleted", "imap": imap_result}
+
+
 @api_router.post("/admin/contact/bulk-delete")
 async def bulk_delete_contacts(payload: BulkIds, current=Depends(require_permission("messages"))):
     if not payload.ids:
         return {"deleted": 0}
+    from imap_parser import move_contact_message_to_imap_trash  # local import
+    # Fetch first so we can mirror IMAP deletes BEFORE we lose the source pointer.
+    docs = await db.contact_messages.find({"id": {"$in": payload.ids}}).to_list(len(payload.ids))
+    imap_stats = {"moved": 0, "attempted": 0, "no_source": 0}
+    for d in docs:
+        if not d.get("imap_source"):
+            imap_stats["no_source"] += 1
+            continue
+        imap_stats["attempted"] += 1
+        try:
+            r = await move_contact_message_to_imap_trash(db, d, dec_secret)
+            imap_stats["moved"] += int(r.get("moved") or 0)
+        except Exception as e:  # pragma: no cover — defensive
+            logger.warning(f"IMAP move-to-trash (bulk) for {d.get('id')} failed: {e}")
     res = await db.contact_messages.delete_many({"id": {"$in": payload.ids}})
-    await _log_activity(current.get("email"), "messages.bulk_delete", None, {"count": res.deleted_count})
-    return {"deleted": res.deleted_count}
+    await db.contact_message_replies.delete_many({"parent_id": {"$in": payload.ids}})
+    await db.imap_ingested.delete_many({"$or": [
+        {"matched_id": {"$in": payload.ids}},
+        {"matched_parent_id": {"$in": payload.ids}},
+    ]})
+    await _log_activity(current.get("email"), "messages.bulk_delete", None, {"count": res.deleted_count, "imap": imap_stats})
+    return {"deleted": res.deleted_count, "imap": imap_stats}
 
 
 @api_router.post("/admin/contact/delete-all-spam")

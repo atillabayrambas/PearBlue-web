@@ -104,7 +104,7 @@ export const MailboxesAdmin = () => {
     try {
       const r = await axios.post(`${API}/admin/mailboxes/sync-now`, {}, { headers: authHeader() });
       setSyncResult(r.data);
-      toast.success(`Sync klaar — ${r.data?.ingested || 0} nieuw, ${r.data?.matched || 0} gekoppeld aan ticket`);
+      toast.success(`Sync klaar — ${r.data?.ingested || 0} nieuw, ${r.data?.matched || 0} gekoppeld${r.data?.cms_deleted ? `, ${r.data.cms_deleted} verwijderd uit CMS (server-side)` : ""}`);
       load();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Sync mislukt");
@@ -128,7 +128,7 @@ export const MailboxesAdmin = () => {
       </p>
       {syncResult && (
         <div className="mb-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-2.5 text-xs text-emerald-700 dark:text-emerald-300" data-testid="mailbox-sync-result">
-          {syncResult.mailboxes} mailbox(en) gescand · {syncResult.ingested} nieuw · {syncResult.matched} gekoppeld aan ticket
+          {syncResult.mailboxes} mailbox(en) gescand · {syncResult.ingested} nieuw · {syncResult.matched} gekoppeld{syncResult.cms_deleted ? ` · ${syncResult.cms_deleted} verwijderd (server-side)` : ""}
         </div>
       )}
 

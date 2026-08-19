@@ -204,6 +204,13 @@ async def _create_ticket_from_email(db, m: dict, mbox: dict) -> Optional[dict]:
             "assigned_to": None,
             "source": "imap_auto",
             "source_mailbox_id": mbox.get("id"),
+            # Full IMAP source pointer — enables 2-way sync (CMS delete →
+            # move to Trash on the mail server, and vice versa).
+            "imap_source": {
+                "mailbox_id": mbox.get("id"),
+                "uid": str(m.get("uid")),
+                "message_id": m.get("message_id"),
+            },
         }
         await db.contact_messages.insert_one(doc)
         return doc
@@ -330,6 +337,187 @@ def _fetch_new_messages(host: str, port: int, use_ssl: bool, username: str, pass
         return [], last_uid
 
 
+# ---------------------------------------------------------------------------
+# 2-way sync helpers — used by /admin/contact/{id} delete flow to mirror
+# deletions back to the mail server, and by the poller to detect
+# server-side deletions and mirror them into the CMS.
+# ---------------------------------------------------------------------------
+# Candidate Trash folder names (Zoho Mail = "Trash", Gmail = "[Gmail]/Trash",
+# common IMAP = "INBOX.Trash"). We try each on connect and cache the winner.
+_TRASH_CANDIDATES = ["Trash", "INBOX.Trash", "[Gmail]/Trash", "Deleted Items", "Deleted Messages"]
+
+
+def _find_trash_folder(conn) -> Optional[str]:
+    """Return the first Trash-like folder that IMAP SELECT accepts, else None."""
+    for name in _TRASH_CANDIDATES:
+        typ, _ = conn.select(name)
+        if typ == "OK":
+            return name
+    return None
+
+
+def _imap_move_uids_to_trash(host: str, port: int, use_ssl: bool, username: str,
+                              password: str, folder: str, uids: list[str]) -> dict:
+    """Move a batch of UIDs from `folder` to the account's Trash folder.
+    Prefers the IMAP MOVE extension (RFC 6851); falls back to COPY + STORE
+    \\Deleted + EXPUNGE for older servers (e.g. Dovecot without MOVE).
+    Returns {moved, method, trash_folder}. Runs inside `asyncio.to_thread`."""
+    if not uids:
+        return {"moved": 0, "method": "noop", "trash_folder": None}
+    imap_cls = imaplib.IMAP4_SSL if use_ssl else imaplib.IMAP4
+    conn = imap_cls(host, port)
+    moved = 0
+    method = "noop"
+    trash = None
+    try:
+        conn.login(username, password)
+        # Find the Trash folder using SELECT probing, then re-SELECT source.
+        trash = _find_trash_folder(conn)
+        conn.select(folder)
+        if not trash:
+            logger.warning(f"IMAP {username}@{host}: no Trash-like folder found; skipping move")
+            return {"moved": 0, "method": "no_trash", "trash_folder": None}
+        uid_set = ",".join(str(u) for u in uids)
+        # Prefer MOVE extension when supported.
+        try:
+            typ, _ = conn.uid("MOVE", uid_set, trash)
+            if typ == "OK":
+                moved = len(uids)
+                method = "move"
+            else:
+                raise imaplib.IMAP4.error("MOVE not OK")
+        except imaplib.IMAP4.error:
+            # Fallback: COPY + \\Deleted + EXPUNGE
+            typ, _ = conn.uid("COPY", uid_set, trash)
+            if typ != "OK":
+                logger.warning(f"IMAP COPY to {trash} failed for {username}")
+                return {"moved": 0, "method": "copy_failed", "trash_folder": trash}
+            conn.uid("STORE", uid_set, "+FLAGS", r"(\Deleted)")
+            conn.expunge()
+            moved = len(uids)
+            method = "copy_expunge"
+    except imaplib.IMAP4.error as e:
+        logger.warning(f"IMAP move-to-trash for {username}@{host} error: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        try:
+            conn.logout()
+        except Exception:
+            pass
+    return {"moved": moved, "method": method, "trash_folder": trash}
+
+
+def _imap_list_current_uids(host: str, port: int, use_ssl: bool, username: str,
+                             password: str, folder: str, since_days: int = 60) -> Optional[set[int]]:
+    """Return the set of UIDs currently present in `folder`, restricted to
+    the last `since_days` (so we don't fetch years of archive). Returns
+    `None` on connection/protocol errors so callers can skip the deletion
+    pass rather than mass-deleting on a transient failure."""
+    imap_cls = imaplib.IMAP4_SSL if use_ssl else imaplib.IMAP4
+    conn = imap_cls(host, port)
+    try:
+        conn.login(username, password)
+        conn.select(folder)
+        since = (datetime.now(timezone.utc) - timedelta(days=max(1, since_days))).strftime("%d-%b-%Y")
+        typ, data = conn.uid("search", None, f"SINCE {since}")
+        if typ != "OK":
+            return None
+        raw = data[0].split() if data and data[0] else []
+        result = set()
+        for u in raw:
+            try:
+                result.add(int(u))
+            except ValueError:
+                continue
+        return result
+    except imaplib.IMAP4.error as e:
+        logger.warning(f"IMAP list-uids for {username}@{host} error: {e}")
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+async def move_contact_message_to_imap_trash(db, contact_msg: dict, dec_fn) -> dict:
+    """Given a contact_messages doc that carries an `imap_source` pointer,
+    move the underlying mail on the IMAP server to Trash. Idempotent — the
+    caller is expected to delete the Mongo doc afterwards. Called from the
+    CMS bulk-delete endpoint."""
+    src = (contact_msg or {}).get("imap_source") or {}
+    mbox_id = src.get("mailbox_id")
+    uid = src.get("uid")
+    if not mbox_id or not uid:
+        return {"moved": 0, "method": "no_source"}
+    mbox = await db.mailboxes.find_one({"id": mbox_id})
+    if not mbox:
+        return {"moved": 0, "method": "mailbox_missing"}
+    pwd = dec_fn(mbox.get("password", ""))
+    if not pwd:
+        return {"moved": 0, "method": "no_password"}
+    return await asyncio.to_thread(
+        _imap_move_uids_to_trash,
+        mbox["host"], int(mbox.get("port") or 993), bool(mbox.get("use_ssl", True)),
+        mbox["username"], pwd, mbox.get("folder") or "INBOX", [str(uid)],
+    )
+
+
+async def detect_server_side_deletions(db, mbox: dict, dec_fn, since_days: int = 60) -> dict:
+    """For a single mailbox, compare `imap_ingested` UIDs against what's
+    currently on the server. UIDs that vanished from INBOX get their
+    linked contact_messages deleted (and the ingested row purged so a
+    future re-sync doesn't resurrect the ticket).
+
+    Returns {checked, deleted, mode}. `mode` = 'ok' when the server
+    responded and we could safely compare, or 'skipped' on connection
+    error (fail-safe — never mass-delete on a transient network blip).
+    """
+    pwd = dec_fn(mbox.get("password", ""))
+    if not pwd:
+        return {"checked": 0, "deleted": 0, "mode": "no_password"}
+    current = await asyncio.to_thread(
+        _imap_list_current_uids,
+        mbox["host"], int(mbox.get("port") or 993), bool(mbox.get("use_ssl", True)),
+        mbox["username"], pwd, mbox.get("folder") or "INBOX", since_days,
+    )
+    if current is None:
+        return {"checked": 0, "deleted": 0, "mode": "skipped"}
+    # Only consider ingested rows from the recent window — an old archive
+    # doesn't need to be scanned every poll, and we don't want to purge
+    # ancient tickets that pre-date the SINCE window on the server.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, since_days))).isoformat()
+    cursor = db.imap_ingested.find({
+        "mailbox_id": mbox["id"],
+        "ingested_at": {"$gte": cutoff},
+    })
+    checked = 0
+    deleted_docs = 0
+    async for row in cursor:
+        checked += 1
+        try:
+            uid_int = int(row.get("uid"))
+        except (TypeError, ValueError):
+            continue
+        if uid_int in current:
+            continue  # still on server
+        # UID vanished — mirror the deletion into the CMS.
+        matched_id = row.get("matched_id") or row.get("matched_parent_id")
+        if matched_id:
+            await db.contact_messages.delete_one({"id": matched_id})
+            await db.contact_message_replies.delete_many({"parent_id": matched_id})
+        await db.imap_ingested.delete_one({"_id": row["_id"]})
+        deleted_docs += 1
+    return {"checked": checked, "deleted": deleted_docs, "mode": "ok"}
+
+
 async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
     """Sync a single mailbox. Returns counters {ingested, matched, skipped}."""
     counters = {"ingested": 0, "matched": 0, "skipped": 0}
@@ -395,10 +583,17 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
                     "message_id": m.get("message_id"),
                 }
                 await db.contact_message_replies.insert_one(reply)
-                await db.contact_messages.update_one(
-                    {"id": parent["id"]},
-                    {"$set": {"last_reply_at": reply["created_at"], "status": "open"}},
-                )
+                # Also attach the IMAP source to the parent doc so a CMS
+                # delete moves this specific UID to Trash (nice-to-have —
+                # replies within a thread don't get their own entry).
+                update = {"last_reply_at": reply["created_at"], "status": "open"}
+                if not parent.get("imap_source"):
+                    update["imap_source"] = {
+                        "mailbox_id": mbox["id"],
+                        "uid": str(m["uid"]),
+                        "message_id": m.get("message_id"),
+                    }
+                await db.contact_messages.update_one({"id": parent["id"]}, {"$set": update})
                 record["matched_parent_id"] = parent.get("id")
                 counters["matched"] += 1
         else:
@@ -461,17 +656,29 @@ async def _sync_one_mailbox(db, mbox: dict, dec_fn) -> dict:
     if new_max_uid and new_max_uid > (last_uid or 0):
         update["last_uid"] = int(new_max_uid)
     await db.mailboxes.update_one({"id": mbox["id"]}, {"$set": update})
+
+    # ── Server-side deletion mirror (2-way sync) ─────────────────────────
+    # Refetch mbox because we just updated last_uid — the fresh copy has
+    # the latest state for future logging.
+    try:
+        deletion_stats = await detect_server_side_deletions(db, mbox, dec_fn, since_days=int(mbox.get("backfill_days") or 30))
+        counters["cms_deleted"] = deletion_stats.get("deleted", 0)
+        counters["deletion_mode"] = deletion_stats.get("mode")
+    except Exception as e:
+        logger.warning(f"IMAP deletion-detection crashed for {mbox.get('email')}: {e}")
     return counters
 
 
 async def sync_all(db, dec_fn) -> dict:
     """One-shot sync over every mailbox — also exposed via /api/admin/mailboxes/sync-now."""
-    totals = {"mailboxes": 0, "ingested": 0, "matched": 0, "skipped": 0}
+    totals = {"mailboxes": 0, "ingested": 0, "matched": 0, "skipped": 0, "cms_deleted": 0}
     async for m in db.mailboxes.find({}):
         totals["mailboxes"] += 1
         counters = await _sync_one_mailbox(db, m, dec_fn)
         for k, v in counters.items():
-            totals[k] = totals.get(k, 0) + v
+            # Only aggregate numeric counters — the deletion_mode string is per-mailbox.
+            if isinstance(v, (int, float)):
+                totals[k] = totals.get(k, 0) + v
     return totals
 
 

@@ -21,6 +21,22 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 58 (v0.9.0-Beta) — True 2-way IMAP ↔ CMS sync
+- **Feature request**: uitgaande & inkomende deletes moeten wederzijds sync'en. Vóór deze iteratie: (a) een bericht wissen in CMS Berichten liet de mail intact op de IMAP-server; (b) een mail uit INBOX wissen liet de CMS-kaart hangen.
+- **CMS → IMAP (delete-mirror)**:
+  - `_create_ticket_from_email` en de Case A ticket-ref match slaan nu `imap_source: {mailbox_id, uid, message_id}` op de `contact_messages` doc
+  - Nieuwe helper `_imap_move_uids_to_trash` — probeert RFC 6851 `UID MOVE` eerst, fallback naar `COPY + STORE \Deleted + EXPUNGE` voor oudere IMAP servers (Dovecot etc.). Probet Trash-foldernamen op volgorde: `Trash`, `INBOX.Trash`, `[Gmail]/Trash`, `Deleted Items`, `Deleted Messages`
+  - Nieuwe `DELETE /api/admin/contact/{msg_id}` — verwijdert 1 bericht + verplaatst gelinkte mail naar Trash
+  - `POST /api/admin/contact/bulk-delete` doet nu hetzelfde in batch met IMAP-stats in de response
+  - Beide endpoints wissen ook `imap_ingested` breadcrumbs zodat een volledige re-sync het ticket niet resurrectt
+- **IMAP → CMS (delete-detection)**:
+  - Nieuwe helper `_imap_list_current_uids` — retourneert de set UIDs die momenteel in INBOX aanwezig zijn (binnen backfill window)
+  - `detect_server_side_deletions` — vergelijkt ingested UIDs met currently-present UIDs, verwijdert `contact_messages` + replies + ingest row voor elke verdwenen UID
+  - **Fail-safe**: bij connectie-fouten retourneert de list-helper `None` en de deletion-pass slaat over — voorkomt catastrofale mass-delete bij transiente netwerk-hikjes
+  - Draait automatisch op ELKE poller-cyclus (elke 60s) en bij handmatige "Sync nu"
+- **Sync-response** neemt nu `cms_deleted` counter mee, CMS toast toont het
+- **6 nieuwe regressietests** — MOVE-preference, COPY+EXPUNGE fallback, no-Trash-folder graceful, deletion detection purges gelinkte docs, connection-error fail-safe, no-imap-source noop. **29/29 tests slagen** (Zoho + UID sync + 2-way sync). Vercel build clean.
+
 ### Feb 2026 — Iteration 57 (v0.8.9-Beta) — Unified logout (portal ↔ CMS)
 - **Bug**: uitloggen via het klantportaal loste de CMS-sessie niet op (en vice versa). Elke context (`AuthContext` voor CMS, `PortalAuthContext` voor Zoho portal, plus lokale state in `Portal.jsx`) beheerde zijn eigen logout, wat leidde tot half uitgelogde staten.
 - **Fix — cross-context `pb:logout` event bus**: elke logout dispatchet nu een custom DOM event dat door alle contexts wordt opgevangen. Concrete effecten:
