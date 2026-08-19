@@ -8,8 +8,9 @@ import { API } from "./_shared";
 export const MailboxesAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
+  const [roles, setRoles] = useState([]); // available CMS roles for the RBAC picker
   const [showForm, setShowForm] = useState(false);
-  const emptyForm = { label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX", backfill_days: 30 };
+  const emptyForm = { label: "", email: "", host: "", port: 993, username: "", password: "", use_ssl: true, folder: "INBOX", backfill_days: 30, allowed_roles: [] };
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null); // null = create mode, id = edit mode
   const [selectedId, setSelectedId] = useState(null);
@@ -18,6 +19,14 @@ export const MailboxesAdmin = () => {
   const [ingested, setIngested] = useState([]);
   const [rebuildBusy, setRebuildBusy] = useState(false);
   const canManage = ["super_admin", "admin", "beheerder"].includes(user?.role);
+
+  const toggleRoleInForm = (role) => {
+    setForm((f) => {
+      const has = (f.allowed_roles || []).includes(role);
+      const next = has ? f.allowed_roles.filter((r) => r !== role) : [...(f.allowed_roles || []), role];
+      return { ...f, allowed_roles: next };
+    });
+  };
 
   const rebuildMatches = async () => {
     setRebuildBusy(true);
@@ -32,12 +41,16 @@ export const MailboxesAdmin = () => {
 
   const load = useCallback(async () => {
     try {
-      const [r, l] = await Promise.all([
+      const [r, l, rl] = await Promise.all([
         axios.get(`${API}/admin/mailboxes`, { headers: authHeader() }),
         axios.get(`${API}/admin/mailboxes/ingested`, { headers: authHeader() }).catch(() => ({ data: [] })),
+        axios.get(`${API}/admin/roles`, { headers: authHeader() }).catch(() => ({ data: [] })),
       ]);
       setItems(r.data || []);
       setIngested(l.data || []);
+      // `/admin/roles` returns [{ key, label, permissions }]. Strip super_admin
+      // because it always sees every mailbox — no point in showing it as a toggle.
+      setRoles((rl.data || []).filter((role) => (role.key || role) !== "super_admin"));
     } catch { toast.error("Kon mailboxen niet laden"); }
   }, [authHeader]);
   useEffect(() => { load(); }, [load]);
@@ -54,6 +67,7 @@ export const MailboxesAdmin = () => {
       use_ssl: m.use_ssl !== false,
       folder: m.folder || "INBOX",
       backfill_days: m.backfill_days || 30,
+      allowed_roles: Array.isArray(m.allowed_roles) ? m.allowed_roles : [],
     });
     setShowForm(true);
   };
@@ -157,6 +171,13 @@ export const MailboxesAdmin = () => {
                   <p className="font-semibold text-strong">{m.label}</p>
                   <p className="text-xs text-muted-fg font-mono">{m.email} · {m.host}:{m.port} {m.use_ssl && "(SSL)"} · {m.folder || "INBOX"}</p>
                   <p className="text-[10px] text-muted-fg mt-0.5">Laatste sync: {m.last_sync ? new Date(m.last_sync).toLocaleString("nl-NL") : "nooit"} {m.last_sync_counts && <span>· {m.last_sync_counts.ingested || 0} nieuw · {m.last_sync_counts.matched || 0} gekoppeld</span>}</p>
+                  <p className="text-[10px] text-muted-fg mt-1" data-testid={`mailbox-roles-${m.id}`}>
+                    <span className="uppercase tracking-widest">Zichtbaar voor:</span>{" "}
+                    {(m.allowed_roles && m.allowed_roles.length > 0)
+                      ? m.allowed_roles.join(", ")
+                      : <span className="italic">iedereen met berichten-permissie</span>}
+                    <span className="text-muted-fg/60"> · super_admin altijd</span>
+                  </p>
                 </div>
                 {canManage && (
                   <div className="flex items-center gap-2">
@@ -207,6 +228,26 @@ export const MailboxesAdmin = () => {
                 <input type="checkbox" checked={form.use_ssl} onChange={(e) => setForm({ ...form, use_ssl: e.target.checked })} className="accent-pear-500" data-testid="mailbox-input-ssl" />
                 SSL/TLS (aanbevolen)
               </label>
+              <div className="md:col-span-2 rounded-xl border border-app bg-slate-50/40 dark:bg-slate-900/30 p-3" data-testid="mailbox-input-roles">
+                <p className="text-xs font-semibold text-strong mb-1">Zichtbaar voor rollen</p>
+                <p className="text-[11px] text-muted-fg mb-2">
+                  Kies welke rollen berichten van deze mailbox mogen zien in de CMS Berichten tab. Laat leeg = iedereen met berichten-permissie ziet ze. <strong>super_admin</strong> ziet altijd alles.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {roles.length === 0 && <span className="text-[11px] text-muted-fg italic">Geen rollen gevonden — configureer eerst rollen via CMS Users tab.</span>}
+                  {roles.map((role) => {
+                    const key = role.key || role;
+                    const label = role.label || key;
+                    const checked = (form.allowed_roles || []).includes(key);
+                    return (
+                      <label key={key} className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border cursor-pointer transition-colors ${checked ? "bg-pear-500 text-white border-pear-500" : "border-app hover:border-pear-500"}`} data-testid={`mailbox-role-${key}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleRoleInForm(key)} className="hidden" />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="md:col-span-2 flex gap-2">
                 <button type="submit" className="btn-primary" data-testid="mailbox-submit">
                   {editingId ? "Wijzigingen opslaan" : "Opslaan"}

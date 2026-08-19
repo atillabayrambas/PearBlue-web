@@ -11,22 +11,45 @@ export const MessagesAdmin = () => {
   const { authHeader, user } = useAuth();
   const [items, setItems] = useState([]);
   const [assignees, setAssignees] = useState([]);
+  const [mailboxes, setMailboxes] = useState({ mailboxes: [], web_form_count: 0 });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("inbox");     // inbox | spam | archive | all
   const [sort, setSort] = useState("date");    // date | name | priority
   const [selected, setSelected] = useState(new Set());
+  // Mailbox filter: null = "All my mailboxes", "web" = web-form messages only,
+  // or a mailbox id. Persisted in localStorage so it survives reloads.
+  const [mailboxFilter, setMailboxFilter] = useState(() => {
+    try { return localStorage.getItem("cms.messages.mailbox_filter") || null; } catch { return null; }
+  });
+  useEffect(() => {
+    try {
+      if (mailboxFilter) localStorage.setItem("cms.messages.mailbox_filter", mailboxFilter);
+      else localStorage.removeItem("cms.messages.mailbox_filter");
+    } catch { /* ignore */ }
+  }, [mailboxFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, a] = await Promise.all([
-        axios.get(`${API}/contact`, { headers: authHeader() }),
+      const params = new URLSearchParams();
+      if (mailboxFilter && mailboxFilter !== "web") params.set("mailbox_id", mailboxFilter);
+      const url = `${API}/contact${params.toString() ? "?" + params.toString() : ""}`;
+      const [r, a, mb] = await Promise.all([
+        axios.get(url, { headers: authHeader() }),
         axios.get(`${API}/admin/assignees`, { headers: authHeader() }),
+        axios.get(`${API}/admin/mailboxes/accessible`, { headers: authHeader() }).catch(() => ({ data: { mailboxes: [], web_form_count: 0 } })),
       ]);
-      setItems(r.data || []);
+      let list = r.data || [];
+      // "web" filter is client-side because the backend endpoint has RBAC
+      // filtering baked in — we just narrow to no-mailbox docs.
+      if (mailboxFilter === "web") {
+        list = list.filter((m) => !m.imap_source && !m.source_mailbox_id);
+      }
+      setItems(list);
       setAssignees(a.data || []);
+      setMailboxes(mb.data || { mailboxes: [], web_form_count: 0 });
     } catch { /* ignore */ } finally { setLoading(false); }
-  }, [authHeader]);
+  }, [authHeader, mailboxFilter]);
   useEffect(() => { load(); }, [load]);
 
   // Silent background refresh every 15s — does NOT toggle loading, skips ticks
@@ -35,18 +58,27 @@ export const MessagesAdmin = () => {
   // half-filled note inputs across polls.
   useSilentPolling(
     async () => {
-      const [r, a] = await Promise.all([
-        axios.get(`${API}/contact`, { headers: authHeader() }),
+      const params = new URLSearchParams();
+      if (mailboxFilter && mailboxFilter !== "web") params.set("mailbox_id", mailboxFilter);
+      const url = `${API}/contact${params.toString() ? "?" + params.toString() : ""}`;
+      const [r, a, mb] = await Promise.all([
+        axios.get(url, { headers: authHeader() }),
         axios.get(`${API}/admin/assignees`, { headers: authHeader() }),
+        axios.get(`${API}/admin/mailboxes/accessible`, { headers: authHeader() }).catch(() => ({ data: { mailboxes: [], web_form_count: 0 } })),
       ]);
-      return { items: r.data || [], assignees: a.data || [] };
+      let list = r.data || [];
+      if (mailboxFilter === "web") {
+        list = list.filter((m) => !m.imap_source && !m.source_mailbox_id);
+      }
+      return { items: list, assignees: a.data || [], mailboxes: mb.data || { mailboxes: [], web_form_count: 0 } };
     },
-    ({ items: newItems, assignees: newAssignees }) => {
+    ({ items: newItems, assignees: newAssignees, mailboxes: newMailboxes }) => {
       setItems(newItems);
       setAssignees(newAssignees);
+      setMailboxes(newMailboxes);
     },
     15000,
-    [],
+    [mailboxFilter],
   );
 
   const patch = async (id, upd) => {
@@ -111,6 +143,43 @@ export const MessagesAdmin = () => {
         <h1 className="font-heading text-3xl font-medium text-strong">Berichten</h1>
         <p className="text-sm text-muted-fg mt-1">Beheer aanvragen — postvak, spam en archief.</p>
       </header>
+
+      {/* Mailbox switcher — shown when the user has access to >=1 mailbox */}
+      {(mailboxes.mailboxes?.length > 0 || mailboxes.web_form_count > 0) && (mailboxes.mailboxes.length + (mailboxes.web_form_count > 0 ? 1 : 0) > 1) && (
+        <div className="mb-4 flex items-center flex-wrap gap-2" data-testid="msg-mailbox-switcher">
+          <span className="text-[10px] uppercase tracking-widest text-muted-fg mr-1">Mailbox:</span>
+          <button
+            onClick={() => { setMailboxFilter(null); setSelected(new Set()); }}
+            className={`text-xs px-3 py-1.5 rounded-full border ${mailboxFilter === null ? "bg-pear-500 text-white border-pear-500" : "border-app hover:border-pear-500"}`}
+            data-testid="msg-mailbox-all"
+          >
+            Alle mailboxen
+          </button>
+          {mailboxes.mailboxes.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => { setMailboxFilter(m.id); setSelected(new Set()); }}
+              className={`text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${mailboxFilter === m.id ? "bg-pear-500 text-white border-pear-500" : "border-app hover:border-pear-500"}`}
+              data-testid={`msg-mailbox-${m.id}`}
+              title={`${m.email} (${m.host})`}
+            >
+              {m.label}
+              <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${mailboxFilter === m.id ? "bg-white/25" : "surface"}`}>{m.message_count}</span>
+            </button>
+          ))}
+          {mailboxes.web_form_count > 0 && (
+            <button
+              onClick={() => { setMailboxFilter("web"); setSelected(new Set()); }}
+              className={`text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${mailboxFilter === "web" ? "bg-pear-500 text-white border-pear-500" : "border-app hover:border-pear-500"}`}
+              data-testid="msg-mailbox-web"
+              title="Berichten van het contactformulier op de site"
+            >
+              Webformulier
+              <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${mailboxFilter === "web" ? "bg-white/25" : "surface"}`}>{mailboxes.web_form_count}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Sub-tabs */}
       <div className="flex flex-wrap gap-1 border-b border-app mb-4" data-testid="msg-subtabs">

@@ -379,8 +379,40 @@ async def create_contact(payload: ContactCreate, request: Request):
 
 
 @api_router.get("/contact", response_model=List[ContactMessage])
-async def list_contacts(current=Depends(require_admin)):
-    items = await db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+async def list_contacts(mailbox_id: Optional[str] = None, current=Depends(require_admin)):
+    """List contact messages, filtered by:
+      1. The caller's role — messages linked to an IMAP mailbox are only
+         visible if the caller's role is in that mailbox's `allowed_roles`
+         (super_admin bypasses this check). Web-form messages (no mailbox
+         link) are always visible to anyone with `messages` permission.
+      2. Optional `?mailbox_id=X` for tab-switching in the CMS Berichten UI.
+    """
+    query: dict = {}
+    role = current.get("role")
+    if role != "super_admin":
+        # Which mailbox IDs is this role allowed to read?
+        mailboxes_cursor = db.mailboxes.find({}, {"id": 1, "allowed_roles": 1})
+        allowed_ids: list[str] = []
+        async for mb in mailboxes_cursor:
+            roles = mb.get("allowed_roles") or []
+            # Empty allowed_roles = "everyone with messages permission" (default)
+            if not roles or role in roles:
+                allowed_ids.append(mb["id"])
+        # Show either: web-form messages (no mailbox link) OR mailbox
+        # messages from an allowed mailbox.
+        query = {"$or": [
+            {"imap_source": {"$exists": False}, "source_mailbox_id": {"$exists": False}},
+            {"imap_source.mailbox_id": {"$in": allowed_ids}},
+            {"source_mailbox_id": {"$in": allowed_ids}},
+        ]}
+    if mailbox_id:
+        # AND the mailbox filter on top of the RBAC filter.
+        mbox_filter = {"$or": [
+            {"imap_source.mailbox_id": mailbox_id},
+            {"source_mailbox_id": mailbox_id},
+        ]}
+        query = {"$and": [query, mbox_filter]} if query else mbox_filter
+    items = await db.contact_messages.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
     for i in items:
         if isinstance(i.get('created_at'), str):
             i['created_at'] = datetime.fromisoformat(i['created_at'])
@@ -390,6 +422,33 @@ async def list_contacts(current=Depends(require_admin)):
                 {k: v for k, v in a.items() if k != "data_b64"} for a in i["attachments"]
             ]
     return items
+
+
+@api_router.get("/admin/mailboxes/accessible")
+async def list_accessible_mailboxes(current=Depends(require_admin)):
+    """Return the mailboxes the calling user is allowed to see, with
+    per-mailbox message counts. Powers the mailbox-switcher pills at the
+    top of the CMS Berichten tab."""
+    role = current.get("role")
+    mailboxes = await db.mailboxes.find({}, {"_id": 0, "password": 0}).to_list(50)
+    accessible = []
+    for mb in mailboxes:
+        roles = mb.get("allowed_roles") or []
+        if role != "super_admin" and roles and role not in roles:
+            continue
+        count = await db.contact_messages.count_documents({"$or": [
+            {"imap_source.mailbox_id": mb["id"]},
+            {"source_mailbox_id": mb["id"]},
+        ]})
+        mb["message_count"] = count
+        accessible.append(mb)
+    # Also expose the "web forms / no mailbox" pseudo-tab so the UI can
+    # offer a switcher between "All my mailboxes" and "Web forms only".
+    web_count = await db.contact_messages.count_documents({
+        "imap_source": {"$exists": False},
+        "source_mailbox_id": {"$exists": False},
+    })
+    return {"mailboxes": accessible, "web_form_count": web_count}
 
 
 @api_router.post("/quote", response_model=QuoteRequest)
@@ -1534,6 +1593,23 @@ async def cybersec_stats(current=Depends(require_permission("cybersecurity"))):
     return {"total_30d": len(docs), "unique_ips_30d": len(unique_ips), "daily": daily, "reasons": reasons}
 
 
+async def _can_view_message(msg: dict, role: str) -> bool:
+    """Return True if `role` may view this contact_message given the
+    per-mailbox `allowed_roles` policy. Web-form messages (no mailbox
+    link) are visible to anyone with `messages` permission. super_admin
+    always wins. Used to gate direct-detail-URL access."""
+    if role == "super_admin":
+        return True
+    mbox_id = (msg.get("imap_source") or {}).get("mailbox_id") or msg.get("source_mailbox_id")
+    if not mbox_id:
+        return True  # web-form message — no mailbox link, always visible
+    mb = await db.mailboxes.find_one({"id": mbox_id}, {"allowed_roles": 1})
+    if not mb:
+        return True  # mailbox was deleted — don't lock out legit users
+    roles = mb.get("allowed_roles") or []
+    return not roles or role in roles
+
+
 # ---- CMS sidebar counters (unresolved-badge numbers) ----
 @api_router.get("/admin/counters")
 async def cms_counters(current=Depends(require_admin)):
@@ -1596,6 +1672,9 @@ async def add_contact_note(msg_id: str, payload: dict, current=Depends(require_p
 async def get_contact_message(msg_id: str, current=Depends(require_permission("messages"))):
     doc = await db.contact_messages.find_one({"id": msg_id}, {"_id": 0})
     if not doc:
+        raise HTTPException(404, "Message not found")
+    if not await _can_view_message(doc, current.get("role")):
+        # 404 (not 403) so we don't leak the fact that the id exists.
         raise HTTPException(404, "Message not found")
     # Strip heavy base64 payload from attachments; keep metadata only
     if doc.get("attachments"):
@@ -2393,6 +2472,10 @@ class MailboxCreate(BaseModel):
     password: str = Field(..., min_length=1, max_length=200)
     use_ssl: bool = True
     folder: str = Field("INBOX", min_length=1, max_length=80)
+    # RBAC: which roles may see the messages ingested from this mailbox in the
+    # CMS Berichten tab. Empty = everyone with `messages` permission (default).
+    # super_admin always sees everything regardless of this list.
+    allowed_roles: List[str] = Field(default_factory=list)
 
 
 class MailboxUpdate(BaseModel):
@@ -2405,6 +2488,7 @@ class MailboxUpdate(BaseModel):
     use_ssl: Optional[bool] = None
     folder: Optional[str] = Field(None, min_length=1, max_length=80)
     backfill_days: Optional[int] = Field(None, ge=1, le=365)
+    allowed_roles: Optional[List[str]] = None
 
 
 @api_router.get("/admin/mailboxes")
@@ -2434,6 +2518,7 @@ async def add_mailbox(payload: MailboxCreate, current=Depends(require_admin)):
         "use_ssl": payload.use_ssl,
         "folder": (payload.folder or "INBOX").strip() or "INBOX",
         "backfill_days": 30,
+        "allowed_roles": [r.strip() for r in (payload.allowed_roles or []) if r and r.strip()],
         "last_uid": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current.get("email"),
@@ -2471,6 +2556,8 @@ async def update_mailbox(mid: str, payload: MailboxUpdate, current=Depends(requi
     if payload.use_ssl is not None: update["use_ssl"] = payload.use_ssl
     if payload.folder is not None: update["folder"] = payload.folder.strip() or "INBOX"
     if payload.backfill_days is not None: update["backfill_days"] = payload.backfill_days
+    if payload.allowed_roles is not None:
+        update["allowed_roles"] = [r.strip() for r in payload.allowed_roles if r and r.strip()]
     if not update:
         return {"status": "noop"}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()

@@ -21,6 +21,19 @@ PearBlue is a Dutch ICT & Media Design agency ("Your Complete Digital Partner").
 - Cookie/GDPR banner + GA4 opt-in
 
 ## Implemented
+### Feb 2026 — Iteration 59 (v0.9.1-Beta) — Mailbox switcher + role-based access
+- **Feature**: bij meerdere IMAP mailboxen wilde de user (a) kunnen switchen tussen mailboxen in de Berichten tab, en (b) per mailbox rollen kunnen kiezen die de mails mogen zien.
+- **Backend**:
+  - `MailboxCreate` en `MailboxUpdate` accepteren nu `allowed_roles: List[str]`. Empty = "iedereen met messages-permissie" (default). super_admin bypasst altijd.
+  - `GET /api/contact` filtert nu op de rol van de caller — messages van role-locked mailboxen zijn onzichtbaar voor rollen buiten de whitelist. Web-form berichten (geen mailbox link) blijven voor iedereen zichtbaar.
+  - `GET /api/contact?mailbox_id=X` — filter op één specifieke mailbox (bovenop de RBAC filter)
+  - `GET /api/admin/mailboxes/accessible` — retourneert de mailboxen die de calling user mag zien, met per-mailbox message counts + web-form pseudo-tab count. Voedt de switcher-pills.
+  - `_can_view_message` helper gate voor detail-URLs — retourneert 404 (niet 403) bij mismatch om ID's niet te lekken. Toegepast op `GET /admin/contact/{msg_id}`.
+- **Frontend**:
+  - **MailboxesAdmin**: form heeft nu een RBAC-blok met per-rol togglable pills (haalt beschikbare rollen op uit `/admin/roles`, super_admin uitgefilterd). Row toont "Zichtbaar voor: crm, moderator · super_admin altijd".
+  - **MessagesAdmin**: nieuwe mailbox-switcher row (alleen zichtbaar bij >1 toegankelijke mailbox) met pills per mailbox + counts + optionele "Webformulier" pill. Filter blijft bewaard in localStorage.
+- **6 nieuwe pytest-cases** in `test_mailbox_rbac.py`: super_admin bypass, role-lock enforcement, empty-list default-open, web-form always-visible, legacy `source_mailbox_id` respected, deleted-mailbox fail-open. **35/35 tests slagen**. Vercel build clean.
+
 ### Feb 2026 — Iteration 58 (v0.9.0-Beta) — True 2-way IMAP ↔ CMS sync
 - **Feature request**: uitgaande & inkomende deletes moeten wederzijds sync'en. Vóór deze iteratie: (a) een bericht wissen in CMS Berichten liet de mail intact op de IMAP-server; (b) een mail uit INBOX wissen liet de CMS-kaart hangen.
 - **CMS → IMAP (delete-mirror)**:
